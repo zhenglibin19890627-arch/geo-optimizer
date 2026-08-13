@@ -93,6 +93,13 @@ class DoubaoResponsesAdapter(EngineAdapter):
                 continue
             else:
                 body_text = resp.text or ""
+                if resp.status_code == 404 and (
+                        "ToolNotOpen" in body_text
+                        or "not activated web search" in body_text.lower()):
+                    raise EngineError(
+                        f"{self.display_name} 的联网搜索插件还没开通：请到火山方舟控制台开通"
+                        f"「联网内容插件（Web Search）」（网址 console.volcengine.com/common-buy/"
+                        f"CC_content_plugin）。开通前可先不用「联网提问」模式监测豆包")
                 if resp.status_code == 404 and ("not found" in body_text.lower()
                                                 or "does not exist" in body_text.lower()):
                     raise EngineError(
