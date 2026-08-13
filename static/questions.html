@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>问题库 - GEO 优化系统</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+</head>
+<body>
+
+<div class="page">
+  <div class="page-title">问题库</div>
+  <div class="page-sub">管理"用户会去问 AI 的问题"——用关键词扩展、手动增删、分组整理、开关参与监测</div>
+
+  <!-- 卡片1：用关键词扩展更多问法 -->
+  <div class="card">
+    <div class="card-title">用关键词扩展更多问法</div>
+    <div class="card-sub">输入几个词，系统帮你变出更多用户可能问 AI 的问题</div>
+    <div class="field">
+      <label class="field-label">本次优化目的/方向（选填）</label>
+      <input class="input" id="exp-direction" placeholder="比如：这次重点突出智慧教室改造案例">
+      <div class="field-hint">填了之后，AI 生成的问题会围绕这个方向，和你的优化目标更相关。</div>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+      <input class="input" id="exp-keywords" style="flex:1;min-width:240px" placeholder="输入关键词，多个用逗号分开">
+      <button class="btn btn-primary" id="exp-generate">生成问法</button>
+    </div>
+
+    <div class="mt-16" id="exp-empty-hint">
+      <div class="score-sub">输入关键词，系统帮你变出更多问法</div>
+    </div>
+
+    <div class="hidden" id="exp-waiting">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="progress" style="flex:1"><div class="bar" style="width:60%"></div></div>
+      </div>
+      <div class="score-sub mt-8">正在请 AI 帮忙想问法…（约 10-30 秒）</div>
+    </div>
+
+    <div class="hidden" id="exp-result">
+      <div class="card-sub mt-8">生成的问法（勾选想要的，点"加入问题库"）</div>
+      <div class="gen-grid" id="exp-grid"></div>
+      <div class="mt-12" style="display:flex;gap:12px">
+        <button class="btn btn-primary" id="exp-add">加入问题库(0)</button>
+        <button class="btn btn-secondary" id="exp-regenerate">换一批</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 卡片2：我的问题库 -->
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">我的问题库（<span id="qbank-count" class="num">0</span> 个）</div>
+        <div class="card-sub">这些问题是监测时要拿去问 AI 的</div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <button class="btn btn-primary" id="qbank-add-btn">+ 手动添加</button>
+      </div>
+    </div>
+
+    <div class="mt-16">
+      <div class="group-tags" id="qbank-groups"></div>
+
+      <div class="group-view-head hidden" id="group-view-head">
+        <span class="gvh-info" id="group-view-info"></span>
+        <button class="btn btn-secondary btn-sm" id="group-enable-all">全部参加监测</button>
+        <button class="btn btn-secondary btn-sm" id="group-disable-all">全部不参加</button>
+      </div>
+
+      <div class="batch-bar hidden" id="batch-bar">
+        <span class="batch-count">已选 <span id="batch-n" class="num">0</span> 条</span>
+        <button class="btn-text" id="batch-move">移动到…</button>
+        <button class="btn-text" id="batch-enable">设为参加监测</button>
+        <button class="btn-text" id="batch-disable">设为不参加</button>
+        <button class="btn-text warn-text" id="batch-delete">删除</button>
+        <button class="btn-text gray" id="batch-clear">取消选择</button>
+      </div>
+
+      <div class="list-toolbar">
+        <input class="input" id="qbank-search" placeholder="搜索问题…">
+        <label class="select-all"><input type="checkbox" id="qbank-select-all">全选</label>
+      </div>
+    </div>
+
+    <div class="mt-8" id="qbank-list"></div>
+  </div>
+</div>
+
+<!-- 手动添加弹窗 -->
+<div class="modal-mask hidden" id="add-mask">
+  <div class="modal">
+    <div class="modal-head">添加问题</div>
+    <div class="modal-body">
+      <div class="field">
+        <label class="field-label">问题内容 <span class="required">*</span></label>
+        <textarea class="textarea" id="add-text" placeholder="输入一条问题，比如：智慧教室怎么选？"></textarea>
+      </div>
+      <div class="field">
+        <label class="field-label">所属组</label>
+        <select class="select" id="add-category"></select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" id="add-cancel">取消</button>
+      <button class="btn btn-primary" id="add-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/common.js"></script>
+<script src="/static/js/questions.js"></script>
+</body>
+</html>

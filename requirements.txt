@@ -1,0 +1,7 @@
+flask>=3.0
+flask-cors>=4.0
+sqlalchemy>=2.0
+apscheduler>=3.10
+requests>=2.31
+beautifulsoup4>=4.12
+pyyaml>=6.0

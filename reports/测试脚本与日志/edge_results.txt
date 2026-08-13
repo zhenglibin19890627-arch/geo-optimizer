@@ -1,0 +1,48 @@
+PASS | PUT /api/brand 空品牌名 | msg=请先填写品牌名，这是监测的基础
+PASS | PUT /api/brand 有效保存(含逗号分号解析) | aliases=['别名A', '别名B', '别名C', '别名D'] competitors=['竞品1', '竞品2', '竞品3']
+PASS | PUT /api/brand 超长品牌名(501字) | 后端未限长，截断策略待确认，DB字段String(200)
+PASS | POST /api/questions 空内容 | msg=问题内容不能为空
+PASS | POST /api/questions 非法source | msg=这个来源不认，请从 预置/扩展/手动 里选
+PASS | POST /api/questions source=preset | data.source=preset
+PASS | POST /api/questions source=expanded | data.source=expanded
+PASS | POST /api/questions source=manual | data.source=manual
+PASS | GET /api/questions?source=expanded 过滤 | count=1
+PASS | PUT /api/questions 开关+改名 | data={'category': '测试分类', 'created_at': '2026-08-10 00:03:12', 'enabled': False, 'id': 38, 'source': 'preset', 'text': '来源测试-改'}
+PASS | PUT /api/questions 不存在 | msg=这个问题不存在，可能已被删除
+PASS | DELETE /api/questions 不存在 | msg=这个问题不存在，可能已被删除
+PASS | POST /api/keywords 去重 | added=2
+FAIL | POST /api/keywords 逗号分号字符串 | added=5
+FAIL | GET /api/keywords?enabled=true | count=7
+PASS | DELETE /api/keywords 不存在 | msg=这个关键词不存在，可能已被删除
+PASS | POST /api/monitor/start 无钥匙 | msg=DeepSeek的钥匙（API Key）还没填，请先到设置页填写
+PASS | POST /api/monitor/start 问题不存在且引擎空 | msg=还没有任何一家 AI 引擎填好钥匙（API Key），请先到设置页填写至少一家的钥匙，再发起监测
+PASS | GET progress 任务不存在 | msg=这轮监测找不到啦，可能已被清理
+PASS | POST cancel 任务不存在 | msg=这轮监测找不到啦
+PASS | POST paste 空问题 | msg=请填一下你问 AI 的问题（问题内容）
+PASS | POST paste 空回答 | msg=请把 AI 的回答粘贴进来（回答内容）
+PASS | POST paste 非法引擎 | msg=没找到这家引擎，请刷新页面后再试
+PASS | PUT /api/schedule 非法时间 abc | msg=时间格式不对，请填 24 小时制的「时:分」，例如 08:30
+PASS | PUT /api/schedule 非法时间 25:00 | msg=时间不在有效范围内（小时 0-23，分钟 0-59），请检查后重填
+PASS | PUT /api/schedule 非法时间 08:70 | msg=时间不在有效范围内（小时 0-23，分钟 0-59），请检查后重填
+PASS | PUT /api/schedule 非法时间 8:5 | msg=时间格式不对，请填 24 小时制的「时:分」，例如 08:30
+PASS | PUT /api/schedule 合法 8:30 归一化 | time=08:30
+PASS | PUT /api/schedule 仅关开关 | data=False
+PASS | POST /api/settings 非法档位 | msg=DeepSeek没有这个档位，请从下拉列表里选
+PASS | POST /api/settings 非法分析档位 | msg=分析用模型没有这个档位，请从下拉列表里选
+PASS | POST /api/settings 合法保存 | data={'analysis_model': None, 'engine_enabled': {'deepseek': False}, 'engine_model': {'deepseek': 'deepseek-chat'}}
+PASS | POST keys/test 无钥匙 | data={'message': 'DeepSeek的钥匙（API Key）还没填，请先到设置页填写', 'ok': False}
+PASS | POST keys/test 非法引擎 | msg=没找到这家引擎，请刷新页面后再试
+PASS | POST keys/test analysis 无钥匙 | data={'message': '钥匙还没填，请先到设置页填写', 'ok': False}
+PASS | POST optimize url 空链接 | msg=请填一下网页链接（以 http:// 或 https:// 开头）
+PASS | POST optimize url 非http(s) | msg=链接格式不对，请填完整的网址（以 http:// 或 https:// 开头），例如 https://www.example.com/page
+PASS | POST optimize text 空内容 | msg=请把要分析的文字粘贴进来
+PASS | POST optimize text 少于20字 | msg=内容太短了（至少 20 个字），分析出来没有意义
+PASS | POST optimize 非法type | msg=输入方式不对，请选择「网页链接」或「粘贴文字」
+PASS | POST optimize text 超50000字(后端截断策略) | msg=分析已开始，请稍等片刻就能看到优化建议 record_id={'record_id': 1}
+PASS | GET optimize 记录不存在 | msg=这条优化记录不存在，可能已被清理
+PASS | GET trend 非法指标 | msg=这个指标类型不认识，请选择 评分/提及率/情感 之一
+PASS | GET competitor 轮次不存在 | msg=这轮监测不存在，可能已被清理
+PASS | GET round detail 轮次不存在 | msg=这轮监测不存在，可能已被清理
+PASS | POST alerts/read 不存在 | msg=这条预警不存在，可能已被清理
+FAIL | GET /api/不存在接口 404 | HTTP=200 msg=你要找的功能不存在，请回到首页重新点一次
+FAIL | GET /api/monitor/start 方法不允许 405 | HTTP=200 msg=这个功能的用法不对（方法不允许），请刷新页面后再试一次

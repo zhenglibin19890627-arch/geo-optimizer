@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>设置 - GEO 优化系统</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+</head>
+<body>
+
+<div class="page">
+  <div class="page-title">设置</div>
+  <div class="page-sub">品牌信息、各家 AI 的模型配置、定时监测、本月花费，都在这一个页面管好</div>
+
+  <!-- 卡片1：我的品牌 -->
+  <div class="card" id="brand">
+    <div class="card-head">
+      <div>
+        <div class="card-title">我的品牌（<span id="brand-count">0</span>/5）</div>
+        <div class="card-sub">每个品牌有自己的问题库、监测记录和报告，互不打扰。</div>
+      </div>
+      <div style="text-align:right">
+        <button class="btn btn-secondary" id="brand-new-btn">＋ 新建品牌</button>
+        <div class="small-note mt-8 hidden" id="brand-full-hint">最多 5 个品牌，已经到上限了。想加新的，可以先删掉一个不用的。</div>
+      </div>
+    </div>
+    <div id="brand-list"></div>
+    <!-- 钥匙填写入口预留位（后续版本启用）-->
+    <div class="brand-key-reserve"></div>
+  </div>
+
+  <!-- 卡片2：各家 AI 的模型配置（钥匙 + 模型型号，整合） -->
+  <div class="card" id="keys">
+    <div class="card-title">各家 AI 的模型配置</div>
+    <div class="card-sub">每家的钥匙（API Key）和模型型号都在这配置：填好钥匙、选好型号，保存后立即生效。钥匙只存在你电脑上。</div>
+
+    <div class="hidden orange-banner" id="keys-no-key-banner">
+      先填一把钥匙，才能开始第一次监测。填钥匙只要 2 分钟
+      <button class="btn-text" id="keys-jump-first" style="color:var(--alert-text)">跳到第一把钥匙</button>
+    </div>
+
+    <div id="keys-list"></div>
+    <div class="small-note mt-8">钥匙保存在程序文件夹 config.yaml 里，不会上传。已填的钥匙在页面上只会显示脱敏样式，想换就重新填一个。</div>
+  </div>
+
+  <!-- 卡片4：每天自动监测 -->
+  <div class="card" id="schedule">
+    <div class="card-title">每天自动监测</div>
+    <div class="card-sub">让系统每天定时替你盯一次</div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <span style="display:flex;align-items:center;gap:10px">
+        <label class="switch"><input type="checkbox" id="schedule-enabled"><span class="slider"></span></label>
+        <span id="schedule-enabled-text">定时监测已开启</span>
+      </span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <label class="field-label" style="margin:0">每天</label>
+        <input type="time" class="input" id="schedule-time" value="08:30" step="1800" style="width:auto">
+      </span>
+      <button class="btn btn-primary" id="schedule-save">保存</button>
+      <span class="saved-hint hidden" id="schedule-saved-hint">已保存 ✓</span>
+    </div>
+    <div class="mt-8" style="display:flex;align-items:center;gap:10px">
+      <label class="switch"><input type="checkbox" id="schedule-web-mode"><span class="slider"></span></label>
+      <span>定时监测使用联网提问</span>
+    </div>
+    <div class="small-note">打开后，每天早上的自动监测会让 AI 先上网搜再回答。</div>
+    <div class="web-cost-note hidden" id="schedule-web-cost">每天多花约 0.5~2.5 元，一个月约多花 15~75 元（以平台账单为准）。</div>
+    <div class="score-sub mt-8 hidden" id="schedule-brand-count"></div>
+    <div class="score-sub mt-8" id="schedule-next">下次自动监测：--</div>
+    <div class="score-sub mt-8">保持程序开着，才能每天自动监测</div>
+  </div>
+
+  <!-- 卡片5：本月大概花了多少钱 -->
+  <div class="card" id="cost">
+    <div class="card-title">本月大概花了多少钱</div>
+    <div class="card-sub">按各平台公开价格估算，实际以账单为准</div>
+    <div id="cost-area"></div>
+  </div>
+
+  <!-- 卡片6：你的数据都在自己电脑上 -->
+  <div class="card">
+    <div class="card-title">你的数据都在自己电脑上</div>
+    <div class="card-sub">品牌信息、监测结果、报告都保存在你自己电脑的文件里，不会上传到任何地方。</div>
+  </div>
+</div>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/common.js"></script>
+<script src="/static/js/settings.js"></script>
+</body>
+</html>

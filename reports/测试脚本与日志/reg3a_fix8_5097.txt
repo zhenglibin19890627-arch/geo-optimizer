@@ -1,0 +1,45 @@
+第三轮回归 · 缺陷 #8 独立实测（环境A 端口5097）
+时间：2026-08-10T10:43:25.116958
+SUMMARY: 40 / 42 PASS
+PASS 设置品牌成功 | {"code": 0, "data": {"brand_aliases": ["星辰", "星辰宝宝"], "brand_description": "", "brand_name": "星辰母婴", "competitors": ["好孩
+PASS 添加 5 个测试问题 | qids={'trig1': 38, 'trig2': 39, 'rec1': 40, 'rec2': 41, 'rec3': 42}
+PASS 种子 3 轮正常基线（mention_rate 0.85/0.90/0.80）
+PASS 触发轮1 status=done | status=done error=
+PASS 触发轮1 实际提及率低（触发条件成立） | rate=(0.0,)
+PASS 触发轮1 产出 mention_drop watch | [{"alert_type": "score_drop", "created_at": "2026-08-10 10:41:35", "id": 2, "is_read": false, "level": "watch", "message": "注意：你的 AI 可见度评分下滑了（上一段时间平均 82 分，这轮只有 20 分）。建议去「内容优化建议」页看看有什么能改的。", "round_id": 4}, {"alert_type": "mention_drop", "created_at": "2026-08-10 10:41:35", "id": 1, "is_read": false,
+PASS 触发轮1 无 warning
+PASS settings.alert_active_mention_drop=True 已落库 | value=True
+PASS 触发轮1 无 alert_warn_at（升级键未提前写入） | value=None
+PASS 同轮 score_drop 也走同路径（active=True 落库） | value=True
+PASS score_drop 触发轮1 watch 同步产出（多类型同路径） | [{"alert_type": "score_drop", "created_at": "2026-08-10 10:41:35", "id": 2, "is_read": false, "level": "watch", "message": "注意：你的 AI 可见度评分下滑了（上一段时间平均 82 分，这轮只有 20 分）。建议去「内容优化建议」页看看有什么能改的。", "round_id": 4}, {"alert_type": "mention_drop", "created_at": "2026-08-10 10:41:35", "id": 1, "is_read": false,
+PASS 触发轮2 status=done | status=done error=
+PASS 触发轮2 升级为 warning | [{"alert_type": "score_drop", "created_at": "2026-08-10 10:42:11", "id": 4, "is_read": false, "level": "warning", "message": "注意：你的 AI 可见度评分下滑了（上一段时间平均 67 分，这轮只有 20 分）。建议去「内容优化建议」页看看有什么能改的。", "round_id": 5}, {"alert_type": "mention_drop", "created_at": "2026-08-10 10:42:11", "id": 3, "is_read": fals
+PASS settings.alert_warn_at_mention_drop 已落库(ISO时间) | value='2026-08-10T10:42:11.492614'
+PASS settings.alert_active_mention_drop 保持 True
+PASS score_drop 触发轮2 同步升级 warning（多类型同路径） | [{"alert_type": "score_drop", "created_at": "2026-08-10 10:42:11", "id": 4, "is_read": false, "level": "warning", "message": "注意：你的 AI 可见度评分下滑了（上一段时间平均 67 分，这轮只有 20 分）。建议去「内容优化建议」页看看有什么能改的。", "round_id": 5}, {"alert_type": "mention_drop", "created_at": "2026-08-10 10:42:11", "id": 3, "is_read": fals
+PASS 冷却轮 status=done | status=done error=
+FAIL 冷却轮不重复推预警（7 天冷却期内无新 alert） | before=4 after=5
+PASS 冷却轮后 warn_at 未被改写
+PASS 冷却轮后 active 保持 True
+PASS 冷却轮仍为触发状态（提及率低） | rate=(0.0,)
+PASS 恢复轮 status=done | status=done error=
+PASS 恢复轮 实际提及率回到基线（>=0.765） | metrics=(1.0, 0.6666666666666666, 97)
+PASS 恢复轮 产出恢复通知（mention_drop） | [{"alert_type": "mention_drop", "created_at": "2026-08-10 10:43:23", "id": 6, "is_read": false, "level": "watch", "message": "好消息：品牌提及率下降已经恢复（从 34% 回到了 100%），这个预警已关闭。", "round_id": 7}]
+PASS 恢复通知文案含『从 X% 回到了 Y%』大白话 | 好消息：品牌提及率下降已经恢复（从 34% 回到了 100%），这个预警已关闭。
+PASS settings.alert_active_mention_drop=False 已落库 | value=False
+PASS score_drop 同轮同步恢复（active=False 落库） | n=1 active=False
+PASS mention_drop 链完整：watch→warning→恢复 共 3 条 | rows=[('watch', 'mention_drop', 4), ('warning', 'mention_drop', 5), ('watch', 'mention_drop', 7)]
+PASS mention_drop 设置键终态正确（active=False + warn_at ISO） | keys={'alert_active_mention_drop': False, 'alert_warn_at_mention_drop': '2026-08-10T10:42:11.492614'}
+PASS overview round_count=7（3种子+4真实，无取消轮混入） | round_count=7
+PASS 轮次列表 total=7 | total=7
+PASS 恢复轮详情可查（results 含品牌提及） | [{"answer_text": "关于“星辰母婴”的婴儿推车是否值得买，我需要先说明一点：目前我无法实时查询该品牌在电商平台上的最新销量、用户评价或具体型号的详细参数，因此无法给出绝对的“值”或“不值”的结论。不过，我可以从选购婴儿推车的通用标准出发，结合该品牌可能的特点，帮你梳理判断思路，并建议你如何自行评估。\n\n---\n\n### 一、先确认品牌和产品信息\n“星辰母婴”可能是一个新兴
+FAIL 趋势图 7 点 | n={'labels': ['第1轮', '第2轮', '第3轮', '第4轮', '第5轮', '第6轮', '第7轮'], 'values': [82, 85, 80, 20, 20, 10, 97]}
+PASS unread=true 返回未读且 unread_count 正确 | n=8 unread_count=8
+PASS 标记已读成功 | {"code": 0, "data": null, "message": "已标记为已读"}
+PASS 标记后 unread 减少 1 条 | unread_count=7
+PASS 已读项 is_read=True 透传
+PASS 三类消息齐全（watch/warning/恢复 均有）
+PASS 日志文件存在
+PASS 服务器日志 0 次 database is locked | found=0
+PASS 服务器日志 0 次 Traceback | found=0
+PASS 本轮真实调用次数与费用记录 | calls=9 cost=0.0224 元

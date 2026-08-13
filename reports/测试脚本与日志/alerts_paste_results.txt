@@ -1,0 +1,15 @@
+PASS | GET /api/alerts 不带参数=全量 | count=2 unread_count=1
+PASS | GET /api/alerts?unread=true 仅未读 | count=1 items=['测试未读预警A']
+PASS | GET /api/alerts?unread=false 仅已读 | count=1 items=['测试已读预警B']
+PASS | GET /api/overview 含未读预警 | unread_alerts=['测试未读预警A']
+PASS | POST /api/alerts/1/read 标记已读 | msg=已标记为已读
+PASS | 标记已读后 unread=true 为空 | count=0
+PASS | paste 提及判定 | is_mentioned=True
+PASS | paste 提及次数≥2 | mention_count=3
+PASS | paste 情感=正向 | sentiment=positive
+PASS | paste 信源解析≥2 | sources=[{'category': '社区/问答平台', 'domain': 'www.zhihu.com', 'title': '123', 'url': 'https://www.zhihu.com/question/123'}, {'category': '百科网站', 'domain': 'baike.baidu.com', 'title': '测试品牌', 'url': 'https://baike.baidu.com/item/测试品牌'}]
+PASS | paste 竞品明细 | competitor=[{'count': 1, 'name': '竞品1', 'position': 2}]
+PASS | paste 顺位=第1位 | position=1
+PASS | paste 显示名=手动粘贴 | display_name=手动粘贴
+PASS | paste 负面情感 | sentiment=negative
+PASS | paste 未提及+中性 | mentioned=False sentiment=neutral

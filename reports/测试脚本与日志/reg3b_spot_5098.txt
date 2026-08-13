@@ -1,0 +1,33 @@
+第三轮回归 · 关键链路抽查（环境B 端口5098）
+时间：2026-08-10T11:06:00.845358
+SUMMARY: 30 / 30 PASS
+PASS 初始 round_count=0（cancelled 轮 round1 已被口径排除） | round_count=0
+PASS 初始趋势图 0 点（cancelled 轮排除） | values=[]
+PASS 问题库有可用问题（id=38 预置既有数据） | [{"category": "选购咨询", "created_at": "2026-08-10 00:43:18", "enabled": true, "id": 39, "source": "manual", "text": "如何选择婴儿推车？有什么需要注意的？"}, {"category": 
+PASS 主链路 status=done | status=done error=
+PASS 主链路 error_msg 为空 | error=
+PASS 主链路 done_calls=1 | done_calls=1
+PASS 回答已入库
+PASS score_snapshot 产出且评分非空 | snap=(2, 20)
+PASS 轮次指标齐全 | metrics=(0.0, 1.0, 20)
+PASS 主链路后 round_count=1（主链路轮计入，cancelled 仍排除） | round_count=1 before=0
+PASS last_round 为主链路轮（id 一致） | {"created_at": "2026-08-10 11:05:24", "finished_at": "2026-08-10 11:05:43", "id": 2, "mention_rate": 0.0, "mentioned_ans
+PASS 趋势图 1 点（主链路轮） | values=[20]
+PASS 取消请求 API 接受（code=0） | attempts=[(1, 'cancelled', '用户主动停止', 1, 1)]
+PASS 存在成功取消轮（status=cancelled + 已答保留） | attempts=[(1, 'cancelled', '用户主动停止', 1, 1)]
+PASS 成功取消轮 error_msg=用户主动停止 | dc_final=(1, 'cancelled', '用户主动停止', 1, 1)
+PASS 取消轮无 score_snapshot
+PASS 取消轮无预警产出
+PASS 中途停止竞态甄别：记录各尝试结果 | attempts=[(1, 'cancelled', '用户主动停止', 1, 1)]
+PASS 初始定时=08:30 且 enabled | {"enabled": true, "next_run_time": "2026-08-11 08:30:00", "plain_hint": "想让系统每天自动监测，请保持本程序开着（可以最小化窗口，但不要关掉它）", "time": "08:30"}
+PASS 初始 next_run_time 为次日 08:30 | next=2026-08-11 08:30:00
+PASS 改时间后 time=23:59 | {"enabled": true, "next_run_time": "2026-08-10 23:59:00", "plain_hint": "想让系统每天自动监测，请保持本程序开着（可以最小化窗口，但不要关掉它）", "time": "23:59"}
+PASS next_run_time 顺延为今日/明日 23:59:00 | next=2026-08-10 23:59:00
+PASS settings 表 schedule_time 落库为 23:59
+PASS 改回 08:30 恢复 | {"enabled": true, "next_run_time": "2026-08-11 08:30:00", "plain_hint": "想让系统每天自动监测，请保持本程序开着（可以最小化窗口，但不要关掉它）", "time": "08:30"}
+PASS round_count 口径=正常轮数（cancelled 不计入） | round_count=1 期望=1
+PASS 趋势图点数=正常轮数（cancelled 排除） | values=[20]
+PASS 轮次列表含取消轮且 task_status=cancelled 透传 | canc=[{'created_at': '2026-08-10 11:05:45', 'finished_at': '2026-08-10 11:06:00', 'id': 3, 'mention_rate': 0.0, 'net_sentiment': 1.0, 'overall_score': 20, 'summary': {'mentioned_answers': 0, 'per_engine': {'deepseek': {'mentioned': 0, 'rate': 0.0, 'total': 1}}, 'total_answers': 1}, 'task_id': 7, 'task_status': 'cancelled', 'task_type': 'manual'}, {'created_at': '2026-08-10 00:46:30', 'finished_at': '2026-08-10 00:46:33', 'id': 1, 'mention_rate': 0.0, 'net_sentiment': 0.0, 'overall_score': 10, 'summary': {'mentioned_answers': 0, 'per_engine': {}, 'total_answers': 0}, 'task_id': 4, 'task_status': 'cancelled', 'task_type': 'manual'}]
+PASS 主链路轮 task_status=done 透传 | done=[{'created_at': '2026-08-10 11:05:24', 'finished_at': '2026-08-10 11:05:43', 'id': 2, 'mention_rate': 0.0, 'net_sentiment': 1.0, 'overall_score': 20, 'summary': {'mentioned_answers': 0, 'per_engine': {'deepseek': {'mentioned': 0, 'rate': 0.0, 'total': 1}}, 'total_answers': 1}, 'task_id': 6, 'task_status': 'done', 'task_type': 'manual'}]
+PASS 取消轮详情可打开（已答回答保留） | [{"answer_text": "选择婴儿推车时，没有绝对的“最好”，因为每个家庭的需求（预算、居住环境、出行频率、宝宝年龄）不同。但根据市场口碑、安全性、实用性和性价比，以下几个品牌和具体型号值得考虑。\n\n---\n\n### 一、选购婴儿推车的核心要点（先看这个）\n1. **安全性**：必须有3C或EN1888认证，刹车灵敏，安全带牢固。\n2. **避震性**：对新生儿尤其重要，影响
+PASS 抽查期间服务器日志 0 次 database is locked / OperationalError | found=0

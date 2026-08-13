@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>内容优化 - GEO 优化系统</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+</head>
+<body>
+
+<div class="page">
+  <div class="page-title">内容优化</div>
+  <div class="page-sub">把"想被 AI 引用的内容"交给系统，拿回"改哪里、怎么改"的具体建议</div>
+
+  <div class="grid-2" style="grid-template-columns: 1.4fr 1fr">
+    <div>
+      <!-- 卡片1：输入内容 -->
+      <div class="card">
+        <div class="card-title">输入内容</div>
+        <div class="card-sub">选一种方式，把要优化的内容交给系统</div>
+        <div class="tabs">
+          <div class="tab-item active" data-tab="url">网页链接</div>
+          <div class="tab-item" data-tab="text">粘贴文字</div>
+        </div>
+
+        <div class="field" id="url-field">
+          <label class="field-label">网页链接</label>
+          <input class="input" id="opt-url" placeholder="https://你的网页地址">
+          <div class="field-hint">请只提交你自己拥有或有权使用的页面内容进行分析。系统只读取公开可访问的网页，不会绕过登录、付费墙或验证码，抓取内容仅保存在你电脑上。</div>
+        </div>
+
+        <div class="field hidden" id="text-field">
+          <label class="field-label">粘贴文字</label>
+          <textarea class="textarea" id="opt-text" placeholder="把文章内容粘贴到这里（最多 5 万字）"></textarea>
+          <div class="field-hint" id="text-count">0/50000 字</div>
+        </div>
+
+        <div class="hidden" id="opt-progress-area">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div class="progress" style="flex:1"><div class="bar" id="opt-progress-bar" style="width:0%"></div></div>
+          </div>
+          <div class="score-sub mt-8" id="opt-progress-text">正在读取网页内容…</div>
+        </div>
+
+        <button class="btn btn-primary" id="opt-start">开始分析</button>
+        <span class="saved-hint hidden" id="opt-saved-hint"></span>
+      </div>
+
+      <!-- 卡片3：分析结果 -->
+      <div class="card hidden" id="opt-result-card">
+        <div class="card-title">分析结果</div>
+        <div id="opt-result-area"></div>
+      </div>
+    </div>
+
+    <!-- 卡片2：历史记录 -->
+    <div class="card">
+      <div class="card-head">
+        <div>
+          <div class="card-title">历史记录</div>
+          <div class="card-sub">点一条，回看当时的分析结果</div>
+        </div>
+      </div>
+      <div id="opt-history-area"></div>
+      <div class="mt-8" id="opt-history-more"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/common.js"></script>
+<script src="/static/js/optimize.js"></script>
+</body>
+</html>

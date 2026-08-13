@@ -1,0 +1,14 @@
+第三轮回归 · 缺陷 #8 修正断言复核 v2（环境A 端口5097）
+时间：2026-08-10T10:45:19.391308
+SUMMARY: 11 / 11 PASS
+PASS round6 仅新增 sentiment_drop watch 1 条（其余类型零新增） | rows=[('sentiment_drop', 'watch', 6)]
+PASS mention_drop 在 round6 零新增（冷却生效） | rows=[]
+PASS score_drop 在 round6 零新增（冷却生效） | rows=[]
+PASS 冷却轮无任何新 warning
+PASS mention_drop 链（round4 watch→round5 warning→round7 恢复）
+PASS mention_drop warn_at 仍为 round5 写入值（冷却轮未改写） | warn_at=('"2026-08-10T10:42:11.492614"',)
+PASS mention_drop active 终态=False（round7 恢复轮写入） | active=('false',)
+PASS trend 返回对象含 labels/values | keys=['labels', 'values']
+PASS values 7 点（3种子+4真实） | values=[82, 85, 80, 20, 20, 10, 97]
+PASS labels 7 个（第1轮..第7轮） | labels=['第1轮', '第2轮', '第3轮', '第4轮', '第5轮', '第6轮', '第7轮']
+PASS overview round_count=7 | round_count=7
