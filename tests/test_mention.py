@@ -48,9 +48,35 @@ def test_sentiment_正负中():
 
 def test_sentiment_否定反转():
     assert sentiment("服务不好") == "negative"
-    # 规则法词典边界："很好"被"不是"反转(-2) 与"好"单独计数(+1) 抵消 → neutral。
-    # 语义上应为负面，属词典规则已知限制（改动会影响监测口径，需用户决策后处理）。
-    assert sentiment("不是很好") == "neutral"
+    # 修复前："很好"被"不是"反转 与"好"单独计数抵消 → 误判 neutral（交付报告已记录的
+    # 已知限制）；否定窗口扩到 4 字 + 反转记 -1 后正确判负。
+    assert sentiment("不是很好") == "negative"
+    assert sentiment("没那么好") == "negative"
+    # 负面词遇否定 → 翻正："一点也不差" 是好评
+    assert sentiment("一点也不差") == "positive"
+    assert sentiment("没啥毛病") == "positive"
+    # "不太贵"（价格可接受）应翻正
+    assert sentiment("价格不太贵") == "positive"
+
+
+def test_sentiment_非否定短语不误反转():
+    # "非常/无比/不仅/不过"等以否定字开头但非否定的短语，不得误判负面
+    assert sentiment("这个品牌非常好，值得推荐") == "positive"
+    assert sentiment("这款产品无比好用") == "positive"
+    assert sentiment("不仅好用，而且便宜") == "positive"
+    assert sentiment("虽然有点贵，不过质量很好") == "positive"
+
+
+def test_sentiment_礼貌短语不误判():
+    # "不好意思" 是固定礼貌短语，不应因"不+好"被判负面
+    assert sentiment("不好意思，想请问一下") == "neutral"
+
+
+def test_sentiment_词典无重复词条():
+    from geo.analyzers.mention import NEGATIVE_WORDS, POSITIVE_WORDS
+    # 重复词条会让一次出现计 2 分，属口径缺陷；词表必须保持无重复
+    assert len(POSITIVE_WORDS) == len(set(POSITIVE_WORDS))
+    assert len(NEGATIVE_WORDS) == len(set(NEGATIVE_WORDS))
 
 
 def test_competitor_mentions():

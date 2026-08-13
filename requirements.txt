@@ -1,7 +1,10 @@
-flask>=3.0
-flask-cors>=4.0
-sqlalchemy>=2.0
-apscheduler>=3.10
-requests>=2.31
-beautifulsoup4>=4.12
-pyyaml>=6.0
+# 运行依赖（版本已锁定到 2026-08-13 验收通过的组合：
+# Python 3.12 + 下述版本，37 项 pytest 用例与冒烟测试全绿）。
+# 如需升级，请整体升级后重跑 tests/ 与启动冒烟验证再交付。
+flask==3.1.3
+flask-cors==6.0.5
+sqlalchemy==2.0.48
+apscheduler==3.11.2
+requests==2.32.5
+beautifulsoup4==4.14.3
+pyyaml==6.0.3

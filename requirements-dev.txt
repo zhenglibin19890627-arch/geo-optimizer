@@ -1,3 +1,4 @@
 # 开发/测试依赖（普通用户不需要——运行 python app.py 只需 requirements.txt）
 # 用法：pip install -r requirements-dev.txt && python -m pytest tests/
-pytest>=8.0
+-r requirements.txt
+pytest==9.1.1

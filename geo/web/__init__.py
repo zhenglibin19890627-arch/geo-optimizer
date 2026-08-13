@@ -126,7 +126,7 @@ def create_app() -> Flask:
     @app.errorhandler(Exception)
     def handle_500(e):
         traceback.print_exc()
-        return fail("服务器开小差了，请稍后再试一次；如果一直报错，请把控制台里的红色信息发给开发者")
+        return fail("服务器开小差了，请稍后再试一次；如果一直报错，请把控制台里的红色信息发给开发者"), 500
 
     @app.route("/")
     def index():
