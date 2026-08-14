@@ -1,6 +1,16 @@
-"""监测提问构造单测：中性提问，绝不注入品牌信息（GEO 测试原则）。"""
+"""监测提问构造与回答分析口径单测。"""
 
-from geo.core.monitor_task import SYSTEM_PROMPT, build_messages
+from geo.core.monitor_task import SYSTEM_PROMPT, _analysis_for, build_messages
+from geo.engines.base import ChatResult
+
+
+class _Question:
+    id = 1
+    text = "实验室改造找哪家公司靠谱？"
+
+
+class _Adapter:
+    code = "deepseek"
 
 
 def test_只含中性系统提示词与问题本身():
@@ -25,3 +35,24 @@ def test_不注入品牌档案信息():
 def test_中性提示词不含任何品牌占位():
     assert "{" not in SYSTEM_PROMPT
     assert "品牌" not in SYSTEM_PROMPT
+
+
+def test_未提及品牌的回答情感计中性():
+    # 防回归：夸竞品/夸行业的好评不得算作我方正面（会虚高净情感率）
+    brand = {"brand_name": "威启"}
+    analysis = _analysis_for(
+        _Adapter(), _Question(),
+        ChatResult(text="好孩子很好，值得推荐，参考 https://example.com/b", model="m"),
+        brand, competitors=["好孩子"], brand_names=["威启"])
+    assert analysis["is_mentioned"] is False
+    assert analysis["sentiment"] == "neutral"
+
+
+def test_提及品牌的好评计正面():
+    brand = {"brand_name": "威启"}
+    analysis = _analysis_for(
+        _Adapter(), _Question(),
+        ChatResult(text="威启很好，值得推荐", model="m"),
+        brand, competitors=["好孩子"], brand_names=["威启"])
+    assert analysis["is_mentioned"] is True
+    assert analysis["sentiment"] == "positive"

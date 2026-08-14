@@ -143,6 +143,19 @@ def test_手动粘贴分析提及情感信源(client):
     assert r.get_json()["code"] == 1
 
 
+def test_手动粘贴未提及好评计中性(client):
+    # 防回归：夸竞品/夸行业的好评不算我方正面（情感口径）
+    r = client.post("/api/monitor/paste", json={
+        "brand_id": 1, "engine_code": "manual",
+        "question_text": "实验室改造找谁？",
+        "answer_text": "好孩子很好，值得推荐，参考 https://example.com/b"})
+    body = r.get_json()
+    assert body["code"] == 0, body
+    res = body["data"]["result"]
+    assert res["is_mentioned"] is False
+    assert res["sentiment"] == "neutral"
+
+
 # ---------------- 发起监测：无钥匙拦截（monkeypatch 保证零真实调用） ----------------
 
 def test_发起监测无钥匙拦截(client, monkeypatch):

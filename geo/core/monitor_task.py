@@ -173,6 +173,10 @@ def _analysis_for(adapter, question, result, brand: dict,
     result 为 ChatResult（含 text 与可选的结构化 sources）。
     信源回落：优先平台结构化引用（ChatResult.sources，{title,url,domain,category}），
     没有时从回答文本正则解析（sources.parse_sources），两者口径一致。
+
+    情感口径（2026-08-14 修订）：只有提到我方品牌的回答才做情感判定；
+    未提及的回答一律计中性——否则"夸竞品/夸行业"的好评会被算成我方正面，
+    虚高净情感率。
     """
     answer_text = result.text
     is_mentioned = mention.mention_count(answer_text, brand_names) > 0
@@ -186,7 +190,7 @@ def _analysis_for(adapter, question, result, brand: dict,
         "is_mentioned": is_mentioned,
         "mention_count": mention.mention_count(answer_text, brand_names),
         "mention_position": pos,
-        "sentiment": mention.sentiment(answer_text),
+        "sentiment": mention.sentiment(answer_text) if is_mentioned else "neutral",
         "sources": database.jdumps(source_list),
         "competitor_mentions": database.jdumps(
             mention.competitor_mentions(answer_text, competitors, brand_names)),

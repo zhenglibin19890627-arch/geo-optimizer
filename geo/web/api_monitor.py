@@ -146,6 +146,8 @@ def monitor_paste():
 
     is_mentioned = mention.mention_count(answer_text, brand_names) > 0
     pos = mention.brand_position(answer_text, brand_names, competitors) if is_mentioned else None
+    # 情感口径：未提及品牌的回答一律计中性（夸竞品/夸行业不算我方正面）
+    sentiment = mention.sentiment(answer_text) if is_mentioned else "neutral"
     with database.session_scope() as s:
         row = database.MonitorResult(
             round_id=None,
@@ -157,7 +159,7 @@ def monitor_paste():
             is_mentioned=is_mentioned,
             mention_count=mention.mention_count(answer_text, brand_names),
             mention_position=pos,
-            sentiment=mention.sentiment(answer_text),
+            sentiment=sentiment,
             sources=database.jdumps(sources.parse_sources(answer_text)),
             competitor_mentions=database.jdumps(
                 mention.competitor_mentions(answer_text, competitors, brand_names)),
