@@ -25,11 +25,11 @@ engines:
     # 联网档模型名（官方支持联网的模型；缺省回落 model）；如官方工具名变化改 web_tool_type
     web_model: "deepseek-v4-flash"
     web_tool_type: "web_search"
-    # 档位默认 V4-Flash（最便宜，日常监测推荐）；设置页可切换
+    # 默认档
     model: "deepseek-v4-flash"
     model_options:
-      - { name: "deepseek-v4-flash", desc: "V4-Flash 最便宜档，日常监测推荐" }
-      - { name: "deepseek-v4-pro", desc: "V4-Pro 更强推理，费用更高" }
+      - { name: "deepseek-v4-flash", desc: "" }
+      - { name: "deepseek-v4-pro", desc: "" }
 
   kimi:
     enabled: true
@@ -142,8 +142,8 @@ analysis:
   base_url: "https://api.deepseek.com"
   model: "deepseek-v4-flash"
   model_options:
-    - { name: "deepseek-v4-flash", desc: "V4-Flash 最便宜档，日常分析推荐" }
-    - { name: "deepseek-v4-pro", desc: "V4-Pro 更强推理，费用更高" }
+    - { name: "deepseek-v4-flash", desc: "" }
+    - { name: "deepseek-v4-pro", desc: "" }
 
 # ---------- 定时自动监测 ----------
 # 注意：此节仅作默认值参考，实际生效值以「设置页」保存的为准（存在本地数据库 settings 表），
