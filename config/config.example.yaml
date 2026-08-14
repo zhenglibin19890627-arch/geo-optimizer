@@ -87,12 +87,10 @@ engines:
     base_url: "https://api.hunyuan.cloud.tencent.com/v1"
     # 联网提问走 enable_enhancement 功能增强（含搜索与引用）
     supports_web_search: true
-    # 默认 turbos 档；设置页可切换。如提示模型不存在，请到腾讯云混元控制台确认最新模型名。
-    model: "hunyuan-turbos-latest"
+    # 默认档
+    model: "hy3"
     model_options:
-      - { name: "hunyuan-turbos-latest", desc: "turbos 档，性价比高，日常监测推荐" }
-      - { name: "hunyuan-turbo-latest", desc: "turbo 档，更便宜" }
-      - { name: "hunyuan-lite-latest", desc: "lite 档，最便宜（无联网搜索能力）" }
+      - { name: "hy3", desc: "" }
 
   opencode:
     enabled: true
