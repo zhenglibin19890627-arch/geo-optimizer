@@ -117,13 +117,13 @@ function renderEList() {
   const webMode = monMode === "web";
   const anyConfigured = monEngines.some(function (k) { return k.configured; });
   document.getElementById("mon-no-key-banner").classList.toggle("hidden", anyConfigured);
-  /* DeepSeek 缺席明示（03b 6.2）：联网模式下横幅 + 引擎行置灰「暂不支持联网」，双保险 */
+  /* 联网模式下：不支持联网的引擎（如 opencode）行置灰「暂不支持联网」+ 横幅明示（03b 6.2） */
+  const webUnsupported = monEngines.some(function (k) { return !k.supports_web_search; });
   const banner = document.getElementById("mon-web-banner");
-  if (banner) banner.classList.toggle("hidden", !webMode);
+  if (banner) banner.classList.toggle("hidden", !(webMode && webUnsupported));
 
   monEngines.forEach(function (k) {
-    const isDeepseek = k.engine === "deepseek";
-    const webDisabled = webMode && isDeepseek;
+    const webDisabled = webMode && !k.supports_web_search;
     const row = document.createElement("div");
     row.className = "checkbox-row" + ((!k.configured || webDisabled) ? " disabled" : "");
     row.style.justifyContent = "space-between";
@@ -169,7 +169,7 @@ function selectedEngines() {
 
 function updateECount() {
   const total = monEngines.filter(function (k) {
-    return k.configured && !(monMode === "web" && k.engine === "deepseek");
+    return k.configured && !(monMode === "web" && !k.supports_web_search);
   }).length;
   const sel = selectedEngines().length;
   document.getElementById("e-count-text").textContent = "已选 " + sel + "/" + total + " 家";
