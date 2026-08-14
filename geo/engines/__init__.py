@@ -65,6 +65,7 @@ def adapter_meta(code: str) -> dict:
         "configured": adapter.is_configured(),
         "enabled": adapter.is_enabled(),
         "model": adapter.get_model(),
+        "web_model": adapter.get_web_model(),
         "model_options": model_options,
         "supports_web_search": bool(adapter.supports_web_search),
     }

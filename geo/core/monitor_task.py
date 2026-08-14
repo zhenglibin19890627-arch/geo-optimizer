@@ -116,12 +116,13 @@ def build_messages(question_text: str) -> list:
     ]
 
 
-def normalize_models(engine_codes: list, models: dict) -> dict:
+def normalize_models(engine_codes: list, models: dict, web: bool = False) -> dict:
     """把前端传来的 {engine: [model,...]} 校验归一为任务模型清单。
 
-    - models 缺省/为空 → 每家引擎用其当前档（[adapter.get_model()]）；
+    - models 缺省/为空 → 每家引擎用其当前档：常规档 [adapter.get_model()]，
+      联网档 [get_web_adapter(code).get_web_model()]；
     - 只认 engine_codes 内的引擎；每家的模型名必须在设置页档位列表
-      （含当前档）里，否则抛大白话错误；
+      （含当前档；联网档额外含联网档模型）里，否则抛大白话错误；
     - 结果恒为 {code: [model, ...]}（去重、保序），供任务落库与执行循环使用。
     """
     result = {}
@@ -135,8 +136,14 @@ def normalize_models(engine_codes: list, models: dict) -> dict:
             picked = [picked]
         picked = [str(m).strip() for m in picked if str(m).strip()]
         if not picked:
-            picked = [adapter.get_model()]
-        # 校验：只允许设置页档位列表里的模型（含当前档）
+            if web:
+                try:
+                    picked = [get_web_adapter(code).get_web_model()]
+                except Exception:
+                    picked = [adapter.get_model()]
+            else:
+                picked = [adapter.get_model()]
+        # 校验：只允许设置页档位列表里的模型（含当前档；联网档含联网档模型）
         from geo.engines import adapter_meta
         try:
             meta = adapter_meta(code)
@@ -147,6 +154,13 @@ def normalize_models(engine_codes: list, models: dict) -> dict:
         current = adapter.get_model()
         if current:
             allowed.add(current)
+        if web:
+            try:
+                wm = get_web_adapter(code).get_web_model()
+            except Exception:
+                wm = None
+            if wm:
+                allowed.add(wm)
         for m in picked:
             if m not in allowed:
                 raise engine_base.EngineError(
@@ -161,14 +175,12 @@ def start_monitor_task(question_ids: list, engine_codes: list,
     """校验并创建任务，后台线程执行。返回 task_id。
 
     models（可选）：{engine_code: [model, ...]}，同一把钥匙下同时监测多个模型
-    （OpenCode 套餐等多档位引擎）；缺省每家引擎用当前档。
+    （常规/联网档均支持）；缺省每家引擎用当前档（联网档用联网档模型）。
     """
     mode = str(mode or "normal").strip() or "normal"
     if mode not in ("normal", "web"):
         raise engine_base.EngineError("这个模式不认，请选择「常规提问」或「联网提问」")
-    if mode == "web":
-        models = None  # 联网档每家引擎固定一个联网模型
-    model_map = normalize_models(engine_codes or [], models)
+    model_map = normalize_models(engine_codes or [], models, web=(mode == "web"))
     with database.session_scope() as s:
         if any_task_running(s):
             raise engine_base.EngineError("已经有一轮监测在跑了，请等它完成后再发起新一轮")
@@ -343,11 +355,15 @@ def _run_monitor_task_inner(task_id: int):
         q_objects = [questions[qid] for qid in question_ids if qid in questions]
 
         # 任务模型清单（同 key 多模型）：{code: [models]}；旧任务缺省当前档
+        # （联网档旧任务缺省联网档模型）
         models_map = database.jloads(task.models, {}) or {}
         for code in engine_codes:
             if not models_map.get(code):
                 try:
-                    models_map[code] = [get_adapter(code).get_model()]
+                    if mode == "web":
+                        models_map[code] = [get_web_adapter(code).get_web_model()]
+                    else:
+                        models_map[code] = [get_adapter(code).get_model()]
                 except Exception:
                     models_map[code] = []
 

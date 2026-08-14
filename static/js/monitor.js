@@ -167,13 +167,15 @@ function renderEList() {
     row.appendChild(right);
     area.appendChild(row);
 
-    /* 同 key 多模型：常规档下为多档位引擎展开模型勾选（默认勾当前档） */
-    if (!webMode && k.model_options && k.model_options.length > 1) {
+    /* 同 key 多模型（常规/联网档均支持）：多档位引擎展开模型勾选（默认勾当前档） */
+    if (k.model_options && k.model_options.length > 1) {
       const mg = document.createElement("div");
       mg.className = "model-group";
       mg.style.cssText = "margin:0 0 10px 28px;display:flex;flex-wrap:wrap;gap:4px 14px;";
       k.model_options.forEach(function (opt) {
-        const isDefault = opt.name === k.model;
+        /* 默认勾选：常规档=当前档；联网档=联网档模型（接口下发 web_model） */
+        const defaultModel = webMode ? (k.web_model || k.model) : k.model;
+        const isDefault = opt.name === defaultModel;
         const lb = document.createElement("label");
         lb.className = "checkbox-row";
         lb.style.padding = "2px 4px";
@@ -181,7 +183,7 @@ function renderEList() {
           '<input type="checkbox" class="model-check" data-ecode="' + esc(k.engine) +
           '" data-model="' + esc(opt.name) + '" data-default="' + (isDefault ? "1" : "0") +
           '"' + (isDefault ? " checked" : "") +
-          (!k.configured ? " disabled" : "") + ">" +
+          ((!k.configured || webDisabled) ? " disabled" : "") + ">" +
           '<span class="label-text" style="font-size:12px">' + esc(opt.desc || opt.name) + "</span>";
         lb.querySelector("input").addEventListener("change", updateEstimate);
         mg.appendChild(lb);
@@ -282,7 +284,7 @@ function monStart() {
 
   const body = { question_ids: qids, engine_codes: ecodes };
   if (monMode === "web") body.mode = "web";
-  else body.models = selectedModels();
+  body.models = selectedModels();
 
   apiPost("/api/monitor/start", body)
     .then(function (data) {

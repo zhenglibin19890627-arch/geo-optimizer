@@ -48,8 +48,8 @@ def monitor_start():
             raise ApiError("还没有任何一家 AI 引擎填好钥匙（API Key），"
                            "请先到设置页填写至少一家的钥匙，再发起监测")
 
-    # 同 key 多模型（仅常规档）：{engine: [model, ...]}，联网档忽略
-    models = data.get("models") if mode != "web" else None
+    # 同 key 多模型（常规/联网档均支持）：{engine: [model, ...]}
+    models = data.get("models")
     if models is not None and not isinstance(models, dict):
         raise ApiError("模型选择格式不对，请刷新页面后重试")
 

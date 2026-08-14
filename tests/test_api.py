@@ -188,6 +188,16 @@ def test_发起监测模型选择校验(client):
     assert "档位" in body["message"]
 
 
+def test_发起监测联网档模型选择校验(client):
+    # 联网档同样支持多模型选择：非法档位拦截
+    r = client.post("/api/monitor/start", json={
+        "brand_id": 1, "question_ids": [1], "engine_codes": ["kimi"],
+        "mode": "web", "models": {"kimi": ["not-a-real-model"]}})
+    body = r.get_json()
+    assert body["code"] == 1
+    assert "档位" in body["message"]
+
+
 # ---------------- 轮次列表/详情 ----------------
 
 def test_轮次列表为空与详情不存在(client):

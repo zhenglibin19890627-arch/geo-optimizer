@@ -19,6 +19,6 @@ class DoubaoAdapter(EngineAdapter):
             from geo.engines.doubao_responses import DoubaoResponsesAdapter
             return DoubaoResponsesAdapter().chat(messages, temperature,
                                                  jitter=jitter, timeout=timeout,
-                                                 web_search=True)
+                                                 web_search=True, model=model)
         return self.call_openai_compatible(messages, temperature, jitter=jitter,
                                            timeout=timeout, model=model)

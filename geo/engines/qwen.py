@@ -52,16 +52,16 @@ class QwenAdapter(EngineAdapter):
         if not web_search:
             return self.call_openai_compatible(messages, temperature, jitter=jitter,
                                                timeout=timeout, model=model)
-        return self._dashscope_web_chat(messages, temperature, jitter, timeout)
+        return self._dashscope_web_chat(messages, temperature, jitter, timeout, model)
 
-    def _dashscope_web_chat(self, messages, temperature, jitter, timeout):
+    def _dashscope_web_chat(self, messages, temperature, jitter, timeout, model=None):
         mon = config.get_section("monitor", {})
         if jitter and float(mon.get("max_interval", 3) or 3) > 0:
             low = float(mon.get("min_interval", 1.5) or 1.5)
             high = float(mon.get("max_interval", 3) or 3)
             time.sleep(random.uniform(low, high))
 
-        model = self.get_web_model()
+        model = model or self.get_web_model()
         if not (self.cfg.get("api_key") or "").strip():
             raise EngineError(f"{self.display_name}的钥匙（API Key）还没填，请先到设置页填写")
         if not model:

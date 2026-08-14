@@ -30,9 +30,9 @@ class KimiAdapter(EngineAdapter):
         if not web_search:
             return self.call_openai_compatible(messages, temperature, jitter=jitter,
                                                timeout=timeout, model=model)
-        return self._web_search_chat(messages, temperature, jitter, timeout)
+        return self._web_search_chat(messages, temperature, jitter, timeout, model)
 
-    def _web_search_chat(self, messages, temperature, jitter, timeout):
+    def _web_search_chat(self, messages, temperature, jitter, timeout, model=None):
         if jitter:
             import random
             import time
@@ -41,7 +41,7 @@ class KimiAdapter(EngineAdapter):
             low = float(mon.get("min_interval", 1.5) or 1.5)
             high = float(mon.get("max_interval", 3) or 3)
             time.sleep(random.uniform(low, high))
-        model = self.get_web_model()
+        model = model or self.get_web_model()
 
         conv = list(messages)
         for round_no in range(1, MAX_TOOL_ROUNDS + 1):

@@ -82,3 +82,18 @@ def test_normalize_models_非法档位报错():
     from geo.engines.base import EngineError
     with pytest.raises(EngineError):
         normalize_models(["opencode"], {"opencode": ["not-a-real-model"]})
+
+
+def test_normalize_models_联网档默认用联网模型():
+    from geo.core.monitor_task import normalize_models
+    from geo.engines import get_web_adapter
+    m = normalize_models(["kimi"], None, web=True)
+    assert m["kimi"] == [get_web_adapter("kimi").get_web_model()]
+
+
+def test_normalize_models_联网档可显式选模型():
+    from geo.core.monitor_task import normalize_models
+    from geo.engines import get_web_adapter
+    wm = get_web_adapter("kimi").get_web_model()
+    m = normalize_models(["kimi"], {"kimi": [wm]}, web=True)
+    assert m["kimi"] == [wm]

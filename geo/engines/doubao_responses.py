@@ -33,7 +33,8 @@ class DoubaoResponsesAdapter(EngineAdapter):
     display_name = "豆包"
     supports_web_search = True
 
-    def chat(self, messages, temperature=None, jitter=False, timeout=60, web_search=True):
+    def chat(self, messages, temperature=None, jitter=False, timeout=60,
+             web_search=True, model=None):
         mon = config.get_section("monitor", {})
         max_retries = int(mon.get("max_retries", 2) or 2)
         backoff = float(mon.get("retry_backoff_seconds", 2) or 2)
@@ -42,7 +43,7 @@ class DoubaoResponsesAdapter(EngineAdapter):
             high = float(mon.get("max_interval", 3) or 3)
             time.sleep(random.uniform(low, high))
 
-        model = self.get_web_model()
+        model = model or self.get_web_model()
         if not (self.cfg.get("api_key") or "").strip():
             raise EngineError(f"{self.display_name}的钥匙（API Key）还没填，请先到设置页填写")
         if not model:
