@@ -8,3 +8,5 @@ apscheduler==3.11.2
 requests==2.32.5
 beautifulsoup4==4.14.3
 pyyaml==6.0.3
+pystray==0.19.5
+pillow==12.2.0
