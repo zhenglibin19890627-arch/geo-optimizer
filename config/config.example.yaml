@@ -93,6 +93,23 @@ engines:
       - { name: "hunyuan-turbo-latest", desc: "turbo 档，更便宜" }
       - { name: "hunyuan-lite-latest", desc: "lite 档，最便宜（无联网搜索能力）" }
 
+  opencode:
+    enabled: true
+    display_name: "OpenCode"
+    # 口径说明：OpenCode（opencode.ai 终端 AI 编程代理）订阅套餐的托管模型。
+    # 套餐制计费，token 费用估算表不含它（api_call_log 仍会记录每次调用）。
+    note: "OpenCode 订阅套餐托管模型，费用按套餐计，不计入「本月大概花了多少钱」估算。"
+    api_key: ""
+    # 订阅套餐的 OpenAI 兼容接口地址（Go 套餐若地址不同，改这里或到订阅页确认）
+    base_url: "https://opencode.ai/zen/v1"
+    # 订阅套餐无联网提问能力，联网档自动排除
+    supports_web_search: false
+    # 默认档：模型名以订阅页/文档显示为准，不对就改这里或在设置页切换
+    model: "claude-sonnet-4"
+    model_options:
+      - { name: "claude-sonnet-4", desc: "订阅套餐默认档（模型名以订阅页为准）" }
+      - { name: "gpt-5.1-codex", desc: "备选档（模型名以订阅页为准）" }
+
 # ---------- 分析用大模型 ----------
 # 系统“自己的思考”用：关键词扩展问法、内容优化建议等。
 # 默认 DeepSeek 最便宜档位（用户裁决 D5）；设置页可切换。

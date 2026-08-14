@@ -69,10 +69,17 @@ def reap_stale_tasks() -> int:
 
 
 def enabled_auto_engines() -> list:
-    """已启用 且 已填钥匙 的自动引擎（用于“全部”默认勾选）。"""
+    """已启用 且 已填钥匙 的自动引擎（用于“全部”默认勾选）。
+
+    遍历引擎注册表 AUTO_CODES：新增引擎（如 opencode）自动纳入，无需改这里。
+    """
+    from geo.engines import AUTO_CODES
     result = []
-    for code in ["deepseek", "kimi", "doubao", "qwen", "yuanbao"]:
-        adapter = get_adapter(code)
+    for code in AUTO_CODES:
+        try:
+            adapter = get_adapter(code)
+        except Exception:
+            continue
         if adapter.is_enabled() and adapter.is_configured():
             result.append(code)
     return result

@@ -387,7 +387,7 @@ function maybeShowGuide() {
         const b = brand || {};
         content.innerHTML =
           '<div class="guide-step-title">创建你的第一个品牌</div>' +
-          '<div class="guide-step-desc">告诉系统你的品牌是谁，它才能去 5 家 AI 里帮你找答案。以后可以随时在设置页加新的品牌。</div>' +
+          '<div class="guide-step-desc">告诉系统你的品牌是谁，它才能去 6 家 AI 里帮你找答案。以后可以随时在设置页加新的品牌。</div>' +
           '<div class="field"><label class="field-label">品牌名 <span class="required">*</span></label>' +
           '<input class="input" id="g-brand-name" placeholder="比如：某某母婴" value="' + esc(b.brand_name || "") + '"></div>' +
           '<div class="field"><label class="field-label">产品名</label>' +
@@ -413,7 +413,7 @@ function maybeShowGuide() {
         }).join("");
         content.innerHTML =
           '<div class="guide-step-title">去设置页填钥匙</div>' +
-          '<div class="guide-step-desc">系统要代表你向 5 家 AI 提问，需要每家 AI 的钥匙（API Key）。钥匙在设置页填，一次填好，长期使用。</div>' +
+          '<div class="guide-step-desc">系统要代表你向 6 家 AI 提问，需要每家 AI 的钥匙（API Key）。钥匙在设置页填，一次填好，长期使用。</div>' +
           '<div class="guide-key-list">' + rows + "</div>" +
           '<button class="btn btn-primary" id="g-go-settings">去设置页填写</button>';
         document.getElementById("g-go-settings").addEventListener("click", function () {
@@ -422,7 +422,7 @@ function maybeShowGuide() {
       } else {
         content.innerHTML =
           '<div class="guide-step-title">发起第一次监测</div>' +
-          '<div class="guide-step-desc">系统会替你把问题库里的问题问一遍 5 家 AI（约 10-15 分钟，花费约 1-2.5 元），然后告诉你 AI 认不认识你。</div>' +
+          '<div class="guide-step-desc">系统会替你把问题库里的问题问一遍 6 家 AI（约 10-15 分钟，花费约 1-2.5 元），然后告诉你 AI 认不认识你。</div>' +
           '<button class="btn btn-primary" id="g-go-monitor">去发起监测</button>';
         document.getElementById("g-go-monitor").addEventListener("click", function () {
           closeGuide();

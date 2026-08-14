@@ -5,6 +5,7 @@ from geo.engines.deepseek import DeepSeekAdapter
 from geo.engines.doubao import DoubaoAdapter
 from geo.engines.kimi import KimiAdapter
 from geo.engines.manual import ManualAdapter
+from geo.engines.opencode import OpenCodeAdapter
 from geo.engines.qwen import QwenAdapter
 from geo.engines.yuanbao import YuanbaoAdapter
 
@@ -14,11 +15,12 @@ _REGISTRY = {
     DoubaoAdapter.code: DoubaoAdapter,
     QwenAdapter.code: QwenAdapter,
     YuanbaoAdapter.code: YuanbaoAdapter,
+    OpenCodeAdapter.code: OpenCodeAdapter,
     ManualAdapter.code: ManualAdapter,
 }
 
 # 自动监测引擎（手动粘贴不在其列）
-AUTO_CODES = ["deepseek", "kimi", "doubao", "qwen", "yuanbao"]
+AUTO_CODES = ["deepseek", "kimi", "doubao", "qwen", "yuanbao", "opencode"]
 
 
 def get_adapter(code: str) -> EngineAdapter:
