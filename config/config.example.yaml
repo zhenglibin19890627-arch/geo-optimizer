@@ -107,11 +107,30 @@ engines:
     base_url: "https://opencode.ai/zen/v1"
     # 订阅套餐无联网提问能力，联网档自动排除
     supports_web_search: false
-    # 默认档：模型名以订阅页/文档显示为准，不对就改这里或在设置页切换
-    model: "claude-sonnet-4"
+    # 默认档：DeepSeek V4 Flash（与系统分析模型同档，便宜稳定）
+    model: "deepseek-v4-flash"
+    # Go 套餐支持的全部模型（模型 ID 按各家标准命名；若某档报"模型不存在"，
+    # 以订阅页/文档显示的 API 模型名为准改对应 name）
     model_options:
-      - { name: "claude-sonnet-4", desc: "订阅套餐默认档（模型名以订阅页为准）" }
-      - { name: "gpt-5.1-codex", desc: "备选档（模型名以订阅页为准）" }
+      - { name: "grok-4.5", desc: "Grok 4.5" }
+      - { name: "glm-5.3", desc: "GLM-5.3" }
+      - { name: "glm-5.2", desc: "GLM-5.2" }
+      - { name: "glm-5.1", desc: "GLM-5.1" }
+      - { name: "gpt-5.6-luna", desc: "GPT 5.6 Luna" }
+      - { name: "kimi-k3", desc: "Kimi K3" }
+      - { name: "kimi-k2.7-code", desc: "Kimi K2.7 Code" }
+      - { name: "kimi-k2.6", desc: "Kimi K2.6" }
+      - { name: "mimo-v2.5", desc: "MiMo-V2.5" }
+      - { name: "mimo-v2.5-pro", desc: "MiMo-V2.5-Pro" }
+      - { name: "minimax-m3", desc: "MiniMax M3" }
+      - { name: "minimax-m2.7", desc: "MiniMax M2.7" }
+      - { name: "qwen3.8-max", desc: "Qwen3.8 Max" }
+      - { name: "qwen3.7-max", desc: "Qwen3.7 Max" }
+      - { name: "qwen3.7-plus", desc: "Qwen3.7 Plus" }
+      - { name: "qwen3.6-plus", desc: "Qwen3.6 Plus" }
+      - { name: "deepseek-v4-pro", desc: "DeepSeek V4 Pro" }
+      - { name: "deepseek-v4-flash", desc: "DeepSeek V4 Flash" }
+      - { name: "hy3", desc: "Hy3" }
 
 # ---------- 分析用大模型 ----------
 # 系统“自己的思考”用：关键词扩展问法、内容优化建议等。
