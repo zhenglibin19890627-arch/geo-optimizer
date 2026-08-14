@@ -22,7 +22,8 @@ class YuanbaoAdapter(EngineAdapter):
     note = "本数据来自腾讯混元官方 API（元宝同门底座），与元宝 App 的回答口径可能存在差异。"
     supports_web_search = True
 
-    def chat(self, messages, temperature=None, jitter=False, timeout=60, web_search=False):
+    def chat(self, messages, temperature=None, jitter=False, timeout=60,
+             web_search=False, model=None):
         extra = None
         if web_search:
             extra = {
@@ -32,4 +33,5 @@ class YuanbaoAdapter(EngineAdapter):
                 "force_search_enhancement": True,
             }
         return self.call_openai_compatible(messages, temperature, jitter=jitter,
-                                           timeout=timeout, extra_payload=extra)
+                                           timeout=timeout, extra_payload=extra,
+                                           model=model)

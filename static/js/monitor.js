@@ -52,8 +52,13 @@ function monInit() {
     updateEstimate();
   });
   document.getElementById("e-select-all").addEventListener("change", function () {
-    const boxes = document.querySelectorAll("#e-list input[type=checkbox]");
-    boxes.forEach(function (b) { b.checked = this.checked; }, this);
+    const on = this.checked;
+    document.querySelectorAll("#e-list input[type=checkbox]:not(.model-check)")
+      .forEach(function (b) { b.checked = on; });
+    document.querySelectorAll("#e-list .model-check").forEach(function (b) {
+      b.checked = on ? b.getAttribute("data-default") === "1" : false;
+      b.disabled = !on;
+    });
     updateEstimate();
   });
 
@@ -135,7 +140,10 @@ function renderEList() {
     left.innerHTML =
       '<input type="checkbox" data-ecode="' + esc(k.engine) + '" ' + ((k.configured && !webDisabled) ? "checked" : "") + ((!k.configured || webDisabled) ? " disabled" : "") + ">" +
       '<span class="label-text">' + esc(k.display_name) + "</span>";
-    left.querySelector("input").addEventListener("change", updateEstimate);
+    left.querySelector("input").addEventListener("change", function () {
+      syncModelGroup(k.engine, this.checked);
+      updateEstimate();
+    });
     if (!k.configured && !webDisabled) {
       left.addEventListener("click", function (e) {
         if (e.target.tagName !== "INPUT") {
@@ -158,8 +166,59 @@ function renderEList() {
     row.appendChild(left);
     row.appendChild(right);
     area.appendChild(row);
+
+    /* 同 key 多模型：常规档下为多档位引擎展开模型勾选（默认勾当前档） */
+    if (!webMode && k.model_options && k.model_options.length > 1) {
+      const mg = document.createElement("div");
+      mg.className = "model-group";
+      mg.style.cssText = "margin:0 0 10px 28px;display:flex;flex-wrap:wrap;gap:4px 14px;";
+      k.model_options.forEach(function (opt) {
+        const isDefault = opt.name === k.model;
+        const lb = document.createElement("label");
+        lb.className = "checkbox-row";
+        lb.style.padding = "2px 4px";
+        lb.innerHTML =
+          '<input type="checkbox" class="model-check" data-ecode="' + esc(k.engine) +
+          '" data-model="' + esc(opt.name) + '" data-default="' + (isDefault ? "1" : "0") +
+          '"' + (isDefault ? " checked" : "") +
+          (!k.configured ? " disabled" : "") + ">" +
+          '<span class="label-text" style="font-size:12px">' + esc(opt.desc || opt.name) + "</span>";
+        lb.querySelector("input").addEventListener("change", updateEstimate);
+        mg.appendChild(lb);
+      });
+      area.appendChild(mg);
+    }
   });
   updateECount();
+}
+
+/* 引擎勾选联动：其模型组跟随启用/禁用 */
+function syncModelGroup(code, engineChecked) {
+  document.querySelectorAll('#e-list .model-check[data-ecode="' + code + '"]').forEach(function (b) {
+    b.disabled = !engineChecked;
+  });
+}
+
+/* 已选模型：{engine: [model,...]}；未勾任何模型的引擎 → 空数组（后端用当前档） */
+function selectedModels() {
+  const map = {};
+  document.querySelectorAll("#e-list input[type=checkbox]:not(.model-check):checked").forEach(function (b) {
+    const code = b.getAttribute("data-ecode");
+    map[code] = Array.from(document.querySelectorAll(
+      '#e-list .model-check[data-ecode="' + code + '"]:checked'))
+      .map(function (m) { return m.getAttribute("data-model"); });
+  });
+  return map;
+}
+
+function selectedModelsTotal() {
+  const map = selectedModels();
+  let n = 0;
+  document.querySelectorAll("#e-list input[type=checkbox]:not(.model-check):checked").forEach(function (b) {
+    const code = b.getAttribute("data-ecode");
+    n += (map[code] || []).length || 1;  // 无模型组或未勾模型 → 按 1 个（当前档）
+  });
+  return n;
 }
 
 function selectedEngines() {
@@ -172,7 +231,9 @@ function updateECount() {
     return k.configured && !(monMode === "web" && !k.supports_web_search);
   }).length;
   const sel = selectedEngines().length;
-  document.getElementById("e-count-text").textContent = "已选 " + sel + "/" + total + " 家";
+  const selModels = selectedModelsTotal();
+  document.getElementById("e-count-text").textContent =
+    "已选 " + sel + "/" + total + " 家 · " + selModels + " 个模型";
 }
 
 /* ---------------- 预估 ---------------- */
@@ -181,7 +242,7 @@ function updateEstimate() {
   updateQCount();
   updateECount();
   const qs = selectedQuestions().length;
-  const es = selectedEngines().length;
+  const es = selectedModelsTotal();
   const calls = qs * es;
   const minutesLow = Math.max(Math.round(calls / 50 * 10), 1);
   const minutesHigh = Math.max(Math.round(calls / 50 * 15), minutesLow + 1);
@@ -221,6 +282,7 @@ function monStart() {
 
   const body = { question_ids: qids, engine_codes: ecodes };
   if (monMode === "web") body.mode = "web";
+  else body.models = selectedModels();
 
   apiPost("/api/monitor/start", body)
     .then(function (data) {

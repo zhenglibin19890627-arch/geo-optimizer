@@ -178,6 +178,16 @@ def test_发起监测无钥匙拦截(client, monkeypatch):
     assert r.get_json()["code"] == 1
 
 
+def test_发起监测模型选择校验(client):
+    # 不存在的档位 → 大白话拦截（校验发生在发起线程之前，零真实调用）
+    r = client.post("/api/monitor/start", json={
+        "brand_id": 1, "question_ids": [1], "engine_codes": ["opencode"],
+        "models": {"opencode": ["not-a-real-model"]}})
+    body = r.get_json()
+    assert body["code"] == 1
+    assert "档位" in body["message"]
+
+
 # ---------------- 轮次列表/详情 ----------------
 
 def test_轮次列表为空与详情不存在(client):
@@ -292,7 +302,8 @@ def test_报告接口趋势信源竞品(client):
         s.flush()
         rid = round_row.id
         s.add(database.MonitorResult(
-            round_id=rid, brand_id=1, engine_code="deepseek", question_id=1,
+            round_id=rid, brand_id=1, engine_code="deepseek",
+            model="deepseek-v4-flash", question_id=1,
             question_text="监测用问题",
             answer_text="好孩子很好，威启也不错，参考 https://example.com/a",
             is_mentioned=True, mention_count=1, mention_position=2,
@@ -304,7 +315,8 @@ def test_报告接口趋势信源竞品(client):
                 [{"name": "好孩子", "count": 1, "position": 1}]),
             input_mode="auto"))
         s.add(database.MonitorResult(
-            round_id=rid, brand_id=1, engine_code="kimi", question_id=1,
+            round_id=rid, brand_id=1, engine_code="kimi", model="kimi-k2.6",
+            question_id=1,
             question_text="监测用问题", answer_text="这个问题没有提到品牌",
             is_mentioned=False, mention_count=0, sentiment="neutral",
             sources="[]", competitor_mentions="[]", input_mode="auto"))
@@ -342,6 +354,12 @@ def test_报告接口趋势信源竞品(client):
     assert by_name["威启"]["mention_count"] == 1
     assert by_name["好孩子"]["is_self"] is False
     assert by_name["好孩子"]["mention_count"] == 1
+
+    # 轮次详情：结果带实际调用模型名
+    r = client.get(f"/api/monitor/rounds/{rid}?brand_id=1")
+    results = r.get_json()["data"]["results"]
+    models = sorted(set(x["model"] for x in results))
+    assert models == ["deepseek-v4-flash", "kimi-k2.6"]
 
 
 # ---------------- 预警列表 ----------------

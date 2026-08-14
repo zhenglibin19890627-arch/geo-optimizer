@@ -215,11 +215,13 @@ function loadRoundDetail(roundId) {
           pos: 0, neu: 0, neg: 0,
           firstPos: null,
           hasYuanbao: key === "yuanbao",
+          models: {},
           answers: [],
           fails: [],
         };
       }
       const e = byEngine[key];
+      if (r.model) e.models[r.model] = true;
       if (r.answer_text) {
         e.answered += 1;
         if (r.is_mentioned) {
@@ -241,12 +243,14 @@ function loadRoundDetail(roundId) {
     let html = "";
     Object.keys(byEngine).forEach(function (key) {
       const e = byEngine[key];
+      const modelCount = Object.keys(e.models).length;
       html +=
         '<div class="detail-item">' +
         '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">' +
         '<span style="font-weight:600">' + esc(e.name) + "</span>" +
         '<span class="num">回答 ' + e.answered + " 条 · 提到你 " + e.mentioned + " 次" +
-        " · 首提位置 " + (e.firstPos ? "第 " + e.firstPos + " 位" : "—") + "</span>" +
+        " · 首提位置 " + (e.firstPos ? "第 " + e.firstPos + " 位" : "—") +
+        (modelCount > 1 ? " · " + modelCount + " 个模型" : "") + "</span>" +
         "</div>" +
         '<div class="mt-8">情感分布：' +
         '<span class="tag tag-green">正面 ' + e.pos + "</span> " +
@@ -267,6 +271,9 @@ function loadRoundDetail(roundId) {
                 : r.sentiment === "negative"
                   ? '<span class="tag tag-red">负面</span>'
                   : '<span class="tag tag-gray">中性</span>';
+              const modelTag = r.model
+                ? '<span class="tag tag-blue">' + esc(r.model) + "</span>"
+                : "";
               const text = String(r.answer_text || "").trim();
               const excerpt = text.length > 100 ? text.slice(0, 100) + "…" : text;
               const fullHtml = text.length > 100
@@ -274,7 +281,7 @@ function loadRoundDetail(roundId) {
                   '<div class="hit-full hidden md-body">' + mdToHtml(text) + "</div>"
                 : '<div class="hit-full md-body">' + mdToHtml(text) + "</div>";
               return '<div class="hit-item">' +
-                '<div class="hit-head">第 ' + (i + 1) + " 问 · " + mentionedTag + " " + sentiTag + "</div>" +
+                '<div class="hit-head">第 ' + (i + 1) + " 问 · " + mentionedTag + " " + sentiTag + " " + modelTag + "</div>" +
                 '<div class="hit-question">问：' + esc(r.question_text || "") + "</div>" +
                 (text.length > 100
                   ? '<div class="hit-excerpt">' + esc(excerpt) + "</div>"

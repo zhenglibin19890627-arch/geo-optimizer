@@ -166,6 +166,7 @@ class MonitorTask(Base):
     estimated_seconds = Column(Integer, default=0)
     question_ids = Column(Text)  # JSON 数组
     engine_codes = Column(Text)  # JSON 数组
+    models = Column(Text)  # JSON 对象 {engine_code: [model, ...]}；空=每家引擎用当前档
     error_msg = Column(Text)
     started_at = Column(DateTime)
     finished_at = Column(DateTime)
@@ -182,6 +183,7 @@ class MonitorTask(Base):
             "estimated_seconds": self.estimated_seconds or 0,
             "question_ids": jloads(self.question_ids, []) or [],
             "engine_codes": jloads(self.engine_codes, []) or [],
+            "models": jloads(self.models, {}) or {},
             "error_msg": self.error_msg or "",
             "mode": self.mode or "normal",
             "started_at": self.started_at.strftime("%Y-%m-%d %H:%M:%S") if self.started_at else None,
@@ -232,6 +234,7 @@ class MonitorResult(Base):
     brand_id = Column(Integer, default=1)
     round_id = Column(Integer)
     engine_code = Column(String(30))
+    model = Column(String(100))  # 实际调用的模型名（同 key 多模型监测时区分档位）
     question_id = Column(Integer)
     question_text = Column(Text)
     answer_text = Column(Text)
@@ -250,6 +253,7 @@ class MonitorResult(Base):
             "id": self.id,
             "round_id": self.round_id,
             "engine_code": self.engine_code,
+            "model": self.model or "",
             "question_id": self.question_id,
             "question_text": self.question_text,
             "answer_text": self.answer_text,

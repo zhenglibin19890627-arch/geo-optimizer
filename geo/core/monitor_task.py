@@ -116,13 +116,59 @@ def build_messages(question_text: str) -> list:
     ]
 
 
+def normalize_models(engine_codes: list, models: dict) -> dict:
+    """把前端传来的 {engine: [model,...]} 校验归一为任务模型清单。
+
+    - models 缺省/为空 → 每家引擎用其当前档（[adapter.get_model()]）；
+    - 只认 engine_codes 内的引擎；每家的模型名必须在设置页档位列表
+      （含当前档）里，否则抛大白话错误；
+    - 结果恒为 {code: [model, ...]}（去重、保序），供任务落库与执行循环使用。
+    """
+    result = {}
+    for code in engine_codes or []:
+        try:
+            adapter = get_adapter(code)
+        except Exception:
+            continue
+        picked = (models or {}).get(code) or []
+        if isinstance(picked, str):
+            picked = [picked]
+        picked = [str(m).strip() for m in picked if str(m).strip()]
+        if not picked:
+            picked = [adapter.get_model()]
+        # 校验：只允许设置页档位列表里的模型（含当前档）
+        from geo.engines import adapter_meta
+        try:
+            meta = adapter_meta(code)
+        except Exception:
+            meta = {}
+        allowed = {o.get("name") for o in (meta.get("model_options") or [])
+                   if isinstance(o, dict) and o.get("name")}
+        current = adapter.get_model()
+        if current:
+            allowed.add(current)
+        for m in picked:
+            if m not in allowed:
+                raise engine_base.EngineError(
+                    f"{adapter.display_name}没有「{m}」这个档位，请从档位列表里选")
+        result[code] = list(dict.fromkeys(picked))
+    return result
+
+
 def start_monitor_task(question_ids: list, engine_codes: list,
                        task_type: str = "manual", brand_id: int = 1,
-                       mode: str = "normal") -> int:
-    """校验并创建任务，后台线程执行。返回 task_id。"""
+                       mode: str = "normal", models: dict = None) -> int:
+    """校验并创建任务，后台线程执行。返回 task_id。
+
+    models（可选）：{engine_code: [model, ...]}，同一把钥匙下同时监测多个模型
+    （OpenCode 套餐等多档位引擎）；缺省每家引擎用当前档。
+    """
     mode = str(mode or "normal").strip() or "normal"
     if mode not in ("normal", "web"):
         raise engine_base.EngineError("这个模式不认，请选择「常规提问」或「联网提问」")
+    if mode == "web":
+        models = None  # 联网档每家引擎固定一个联网模型
+    model_map = normalize_models(engine_codes or [], models)
     with database.session_scope() as s:
         if any_task_running(s):
             raise engine_base.EngineError("已经有一轮监测在跑了，请等它完成后再发起新一轮")
@@ -149,7 +195,7 @@ def start_monitor_task(question_ids: list, engine_codes: list,
             names = "、".join(dict.fromkeys(missing))
             raise engine_base.EngineError(f"{names}的钥匙（API Key）还没填，请先到设置页填写")
 
-        total = len(qs) * len(engine_codes)
+        total = len(qs) * sum(len(model_map.get(code, [1])) for code in engine_codes or [])
         per = int(_monitor_section().get("estimated_seconds_per_call", 10) or 10)
         task = database.MonitorTask(
             type=task_type, status="pending", progress=0,
@@ -158,6 +204,7 @@ def start_monitor_task(question_ids: list, engine_codes: list,
             estimated_seconds=total * per,
             question_ids=database.jdumps([q.id for q in qs]),
             engine_codes=database.jdumps(engine_codes or []),
+            models=database.jdumps(model_map),
         )
         s.add(task)
         s.flush()
@@ -284,7 +331,7 @@ def _run_monitor_task_inner(task_id: int):
             s.add(round_row)
             s.flush()
         round_id = round_row.id
-        existing = {(r.question_id, r.engine_code) for r in
+        existing = {(r.question_id, r.engine_code, r.model or "") for r in
                     s.query(database.MonitorResult)
                     .filter(database.MonitorResult.round_id == round_id).all()}
 
@@ -294,6 +341,15 @@ def _run_monitor_task_inner(task_id: int):
         questions = {q.id: q for q in s.query(database.QuestionBank)
                      .filter(database.QuestionBank.id.in_(question_ids)).all()}
         q_objects = [questions[qid] for qid in question_ids if qid in questions]
+
+        # 任务模型清单（同 key 多模型）：{code: [models]}；旧任务缺省当前档
+        models_map = database.jloads(task.models, {}) or {}
+        for code in engine_codes:
+            if not models_map.get(code):
+                try:
+                    models_map[code] = [get_adapter(code).get_model()]
+                except Exception:
+                    models_map[code] = []
 
         total = task.total_calls
         done = task.done_calls or 0
@@ -308,50 +364,54 @@ def _run_monitor_task_inner(task_id: int):
                 adapter = (get_web_adapter(code) if mode == "web" else get_adapter(code))
             except Exception:
                 continue
-            n = 0
-            for q in q_objects:
-                n += 1
-                if (q.id, code) in existing:
-                    continue
-                mon = _monitor_section()
-                lo = float(mon.get("min_interval", 1.5) or 1.5)
-                hi = float(mon.get("max_interval", 3) or 3)
-                time.sleep(random.uniform(lo, hi))
-                if _is_cancelled(task_id):
-                    cancelled = True
+            for model in (models_map.get(code) or [""]):
+                if cancelled:
                     break
-                # 调用 AI 前先提交，释放本连接写事务，避免与 log_api_call
-                # 的独立连接写 api_call_log 发生 SQLite 单写者锁冲突
-                s.commit()
-                try:
-                    result = adapter.chat(build_messages(q.text),
-                                          web_search=(mode == "web"),
-                                          timeout=engine_base.get_call_timeout())
-                except engine_base.EngineError as e:
-                    errors.append((adapter.display_name, e.message))
-                    s.add(database.MonitorResult(
-                        round_id=round_id, brand_id=brand_id, engine_code=code,
-                        question_id=q.id, question_text=q.text, answer_text=None,
-                        is_mentioned=False, mention_count=0, sentiment="neutral",
-                        input_mode="auto", error_msg=e.message))
-                else:
-                    analysis = _analysis_for(adapter, q, result, brand,
-                                             competitors, brand_names)
-                    analysis["brand_id"] = brand_id
-                    s.add(database.MonitorResult(round_id=round_id, **analysis))
-                    answered_codes.setdefault(code, [0, 0])
-                    answered_codes[code][0] += 1
-                    if analysis["is_mentioned"]:
-                        answered_codes[code][1] += 1
-                done += 1
-                task.done_calls = done
-                task.progress = round(done / total * 100) if total else 0
-                s.commit()
-                # 每次调用返回后复查取消标志（含最后一次调用）：取消若落在
-                # 调用在途窗口，命中即收尾为 cancelled；已答回答照常保留
-                if _is_cancelled(task_id):
-                    cancelled = True
-                    break
+                for q in q_objects:
+                    if (q.id, code, model or "") in existing:
+                        continue
+                    mon = _monitor_section()
+                    lo = float(mon.get("min_interval", 1.5) or 1.5)
+                    hi = float(mon.get("max_interval", 3) or 3)
+                    time.sleep(random.uniform(lo, hi))
+                    if _is_cancelled(task_id):
+                        cancelled = True
+                        break
+                    # 调用 AI 前先提交，释放本连接写事务，避免与 log_api_call
+                    # 的独立连接写 api_call_log 发生 SQLite 单写者锁冲突
+                    s.commit()
+                    try:
+                        result = adapter.chat(build_messages(q.text),
+                                              web_search=(mode == "web"),
+                                              timeout=engine_base.get_call_timeout(),
+                                              model=(model or None))
+                    except engine_base.EngineError as e:
+                        errors.append((adapter.display_name, e.message))
+                        s.add(database.MonitorResult(
+                            round_id=round_id, brand_id=brand_id, engine_code=code,
+                            model=(model or None),
+                            question_id=q.id, question_text=q.text, answer_text=None,
+                            is_mentioned=False, mention_count=0, sentiment="neutral",
+                            input_mode="auto", error_msg=e.message))
+                    else:
+                        analysis = _analysis_for(adapter, q, result, brand,
+                                                 competitors, brand_names)
+                        analysis["brand_id"] = brand_id
+                        analysis["model"] = model or None
+                        s.add(database.MonitorResult(round_id=round_id, **analysis))
+                        answered_codes.setdefault(code, [0, 0])
+                        answered_codes[code][0] += 1
+                        if analysis["is_mentioned"]:
+                            answered_codes[code][1] += 1
+                    done += 1
+                    task.done_calls = done
+                    task.progress = round(done / total * 100) if total else 0
+                    s.commit()
+                    # 每次调用返回后复查取消标志（含最后一次调用）：取消若落在
+                    # 调用在途窗口，命中即收尾为 cancelled；已答回答照常保留
+                    if _is_cancelled(task_id):
+                        cancelled = True
+                        break
 
         metrics = _round_metrics(s, round_id)
         round_row.mention_rate = metrics["mention_rate"]
@@ -473,14 +533,21 @@ def _current_desc(s, task, done: int) -> str:
     qids = database.jloads(task.question_ids, []) or []
     if not codes or not qids:
         return "正在准备问题……"
-    per_engine = len(qids)
-    idx = min(done, len(codes) * per_engine - 1)
-    engine_i = idx // per_engine
-    q_i = idx % per_engine
-    if engine_i >= len(codes):
-        return "正在做最后的整理……"
-    try:
-        adapter = get_adapter(codes[engine_i])
-        return f"正在问 {adapter.display_name} 第{q_i + 1}个问题"
-    except Exception:
-        return "正在监测中……"
+    models_map = database.jloads(task.models, {}) or {}
+    # 按 (引擎 × 模型 × 问题) 顺序定位当前进度
+    idx = done
+    for code in codes:
+        models_for = models_map.get(code) or [""]
+        calls_for_engine = len(models_for) * len(qids)
+        if idx >= calls_for_engine:
+            idx -= calls_for_engine
+            continue
+        model = models_for[idx // len(qids)] if models_for else ""
+        q_i = idx % len(qids)
+        try:
+            adapter = get_adapter(code)
+            suffix = f"（模型 {model}）" if model else ""
+            return f"正在问 {adapter.display_name}{suffix} 第{q_i + 1}个问题"
+        except Exception:
+            return "正在监测中……"
+    return "正在做最后的整理……"

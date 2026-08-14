@@ -18,7 +18,7 @@ from datetime import datetime
 from geo import config
 from geo.models import db as database
 
-MIGRATION_VERSION = 6
+MIGRATION_VERSION = 7
 
 # 与保存口径 api_config._split_list 同正则（顿号/逗号/分号/换行），
 # 用于存量整串数据的一次性拆分回填，避免两处正则分叉
@@ -170,6 +170,13 @@ def run_migrations():
             # 每轮监测收尾时由分析模型自动提取回答中出现的品牌名，纳入竞品分析
             if "auto_competitors" not in _columns(cur, "monitor_round"):
                 cur.execute("ALTER TABLE monitor_round ADD COLUMN auto_competitors TEXT")
+
+            # ---- v7（批次 G）：同 key 多模型监测 ----
+            # monitor_result 记录实际调用模型；monitor_task 存 {engine: [models]} 清单
+            if "model" not in _columns(cur, "monitor_result"):
+                cur.execute("ALTER TABLE monitor_result ADD COLUMN model VARCHAR(100)")
+            if "models" not in _columns(cur, "monitor_task"):
+                cur.execute("ALTER TABLE monitor_task ADD COLUMN models TEXT")
 
             # 版本号锚点（与 DDL 同事务，回滚即恢复旧版本号）
             cur.execute(f"PRAGMA user_version = {MIGRATION_VERSION}")

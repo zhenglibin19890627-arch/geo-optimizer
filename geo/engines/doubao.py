@@ -13,10 +13,12 @@ class DoubaoAdapter(EngineAdapter):
     display_name = "豆包"
     supports_web_search = True  # 联网能力由 Responses 适配器提供（02d 5.1）
 
-    def chat(self, messages, temperature=None, jitter=False, timeout=60, web_search=False):
+    def chat(self, messages, temperature=None, jitter=False, timeout=60,
+             web_search=False, model=None):
         if web_search:
             from geo.engines.doubao_responses import DoubaoResponsesAdapter
             return DoubaoResponsesAdapter().chat(messages, temperature,
                                                  jitter=jitter, timeout=timeout,
                                                  web_search=True)
-        return self.call_openai_compatible(messages, temperature, jitter=jitter, timeout=timeout)
+        return self.call_openai_compatible(messages, temperature, jitter=jitter,
+                                           timeout=timeout, model=model)

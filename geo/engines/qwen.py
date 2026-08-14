@@ -47,10 +47,11 @@ class QwenAdapter(EngineAdapter):
         m = (model or "").lower()
         return any(k in m for k in cls._MULTIMODAL_MARKERS)
 
-    def chat(self, messages, temperature=None, jitter=False, timeout=60, web_search=False):
+    def chat(self, messages, temperature=None, jitter=False, timeout=60,
+             web_search=False, model=None):
         if not web_search:
             return self.call_openai_compatible(messages, temperature, jitter=jitter,
-                                               timeout=timeout)
+                                               timeout=timeout, model=model)
         return self._dashscope_web_chat(messages, temperature, jitter, timeout)
 
     def _dashscope_web_chat(self, messages, temperature, jitter, timeout):

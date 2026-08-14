@@ -56,3 +56,29 @@ def test_提及品牌的好评计正面():
         brand, competitors=["好孩子"], brand_names=["威启"])
     assert analysis["is_mentioned"] is True
     assert analysis["sentiment"] == "positive"
+
+
+# ---------------- 同 key 多模型归一化 ----------------
+
+def test_normalize_models_缺省与空选均用当前档():
+    from geo.core.monitor_task import normalize_models
+    from geo.engines import get_adapter
+    cur = get_adapter("opencode").get_model()
+    assert cur  # 配置模板有默认档
+    assert normalize_models(["opencode"], None)["opencode"] == [cur]
+    assert normalize_models(["opencode"], {"opencode": []})["opencode"] == [cur]
+
+
+def test_normalize_models_多模型保序去重():
+    from geo.core.monitor_task import normalize_models
+    m = normalize_models(
+        ["opencode"], {"opencode": ["kimi-k3", "grok-4.5", "kimi-k3"]})
+    assert m["opencode"] == ["kimi-k3", "grok-4.5"]
+
+
+def test_normalize_models_非法档位报错():
+    import pytest
+    from geo.core.monitor_task import normalize_models
+    from geo.engines.base import EngineError
+    with pytest.raises(EngineError):
+        normalize_models(["opencode"], {"opencode": ["not-a-real-model"]})

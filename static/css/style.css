@@ -397,6 +397,11 @@ a:hover {
   color: var(--success);
 }
 
+.tag-blue {
+  background: #EFF6FF;
+  color: #2563EB;
+}
+
 .tag-orange {
   background: var(--alert-bg);
   color: var(--alert-text);

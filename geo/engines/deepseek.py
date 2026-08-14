@@ -14,8 +14,10 @@ class DeepSeekAdapter(EngineAdapter):
     display_name = "DeepSeek"
     supports_web_search = True  # 联网能力由 Responses 适配器提供
 
-    def chat(self, messages, temperature=None, jitter=False, timeout=60, web_search=False):
+    def chat(self, messages, temperature=None, jitter=False, timeout=60,
+             web_search=False, model=None):
         if web_search:
             # 防御性拦截：联网档统一走 DeepSeekResponsesAdapter，正常流程不会走到
             raise EngineError("DeepSeek 联网提问请走 Responses API 适配器")
-        return self.call_openai_compatible(messages, temperature, jitter=jitter, timeout=timeout)
+        return self.call_openai_compatible(messages, temperature, jitter=jitter,
+                                           timeout=timeout, model=model)

@@ -15,7 +15,9 @@ class OpenCodeAdapter(EngineAdapter):
     display_name = "OpenCode"
     note = "OpenCode 订阅套餐托管模型：回答口径与其订阅端一致，费用按套餐计。"
 
-    def chat(self, messages, temperature=None, jitter=False, timeout=60, web_search=False):
+    def chat(self, messages, temperature=None, jitter=False, timeout=60,
+             web_search=False, model=None):
         if web_search:
             raise EngineError("OpenCode 暂不支持联网提问，联网监测不包含它")
-        return self.call_openai_compatible(messages, temperature, jitter=jitter, timeout=timeout)
+        return self.call_openai_compatible(messages, temperature, jitter=jitter,
+                                           timeout=timeout, model=model)
