@@ -69,13 +69,12 @@ engines:
     base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
     # 联网提问走 enable_search 增强（无需申请，接口自动联网）
     supports_web_search: true
-    # 默认 Plus 档（经典文本档，联网引用信息完整）；设置页可切换
-    model: "qwen-plus"
+    # 默认档
+    model: "qwen3.7-max-2026-05-20"
     model_options:
-      - { name: "qwen-plus", desc: "经典 Plus 档，联网信源完整，日常监测推荐" }
-      - { name: "qwen3.7-flash", desc: "新 Flash 档，更快更便宜" }
-      - { name: "qwen3.7-plus", desc: "新 Plus 档，质量更好" }
-      - { name: "qwen3.8-max", desc: "Max 旗舰档，质量最高但贵" }
+      - { name: "qwen3.7-max-2026-05-20", desc: "" }
+      - { name: "qwen3.5-livetranslate-flash-realtime-2026-05-19", desc: "" }
+      - { name: "qwen3.5-livetranslate-flash-realtime", desc: "" }
 
   yuanbao:
     enabled: true
