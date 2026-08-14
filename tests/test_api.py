@@ -191,8 +191,8 @@ def test_发起监测模型选择校验(client):
 def test_发起监测联网档模型选择校验(client):
     # 联网档同样支持多模型选择：非法档位拦截
     r = client.post("/api/monitor/start", json={
-        "brand_id": 1, "question_ids": [1], "engine_codes": ["kimi"],
-        "mode": "web", "models": {"kimi": ["not-a-real-model"]}})
+        "brand_id": 1, "question_ids": [1], "engine_codes": ["qwen"],
+        "mode": "web", "models": {"qwen": ["not-a-real-model"]}})
     body = r.get_json()
     assert body["code"] == 1
     assert "档位" in body["message"]
@@ -248,7 +248,7 @@ def test_钥匙列表永不含明文(client):
     r = client.get("/api/settings/keys")
     body = r.get_json()
     assert body["code"] == 0
-    assert len(body["data"]) == 7  # 6 家引擎 + analysis
+    assert len(body["data"]) == 6  # 5 家引擎 + analysis
     for item in body["data"]:
         assert "api_key" not in item  # 只有脱敏字段
         assert "api_key_masked" in item
@@ -261,7 +261,7 @@ def test_分析模型厂商切换与档位校验(client):
     r = client.get("/api/settings/keys")
     item = [x for x in r.get_json()["data"] if x["engine"] == "analysis"][0]
     assert item["vendor"] == "opencode"
-    assert len(item["vendors"]) == 6
+    assert len(item["vendors"]) == 5
     assert item["model_options"]  # opencode 的 19 档
 
     # 非法厂商拦截
@@ -350,7 +350,7 @@ def test_报告接口趋势信源竞品(client):
                 [{"name": "好孩子", "count": 1, "position": 1}]),
             input_mode="auto"))
         s.add(database.MonitorResult(
-            round_id=rid, brand_id=1, engine_code="kimi", model="kimi-k2.6",
+            round_id=rid, brand_id=1, engine_code="qwen", model="qwen3.7-max-2026-05-20",
             question_id=1,
             question_text="监测用问题", answer_text="这个问题没有提到品牌",
             is_mentioned=False, mention_count=0, sentiment="neutral",
@@ -394,7 +394,7 @@ def test_报告接口趋势信源竞品(client):
     r = client.get(f"/api/monitor/rounds/{rid}?brand_id=1")
     results = r.get_json()["data"]["results"]
     models = sorted(set(x["model"] for x in results))
-    assert models == ["deepseek-v4-flash", "kimi-k2.6"]
+    assert models == ["deepseek-v4-flash", "qwen3.7-max-2026-05-20"]
 
 
 # ---------------- 预警列表 ----------------

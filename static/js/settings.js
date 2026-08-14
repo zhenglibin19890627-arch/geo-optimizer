@@ -4,10 +4,10 @@
 
 const ENGINE_SITES = {
   deepseek: "https://platform.deepseek.com",
-  kimi: "https://platform.moonshot.cn",
   doubao: "https://console.volcengine.com/ark",
   qwen: "https://dashscope.console.aliyun.com",
-  yuanbao: "https://console.cloud.tencent.com/hunyuan",
+  yuanbao: "https://tokenhub.tencentmaas.com",
+  opencode: "https://opencode.ai/docs/zh-cn/go",
 };
 
 let setKeys = [];

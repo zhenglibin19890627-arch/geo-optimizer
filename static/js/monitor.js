@@ -248,7 +248,7 @@ function updateEstimate() {
   const calls = qs * es;
   const minutesLow = Math.max(Math.round(calls / 50 * 10), 1);
   const minutesHigh = Math.max(Math.round(calls / 50 * 15), minutesLow + 1);
-  const bubble = ' <span class="concept"><span class="q-mark">?</span><span class="bubble">花费按各 AI 平台明码标价估算，实际以账单为准。Kimi 选便宜档、豆包选 lite 档可以省不少钱，档位在设置页可换。</span></span>';
+  const bubble = ' <span class="concept"><span class="q-mark">?</span><span class="bubble">花费按各 AI 平台明码标价估算，实际以账单为准。豆包选 lite 档可以省不少钱，档位在设置页可换。</span></span>';
   const extra = calls > 50 ? "（勾选越多，耗时和花费越多）" : "";
   if (monMode === "web") {
     document.getElementById("mon-estimate").innerHTML =

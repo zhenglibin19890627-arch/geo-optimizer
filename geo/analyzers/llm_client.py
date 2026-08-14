@@ -1,6 +1,6 @@
 """分析用大模型统一客户端（OpenAI 兼容）。
 
-厂商可切换（2026-08-14 修订）：设置页可选 6 家厂商（deepseek/kimi/doubao/
+厂商可切换（2026-08-14 修订）：设置页可选 5 家厂商（deepseek/doubao/
 qwen/yuanbao/opencode），分析任务复用该厂商的钥匙/接口地址/档位列表；
 默认 DeepSeek（最便宜档），deepseek 厂商在引擎钥匙未填时回落旧版
 analysis 节的钥匙/地址（老配置兼容）。

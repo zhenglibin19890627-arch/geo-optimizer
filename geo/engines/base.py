@@ -136,7 +136,7 @@ class EngineAdapter:
         """底层 OpenAI 兼容调用：限流重试 + 指数退避，返回解析后的 JSON。
 
         只负责网络与重试，不解析内容、不记费用（费用由调用方统一记录，
-        供 Kimi $web_search 工具循环等多次调用场景按每次 HTTP 调用记账）。
+        供联网工具循环等多次调用场景按每次 HTTP 调用记账）。
         """
         mon = config.get_section("monitor", {})
         max_retries = int(mon.get("max_retries", 2) or 2)

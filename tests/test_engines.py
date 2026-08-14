@@ -42,9 +42,9 @@ def test_deepseek支持联网且走Responses适配器():
     assert web.display_name == "DeepSeek"
 
 
-def test_联网档五家引擎齐全():
-    # DeepSeek（Responses API）+ 豆包（Responses API）+ Kimi + 通义千问 + 腾讯元宝
-    for code in ("deepseek", "doubao", "kimi", "qwen", "yuanbao"):
+def test_联网档四家引擎齐全():
+    # DeepSeek（Responses API）+ 豆包（Responses API）+ 通义千问 + 腾讯元宝
+    for code in ("deepseek", "doubao", "qwen", "yuanbao"):
         assert get_web_adapter(code).supports_web_search is True
 
 
@@ -53,8 +53,8 @@ def test_未知引擎报错():
         get_adapter("no-such-engine")
 
 
-def test_六家自动引擎注册齐全():
-    assert AUTO_CODES == ["deepseek", "kimi", "doubao", "qwen", "yuanbao", "opencode"]
+def test_五家自动引擎注册齐全():
+    assert AUTO_CODES == ["deepseek", "doubao", "qwen", "yuanbao", "opencode"]
     for code in AUTO_CODES:
         adapter = get_adapter(code)
         assert adapter.code == code

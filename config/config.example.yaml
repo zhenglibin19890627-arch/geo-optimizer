@@ -31,22 +31,6 @@ engines:
       - { name: "deepseek-v4-flash", desc: "" }
       - { name: "deepseek-v4-pro", desc: "" }
 
-  kimi:
-    enabled: true
-    display_name: "Kimi"
-    api_key: ""
-    base_url: "https://api.moonshot.cn/v1"
-    supports_web_search: true
-    # 联网提问档模型（官方当前在售模型，经济档建议 kimi-k2.6，思考开启）；可改。
-    web_model: "kimi-k2.6"
-    # 默认经济档（比旗舰档便宜一个量级）；设置页可切换。
-    # 提示：如平台提示模型名不存在，请到月之暗面开放平台控制台查看最新模型名，填到下面。
-    model: "kimi-k2-turbo-preview"
-    model_options:
-      - { name: "kimi-k2-turbo-preview", desc: "经济档，日常监测推荐，费用低" }
-      - { name: "kimi-k2.6", desc: "主力档，联网提问效果好" }
-      - { name: "kimi-k3", desc: "旗舰档，回答质量最高，但很贵（慎选）" }
-
   doubao:
     enabled: true
     display_name: "豆包"
@@ -133,7 +117,7 @@ engines:
 
 # ---------- 分析用大模型 ----------
 # 系统“自己的思考”用：关键词扩展问法、内容优化建议等。
-# 厂商可在设置页切换（deepseek/kimi/doubao/qwen/yuanbao/opencode），
+# 厂商可在设置页切换（deepseek/doubao/qwen/yuanbao/opencode），
 # 切换后复用该厂商引擎节的钥匙/接口地址/档位；本节仅作 deepseek
 # 厂商的旧配置回落（引擎钥匙未填时用这里的钥匙/地址/模型）。
 analysis:
@@ -174,8 +158,6 @@ monitor:
 pricing:
   deepseek-v4-flash: { input: 1, output: 2 }
   deepseek-v4-pro: { input: 3, output: 6 }
-  kimi-k2: { input: 6.5, output: 27 }
-  kimi-k3: { input: 20, output: 100 }
   moonshot-v1: { input: 6.5, output: 27 }
   doubao-lite: { input: 0.3, output: 0.6 }
   doubao-pro: { input: 0.8, output: 2 }

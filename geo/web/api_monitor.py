@@ -28,12 +28,12 @@ def monitor_start():
         if engine_codes:
             engine_codes = [c for c in engine_codes if c in web_codes]
             if not engine_codes:
-                raise ApiError("联网提问只有 DeepSeek、豆包、Kimi、通义千问和腾讯元宝能参加"
+                raise ApiError("联网提问只有 DeepSeek、豆包、通义千问和腾讯元宝能参加"
                                "（OpenCode 订阅 API 暂不支持联网），请重新勾选")
         else:
             engine_codes = [c for c in web_codes if _configured_enabled(c)]
         if not engine_codes:
-            raise ApiError("联网提问需要 DeepSeek、豆包、Kimi、通义千问、腾讯元宝里至少一家"
+            raise ApiError("联网提问需要 DeepSeek、豆包、通义千问、腾讯元宝里至少一家"
                            "填好钥匙（API Key），请先到设置页填写")
 
     with database.session_scope() as s:
