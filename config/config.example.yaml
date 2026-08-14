@@ -80,11 +80,13 @@ engines:
     enabled: true
     display_name: "腾讯元宝（混元底座）"
     # 口径说明（用户裁决 D1 方案 A）：腾讯元宝没有官方公开 API，
-    # 本位置使用腾讯云「混元」官方 API 作为“元宝同门底座”接入，
-    # 回答口径与元宝 App 可能存在差异，报告中已如实标注。
-    note: "本数据来自腾讯混元官方 API（元宝同门底座），与元宝 App 的回答口径可能存在差异。"
+    # 本位置使用腾讯云「大模型服务平台 TokenHub」接入（混元家族模型，
+    # 如 hy3），回答口径与元宝 App 可能存在差异，报告中已如实标注。
+    note: "本数据来自腾讯云 TokenHub 平台（混元家族模型），与元宝 App 的回答口径可能存在差异。"
     api_key: ""
-    base_url: "https://api.hunyuan.cloud.tencent.com/v1"
+    # TokenHub OpenAI 兼容接口地址（旧混元 OpenAPI 网关 api.hunyuan.cloud.tencent.com
+    # 已不兼容 TokenHub 的 API Key，2026-08 起以 TokenHub 为准）
+    base_url: "https://tokenhub.tencentmaas.com/v1"
     # 联网提问走 enable_enhancement 功能增强（含搜索与引用）
     supports_web_search: true
     # 默认档
