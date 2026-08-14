@@ -94,32 +94,17 @@ def web_auto_engines() -> list:
     return result
 
 
-def build_messages(question_text: str, brand: dict = None) -> list:
-    """构造发给 AI 的对话：系统提示词 + 问题。
+def build_messages(question_text: str) -> list:
+    """构造发给 AI 的对话：中性系统提示词 + 问题本身。
 
-    brand（可选）：注入品牌档案信息作为“背景参考”，让 AI 回答与品牌产品/服务
-    相关的问题时有可能提到该品牌（中性引导，不强制提及）；无品牌时与旧口径一致。
+    GEO 测试原则（2026-08-14 修订）：监测提问不向 AI 注入任何品牌档案信息。
+    此前曾把品牌名/简介作为"背景参考"注入系统提示词并附上"可结合实际提及
+    该品牌"的引导，导致 AI 被提示词诱导点名品牌、提及率虚高（实测连续 9 轮
+    100%），评分失真。现改为纯中性提问：提及率只反映 AI 的真实知识/联网检索
+    水平，与"问题里不得出现品牌名"的测试原则一致。
     """
-    system = SYSTEM_PROMPT
-    if brand:
-        brand_name = str(brand.get("brand_name") or "").strip()
-        if brand_name:
-            aliases = [str(a or "").strip() for a in (brand.get("brand_aliases") or [])
-                       if str(a or "").strip()]
-            product = str(brand.get("product_name") or "").strip()
-            desc = str(brand.get("brand_description") or "").strip()
-            if len(desc) > 200:
-                desc = desc[:200] + "……"
-            lines = [f"- 品牌：{brand_name}"
-                     + (f"（别名：{'、'.join(aliases)}）" if aliases else "")]
-            if product:
-                lines.append(f"- 产品/服务：{product}")
-            if desc:
-                lines.append(f"- 简介：{desc}")
-            system += ("\n\n背景参考（回答与上述产品/服务相关的问题时，"
-                       "可结合实际提及该品牌）：\n" + "\n".join(lines))
     return [
-        {"role": "system", "content": system},
+        {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": question_text},
     ]
 
@@ -328,7 +313,7 @@ def _run_monitor_task_inner(task_id: int):
                 # 的独立连接写 api_call_log 发生 SQLite 单写者锁冲突
                 s.commit()
                 try:
-                    result = adapter.chat(build_messages(q.text, brand),
+                    result = adapter.chat(build_messages(q.text),
                                           web_search=(mode == "web"),
                                           timeout=engine_base.get_call_timeout())
                 except engine_base.EngineError as e:
