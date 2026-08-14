@@ -16,7 +16,7 @@ def test_厂商配置读写(monkeypatch):
 
 def test_opencode厂商配置来自引擎节():
     key, base, model = llm_client._vendor_cfg("opencode")
-    assert base == "https://opencode.ai/zen/v1"
+    assert base == "https://opencode.ai/zen/go/v1"
     assert model == "deepseek-v4-flash"
     assert isinstance(key, str)
 

@@ -81,7 +81,7 @@ def run_scheduled_monitor(background: bool = True):
             if not engines:
                 if web_mode:
                     print(f"【定时监测】「{brand_name}」联网提问的引擎钥匙还没填"
-                          "（DeepSeek、豆包、Kimi、通义千问、腾讯元宝、OpenCode 至少一家），跳过它，继续下一个品牌。")
+                          "（DeepSeek、豆包、Kimi、通义千问、腾讯元宝至少一家），跳过它，继续下一个品牌。")
                 else:
                     print(f"【定时监测】「{brand_name}」的引擎钥匙还没填，"
                           "跳过它，继续下一个品牌。请到设置页填写钥匙。")

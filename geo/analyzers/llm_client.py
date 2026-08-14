@@ -60,7 +60,8 @@ def is_configured() -> bool:
 
 def chat(prompt: str, temperature: float = 0.3, timeout: int = 60, system: str = None) -> str:
     """用分析模型执行一次思考，返回文本。失败抛 AnalysisError（大白话）。"""
-    api_key, base_url, _m = _vendor_cfg(get_analysis_vendor())
+    vendor = get_analysis_vendor()
+    api_key, base_url, _m = _vendor_cfg(vendor)
     if not api_key:
         raise AnalysisError("分析用的模型还没填钥匙（API Key），请先到设置页填写")
     model = get_analysis_model()
@@ -68,6 +69,19 @@ def chat(prompt: str, temperature: float = 0.3, timeout: int = 60, system: str =
         raise AnalysisError("分析用的模型还没设置好，请先到设置页选择")
     if not base_url:
         raise AnalysisError("分析用的接口地址还没配置好，请联系开发者检查配置文件")
+
+    # OpenCode 厂商：网关按模型路由三种形态，直接复用其适配器
+    if vendor == "opencode":
+        from geo.engines.opencode import OpenCodeAdapter
+        msgs = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.append({"role": "user", "content": prompt})
+        try:
+            return OpenCodeAdapter().chat(msgs, temperature=temperature,
+                                          timeout=timeout, model=model).text
+        except engine_base.EngineError as e:
+            raise AnalysisError(e.message)
 
     mon = config.get_section("monitor", {})
     max_retries = int(mon.get("max_retries", 2) or 2)

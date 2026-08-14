@@ -99,22 +99,18 @@ engines:
   opencode:
     enabled: true
     display_name: "OpenCode"
-    # 口径说明：OpenCode（opencode.ai 终端 AI 编程代理）订阅套餐的托管模型。
+    # 口径说明：OpenCode Go 订阅套餐（官方文档 https://opencode.ai/docs/zh-cn/go）。
     # 套餐制计费，token 费用估算表不含它（api_call_log 仍会记录每次调用）。
-    note: "OpenCode 订阅套餐托管模型，费用按套餐计，不计入「本月大概花了多少钱」估算。"
+    note: "OpenCode Go 订阅托管模型，费用按套餐计，不计入「本月大概花了多少钱」估算。"
     api_key: ""
-    # 订阅套餐的 OpenAI 兼容接口地址（Go 套餐若地址不同，改这里或到订阅页确认）
-    base_url: "https://opencode.ai/zen/v1"
-    # 订阅端支持联网搜索（opencode 配置 permission.websearch=allow）：
-    # 联网档走工具循环（websearch 工具），工具名若与订阅端不同改 web_tool_type
-    supports_web_search: true
-    # 联网档模型（缺省回落 model）
-    web_model: "deepseek-v4-flash"
-    web_tool_type: "websearch"
-    # 默认档：DeepSeek V4 Flash（与系统分析模型同档，便宜稳定）
+    # 订阅套餐的 API 网关地址（Go 档）；网关按模型自动路由三种形态
+    # （chat/completions、responses、messages），适配器已按官方端点表处理
+    base_url: "https://opencode.ai/zen/go/v1"
+    # 官方 API 未提供联网搜索工具（websearch 是 opencode 客户端本地能力），联网档自动排除
+    supports_web_search: false
+    # 默认档：DeepSeek V4 Flash（请求配额最大，便宜稳定）
     model: "deepseek-v4-flash"
-    # Go 套餐支持的全部模型（模型 ID 按各家标准命名；若某档报"模型不存在"，
-    # 以订阅页/文档显示的 API 模型名为准改对应 name）
+    # Go 套餐支持的全部模型（官方端点表）
     model_options:
       - { name: "grok-4.5", desc: "Grok 4.5" }
       - { name: "glm-5.3", desc: "GLM-5.3" }
@@ -128,6 +124,7 @@ engines:
       - { name: "mimo-v2.5-pro", desc: "MiMo-V2.5-Pro" }
       - { name: "minimax-m3", desc: "MiniMax M3" }
       - { name: "minimax-m2.7", desc: "MiniMax M2.7" }
+      - { name: "minimax-m2.5", desc: "MiniMax M2.5" }
       - { name: "qwen3.8-max", desc: "Qwen3.8 Max" }
       - { name: "qwen3.7-max", desc: "Qwen3.7 Max" }
       - { name: "qwen3.7-plus", desc: "Qwen3.7 Plus" }
