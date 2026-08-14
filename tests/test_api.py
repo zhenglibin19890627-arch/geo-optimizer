@@ -259,6 +259,12 @@ def test_优化入口校验与无钥匙落库(client, monkeypatch):
 def test_报告接口趋势信源竞品(client):
     from datetime import datetime
     with database.session_scope() as s:
+        # 用例自包含：不依赖前序用例创建品牌（单独运行 -k 也能过）
+        if not s.get(database.BrandProfile, 1):
+            s.add(database.BrandProfile(
+                id=1, brand_name="威启", product_name="实验室改造",
+                brand_aliases="[]", brand_description="",
+                competitors=database.jdumps(["好孩子"])))
         task = database.MonitorTask(
             type="manual", status="done", brand_id=1, mode="normal",
             progress=100, total_calls=2, done_calls=2, finished_at=datetime.now())

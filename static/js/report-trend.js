@@ -145,22 +145,18 @@ function repTrendRounds(count, cb) {
 
 function loadTrend() {
   const container = document.getElementById("trend-chart");
-  if (repRoundCount < 2) {
-    if (repRoundCount === 0) {
-      /* 新品牌无数据：空状态引导（03b 3.4） */
-      container.innerHTML = "";
-      container.appendChild(emptyState(
-        "这个品牌还没有数据",
-        "去监测中心跑一轮吧",
-        "去监测中心",
-        function () { location.href = "/static/monitor.html"; }
-      ));
-      return;
-    }
-    emptyChart(container, "再监测 " + (2 - repRoundCount) + " 轮后，这里会画出 AI 对你的态度变化曲线");
+  if (repRoundCount < 1) {
+    /* 无数据：空状态引导（03b 3.4） */
+    container.innerHTML = "";
+    container.appendChild(emptyState(
+      "这个品牌还没有数据",
+      "去监测中心跑一轮吧",
+      "去监测中心",
+      function () { location.href = "/static/monitor.html"; }
+    ));
     return;
   }
-  /* M18 调两次：常规 + 联网，各画一条线（07z 任务1） */
+  /* M18 调两次：常规 + 联网，各画一条线（07z 任务1）；有 1 轮也正常画点 */
   const url = "/api/report/trend?metric=" + repMetric + "&rounds=30&mode=";
   Promise.all([
     geoApi(url + "normal").catch(function () { return { values: [] }; }),
@@ -169,7 +165,7 @@ function loadTrend() {
     const nValues = (res[0].values) || [];
     const wValues = (res[1].values) || [];
     if (!nValues.length && !wValues.length) {
-      emptyChart(container, "再监测 " + (2 - repRoundCount) + " 轮后，这里会画出 AI 对你的态度变化曲线");
+      emptyChart(container, "暂时没有可展示的趋势数据，请先到监测中心跑一轮");
       return;
     }
     repTrendRounds(30, function (normalRounds, webRounds) {
