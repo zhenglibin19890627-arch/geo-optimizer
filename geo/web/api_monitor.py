@@ -23,18 +23,16 @@ def monitor_start():
         raise ApiError("这个模式不认，请选择「常规提问」或「联网提问」")
 
     if mode == "web":
-        # 联网档：只留支持联网的引擎（opencode 无联网能力自动排除）
+        # 联网档：只留支持联网的引擎（当前 6 家全部支持）
         web_codes = [c for c in AUTO_CODES if _supports_web(c)]
         if engine_codes:
             engine_codes = [c for c in engine_codes if c in web_codes]
             if not engine_codes:
-                raise ApiError("联网提问只有 DeepSeek、豆包、Kimi、通义千问和腾讯元宝能参加"
-                               "（OpenCode 暂不支持联网），请重新勾选")
+                raise ApiError("联网提问只支持已填钥匙的联网引擎，请重新勾选")
         else:
             engine_codes = [c for c in web_codes if _configured_enabled(c)]
         if not engine_codes:
-            raise ApiError("联网提问需要 DeepSeek、豆包、Kimi、通义千问、腾讯元宝里至少一家"
-                           "填好钥匙（API Key），请先到设置页填写")
+            raise ApiError("联网提问需要至少一家引擎填好钥匙（API Key），请先到设置页填写")
 
     with database.session_scope() as s:
         if not question_ids:

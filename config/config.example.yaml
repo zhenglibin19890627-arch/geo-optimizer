@@ -105,8 +105,12 @@ engines:
     api_key: ""
     # 订阅套餐的 OpenAI 兼容接口地址（Go 套餐若地址不同，改这里或到订阅页确认）
     base_url: "https://opencode.ai/zen/v1"
-    # 订阅套餐无联网提问能力，联网档自动排除
-    supports_web_search: false
+    # 订阅端支持联网搜索（opencode 配置 permission.websearch=allow）：
+    # 联网档走工具循环（websearch 工具），工具名若与订阅端不同改 web_tool_type
+    supports_web_search: true
+    # 联网档模型（缺省回落 model）
+    web_model: "deepseek-v4-flash"
+    web_tool_type: "websearch"
     # 默认档：DeepSeek V4 Flash（与系统分析模型同档，便宜稳定）
     model: "deepseek-v4-flash"
     # Go 套餐支持的全部模型（模型 ID 按各家标准命名；若某档报"模型不存在"，

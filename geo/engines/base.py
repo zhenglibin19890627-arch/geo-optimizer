@@ -92,7 +92,7 @@ class EngineAdapter:
     code = ""
     display_name = ""
     note = ""  # 口径说明（如元宝）
-    supports_web_search = False  # 是否支持联网提问（opencode=false，其余 5 家 true）
+    supports_web_search = False  # 是否支持联网提问（各适配器按平台能力覆盖）
 
     def __init__(self):
         self.cfg = config.get_engine_config(self.code)
