@@ -1,8 +1,9 @@
-"""引擎注册表与 OpenCode 适配器单测。"""
+"""引擎注册表与各引擎适配器单测。"""
 
 import pytest
 
 from geo.engines import AUTO_CODES, EngineError_NotFound, get_adapter, get_web_adapter
+from geo.engines.deepseek_responses import DeepSeekResponsesAdapter
 
 
 def test_opencode已注册为自动引擎():
@@ -19,6 +20,21 @@ def test_opencode已注册为自动引擎():
 def test_opencode联网档被排除():
     with pytest.raises(EngineError_NotFound):
         get_web_adapter("opencode")
+
+
+def test_deepseek支持联网且走Responses适配器():
+    adapter = get_adapter("deepseek")
+    assert adapter.supports_web_search is True
+    web = get_web_adapter("deepseek")
+    assert isinstance(web, DeepSeekResponsesAdapter)
+    assert web.code == "deepseek"
+    assert web.display_name == "DeepSeek"
+
+
+def test_联网档五家引擎齐全():
+    # DeepSeek（Responses API）+ 豆包（Responses API）+ Kimi + 通义千问 + 腾讯元宝
+    for code in ("deepseek", "doubao", "kimi", "qwen", "yuanbao"):
+        assert get_web_adapter(code).supports_web_search is True
 
 
 def test_未知引擎报错():

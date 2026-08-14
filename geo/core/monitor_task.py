@@ -86,7 +86,7 @@ def enabled_auto_engines() -> list:
 
 
 def web_auto_engines() -> list:
-    """联网档：已启用 且 已填钥匙 的联网引擎（DeepSeek 无联网能力自动排除）。"""
+    """联网档：已启用 且 已填钥匙 的联网引擎（opencode 无联网能力自动排除）。"""
     from geo.engines import AUTO_CODES
     result = []
     for code in AUTO_CODES:

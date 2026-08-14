@@ -20,8 +20,11 @@ engines:
     display_name: "DeepSeek"
     api_key: ""
     base_url: "https://api.deepseek.com"
-    # DeepSeek 官方 API 无联网能力，联网提问不含它（界面会置灰）
-    supports_web_search: false
+    # 联网提问走 Responses API（api-docs.deepseek.com/zh-cn/guides/responses_api）
+    supports_web_search: true
+    # 联网档模型名（官方支持联网的模型；缺省回落 model）；如官方工具名变化改 web_tool_type
+    web_model: "deepseek-v4-flash"
+    web_tool_type: "web_search"
     # 档位默认 V4-Flash（最便宜，日常监测推荐）；设置页可切换
     model: "deepseek-v4-flash"
     model_options:

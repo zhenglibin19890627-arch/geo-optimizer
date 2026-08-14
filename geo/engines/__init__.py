@@ -31,11 +31,14 @@ def get_adapter(code: str) -> EngineAdapter:
 
 
 def get_web_adapter(code: str) -> EngineAdapter:
-    """联网提问档适配器：豆包走 Responses API 新适配器（独立封装），
-    其余联网引擎复用既有适配器的 web_search 能力；DeepSeek 不支持联网，抛错。"""
+    """联网提问档适配器：豆包、DeepSeek 走 Responses API 新适配器（独立封装），
+    其余联网引擎复用既有适配器的 web_search 能力；不支持联网（如 opencode）抛错。"""
     if code == "doubao":
         from geo.engines.doubao_responses import DoubaoResponsesAdapter
         return DoubaoResponsesAdapter()
+    if code == "deepseek":
+        from geo.engines.deepseek_responses import DeepSeekResponsesAdapter
+        return DeepSeekResponsesAdapter()
     adapter = get_adapter(code)
     if not adapter.supports_web_search:
         raise EngineError_NotFound(f"{code} 暂不支持联网提问")
