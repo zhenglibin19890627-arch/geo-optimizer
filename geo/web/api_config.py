@@ -497,18 +497,30 @@ def settings_keys():
         item["model_options"] = _ensure_current_model(item.get("model_options") or [],
                                                       item.get("model") or "")
         items.append(item)
+
+    # 分析用模型：厂商可切换（复用各家引擎的钥匙/地址/档位），型号随厂商联动
+    vendor = llm_client.get_analysis_vendor()
+    vendors = []
+    vendor_model_options = {}
+    for code in AUTO_CODES:
+        meta = adapter_meta(code)
+        vendors.append({"engine": code, "display_name": meta["display_name"]})
+        vendor_model_options[code] = _ensure_current_model(
+            meta.get("model_options") or [], meta.get("model") or "")
     items.append({
         "engine": "analysis",
         "display_name": "分析用模型",
-        "note": "系统自己的思考用的模型（扩展问法、优化建议等）",
+        "note": "系统自己的思考用的模型（扩展问法、优化建议等），可切换厂商",
         "configured": llm_client.is_configured(),
         "enabled": True,
+        "vendor": vendor,
+        "vendors": vendors,
+        "vendor_model_options": vendor_model_options,
         "model": llm_client.get_analysis_model(),
         "api_key_masked": _mask_key(
             (config.get_analysis_config().get("api_key") or "").strip()),
         "model_options": _ensure_current_model(
-            [{"name": o.get("name", ""), "desc": o.get("desc", "")}
-             for o in (config.get_analysis_config().get("model_options") or [])],
+            vendor_model_options.get(vendor) or [],
             llm_client.get_analysis_model()),
     })
     return ok(items, "获取成功")
@@ -537,7 +549,8 @@ def save_key():
 @bp.route("/settings", methods=["POST"])
 def save_settings():
     data = get_json()
-    saved = {"engine_model": {}, "engine_enabled": {}, "analysis_model": None}
+    saved = {"engine_model": {}, "engine_enabled": {}, "analysis_model": None,
+             "analysis_vendor": None}
 
     for code, model in (data.get("engine_model") or {}).items():
         if code not in AUTO_CODES:
@@ -558,12 +571,23 @@ def save_settings():
         database.set_setting(f"engine_enabled_{code}", bool(flag))
         saved["engine_enabled"][code] = bool(flag)
 
+    # 分析模型厂商（复用该引擎的钥匙/地址/档位；先切厂商再校验型号）
+    if data.get("analysis_vendor"):
+        vendor = str(data["analysis_vendor"]).strip()
+        if vendor not in AUTO_CODES:
+            raise ApiError("没找到这个厂商，请刷新页面后重试")
+        database.set_setting("analysis_vendor", vendor)
+        saved["analysis_vendor"] = vendor
+
     if data.get("analysis_model"):
         model = str(data["analysis_model"]).strip()
-        cfg = config.get_analysis_config()
-        options = [o.get("name", "") for o in (cfg.get("model_options") or []) if isinstance(o, dict)]
+        vendor = str(data.get("analysis_vendor")
+                     or llm_client.get_analysis_vendor()).strip()
+        meta = adapter_meta(vendor)
+        options = [o.get("name", "") for o in (meta.get("model_options") or [])
+                   if isinstance(o, dict) and o.get("name")]
         if options and model not in options:
-            raise ApiError("分析用模型没有这个档位，请从下拉列表里选")
+            raise ApiError(f"{meta['display_name']}没有这个分析档位，请从下拉列表里选")
         database.set_setting("analysis_model", model)
         saved["analysis_model"] = model
 

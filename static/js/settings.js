@@ -302,8 +302,8 @@ function renderKeyTierRow(k) {
   const testHtml = k.configured
     ? '<button class="btn-text" data-test="' + esc(k.engine) + '">测试一下</button>'
     : '<a class="btn-text" href="' + (ENGINE_SITES[k.engine] || "#") + '" target="_blank" rel="noopener">去平台拿钥匙 →</a>';
+  const isAnalysis = k.engine === "analysis";
   const opts = k.model_options || [];
-  /* 下拉显示模型型号（如 deepseek-chat、qwen3.7-plus、Doubao-Seed-2.1-turbo） */
   const optionsHtml = opts.map(function (o) {
     return '<option value="' + esc(o.name) + '"' + (o.name === k.model ? " selected" : "") + ">" +
       esc(o.name) + "</option>";
@@ -311,6 +311,32 @@ function renderKeyTierRow(k) {
   const curDesc = (opts.find(function (o) { return o.name === k.model; }) || {}).desc || "";
   /* 折叠效果：已配置的默认收起，未配置的默认展开引导填钥匙 */
   const collapsed = !!k.configured;
+
+  let tierHtml;
+  if (isAnalysis) {
+    /* 分析用模型：厂商可切换（复用各家引擎钥匙/地址/档位） */
+    const vendors = k.vendors || [];
+    const vendorOptions = vendors.map(function (v) {
+      return '<option value="' + esc(v.engine) + '"' + (v.engine === k.vendor ? " selected" : "") + ">" +
+        esc(v.display_name) + "</option>";
+    }).join("");
+    tierHtml =
+      '<div class="kt-tier">' +
+      '<span class="small-note" style="flex:none">模型厂商：</span>' +
+      '<select class="select" data-avendor style="flex:1;min-width:180px">' + vendorOptions + "</select>" +
+      "</div>" +
+      '<div class="kt-tier">' +
+      '<span class="small-note" style="flex:none">模型型号：</span>' +
+      '<select class="select" data-tier="analysis" style="flex:1;min-width:260px">' + optionsHtml + "</select>" +
+      '<span class="small-note" data-tier-desc style="flex:1">' + esc(curDesc || "") + "</span>" +
+      "</div>";
+  } else {
+    /* 监测引擎：型号选择已移到监测中心（同 key 可多模型勾选） */
+    tierHtml =
+      '<div class="kt-tier">' +
+      '<span class="small-note">模型档位在「监测中心」选择（同一把钥匙可同时勾选多个档位）</span>' +
+      "</div>";
+  }
 
   row.innerHTML =
     '<div class="kt-main kt-collapse-head" data-collapse="' + esc(k.engine) + '">' +
@@ -325,12 +351,7 @@ function renderKeyTierRow(k) {
     ' placeholder="' + esc(keyPlaceholder) + '" autocomplete="off" style="flex:1;min-width:220px">' +
     '<button class="btn btn-secondary" data-key-save="' + esc(k.engine) + '">保存钥匙</button>' +
     "</div>" +
-    '<div class="kt-tier">' +
-    '<span class="small-note" style="flex:none">模型型号：</span>' +
-    '<select class="select" data-tier="' + esc(k.engine) + '" style="flex:1;min-width:260px">' +
-    optionsHtml + "</select>" +
-    '<span class="small-note" data-tier-desc style="flex:1">' + esc(curDesc || "") + "</span>" +
-    "</div>" +
+    tierHtml +
     "</div>";
 
   const testBtn = row.querySelector("[data-test]");
@@ -342,24 +363,37 @@ function renderKeyTierRow(k) {
   row.querySelector("[data-key-save]").addEventListener("click", function () {
     saveKey(k.engine, row.querySelector("[data-key-input]"), this);
   });
-  const tierSel = row.querySelector("[data-tier]");
-  tierSel.addEventListener("change", function () {
-    const body = {};
-    if (k.engine === "analysis") {
-      body.analysis_model = tierSel.value;
-    } else {
-      body.engine_model = {};
-      body.engine_model[k.engine] = tierSel.value;
-    }
-    apiPost("/api/settings", body).then(function () {
-      const chosen = tierSel.options[tierSel.selectedIndex].text;
-      const desc = (opts.find(function (o) { return o.name === tierSel.value; }) || {}).desc || "";
-      row.querySelector("[data-tier-desc]").textContent = desc;
-      showToast("已切换为「" + chosen + "」，监测会按新型号计费", "success");
-    }).catch(function () {
-      loadKeys();
+
+  if (isAnalysis) {
+    const tierSel = row.querySelector("[data-tier]");
+    const saveAnalysisTier = function () {
+      apiPost("/api/settings", { analysis_model: tierSel.value }).then(function () {
+        const vm = k.vendor_model_options || {};
+        const pool = vm[k.vendor] || k.model_options || [];
+        const desc = (pool.find(function (o) { return o.name === tierSel.value; }) || {}).desc || "";
+        row.querySelector("[data-tier-desc]").textContent = desc;
+        showToast("已切换分析模型为「" + tierSel.value + "」", "success");
+      }).catch(function () { loadKeys(); });
+    };
+    tierSel.addEventListener("change", saveAnalysisTier);
+    const vendorSel = row.querySelector("[data-avendor]");
+    vendorSel.addEventListener("change", function () {
+      apiPost("/api/settings", { analysis_vendor: vendorSel.value }).then(function () {
+        k.vendor = vendorSel.value;
+        const vm = k.vendor_model_options || {};
+        const newOpts = vm[vendorSel.value] || [];
+        tierSel.innerHTML = newOpts.map(function (o) {
+          return '<option value="' + esc(o.name) + '">' + esc(o.name) + "</option>";
+        }).join("");
+        if (newOpts.length) {
+          tierSel.value = newOpts[0].name;
+          saveAnalysisTier();
+        }
+        showToast("已切换分析模型厂商，型号已同步为该厂商第一档", "success");
+      }).catch(function () { loadKeys(); });
     });
-  });
+  }
+
   /* 折叠交互：点击引擎名标题展开/收起配置区（点测试/链接不触发） */
   row.querySelector("[data-collapse]").addEventListener("click", function (e) {
     if (e.target.closest("button,a")) return;

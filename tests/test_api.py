@@ -244,6 +244,31 @@ def test_钥匙列表永不含明文(client):
         assert "api_key_masked" in item
 
 
+def test_分析模型厂商切换与档位校验(client):
+    # 切到 opencode 厂商
+    r = client.post("/api/settings", json={"analysis_vendor": "opencode"})
+    assert r.get_json()["code"] == 0
+    r = client.get("/api/settings/keys")
+    item = [x for x in r.get_json()["data"] if x["engine"] == "analysis"][0]
+    assert item["vendor"] == "opencode"
+    assert len(item["vendors"]) == 6
+    assert item["model_options"]  # opencode 的 19 档
+
+    # 非法厂商拦截
+    r = client.post("/api/settings", json={"analysis_vendor": "no-such"})
+    assert r.get_json()["code"] == 1
+
+    # opencode 厂商下选不存在的档位拦截
+    r = client.post("/api/settings", json={"analysis_model": "not-a-real-model"})
+    assert r.get_json()["code"] == 1
+
+    # 切回 deepseek 并选合法档
+    r = client.post("/api/settings", json={"analysis_vendor": "deepseek"})
+    assert r.get_json()["code"] == 0
+    r = client.post("/api/settings", json={"analysis_model": "deepseek-v4-flash"})
+    assert r.get_json()["code"] == 0
+
+
 def test_费用接口空库为0(client):
     r = client.get("/api/settings/cost")
     body = r.get_json()

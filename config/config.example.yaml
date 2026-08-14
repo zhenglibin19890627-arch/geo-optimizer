@@ -134,7 +134,9 @@ engines:
 
 # ---------- 分析用大模型 ----------
 # 系统“自己的思考”用：关键词扩展问法、内容优化建议等。
-# 默认 DeepSeek 最便宜档位（用户裁决 D5）；设置页可切换。
+# 厂商可在设置页切换（deepseek/kimi/doubao/qwen/yuanbao/opencode），
+# 切换后复用该厂商引擎节的钥匙/接口地址/档位；本节仅作 deepseek
+# 厂商的旧配置回落（引擎钥匙未填时用这里的钥匙/地址/模型）。
 analysis:
   api_key: ""
   base_url: "https://api.deepseek.com"

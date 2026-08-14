@@ -1,4 +1,10 @@
-"""分析用大模型统一客户端（OpenAI 兼容，默认 DeepSeek 最便宜档，设置页可切换）。"""
+"""分析用大模型统一客户端（OpenAI 兼容）。
+
+厂商可切换（2026-08-14 修订）：设置页可选 6 家厂商（deepseek/kimi/doubao/
+qwen/yuanbao/opencode），分析任务复用该厂商的钥匙/接口地址/档位列表；
+默认 DeepSeek（最便宜档），deepseek 厂商在引擎钥匙未填时回落旧版
+analysis 节的钥匙/地址（老配置兼容）。
+"""
 
 import random
 import time
@@ -16,26 +22,50 @@ class AnalysisError(Exception):
         self.message = message
 
 
+def get_analysis_vendor() -> str:
+    """当前分析模型厂商（引擎 code）；非法值回落 deepseek。"""
+    from geo.engines import AUTO_CODES
+    vendor = str(database.get_setting("analysis_vendor", "deepseek") or "deepseek").strip()
+    return vendor if vendor in AUTO_CODES else "deepseek"
+
+
+def _vendor_cfg(vendor: str) -> tuple:
+    """厂商的 (api_key, base_url, default_model)。
+
+    deepseek：优先 engines.deepseek 节，未填回落 analysis 节（旧口径兼容）；
+    其余厂商：直接读该引擎节的钥匙/地址/模型。
+    """
+    engine = config.get_engine_config(vendor) or {}
+    api_key = str(engine.get("api_key") or "").strip()
+    base_url = str(engine.get("base_url") or "").strip().rstrip("/")
+    model = str(engine.get("model") or "").strip()
+    if vendor == "deepseek":
+        analysis = config.get_analysis_config() or {}
+        api_key = api_key or str(analysis.get("api_key") or "").strip()
+        base_url = base_url or str(analysis.get("base_url") or "").strip().rstrip("/")
+        model = model or str(analysis.get("model") or "").strip()
+    return api_key, base_url, model
+
+
 def get_analysis_model() -> str:
-    cfg = config.get_analysis_config()
-    return str(database.get_setting("analysis_model", cfg.get("model", "")) or "")
+    """当前分析模型档位（默认当前厂商的默认档）。"""
+    _key, _base, default_model = _vendor_cfg(get_analysis_vendor())
+    return str(database.get_setting("analysis_model", default_model) or "")
 
 
 def is_configured() -> bool:
-    cfg = config.get_analysis_config()
-    return bool((cfg.get("api_key") or "").strip())
+    key, _base, _model = _vendor_cfg(get_analysis_vendor())
+    return bool(key)
 
 
 def chat(prompt: str, temperature: float = 0.3, timeout: int = 60, system: str = None) -> str:
     """用分析模型执行一次思考，返回文本。失败抛 AnalysisError（大白话）。"""
-    cfg = config.get_analysis_config()
-    api_key = (cfg.get("api_key") or "").strip()
+    api_key, base_url, _m = _vendor_cfg(get_analysis_vendor())
     if not api_key:
         raise AnalysisError("分析用的模型还没填钥匙（API Key），请先到设置页填写")
     model = get_analysis_model()
     if not model:
         raise AnalysisError("分析用的模型还没设置好，请先到设置页选择")
-    base_url = str(cfg.get("base_url", "")).rstrip("/")
     if not base_url:
         raise AnalysisError("分析用的接口地址还没配置好，请联系开发者检查配置文件")
 
