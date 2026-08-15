@@ -317,6 +317,14 @@ function renderTrendChart(container, labels, nValues, wValues) {
 /* ---------------- 引用信源 ---------------- */
 
 function loadSources() {
+  const card = document.getElementById("sources-card");
+  const sel = repSelectedRound();
+  if (repRoundId && sel && sel.mode === "normal") {
+    /* 常规档回答不带引用信源：选中常规轮时整卡隐藏（2026-08-15 用户要求） */
+    if (card) card.classList.add("hidden");
+    return;
+  }
+  if (card) card.classList.remove("hidden");
   const area = document.getElementById("sources-area");
   if (repRoundCount < 2) {
     area.innerHTML = "";
