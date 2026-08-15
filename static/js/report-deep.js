@@ -13,15 +13,12 @@ function loadDeepCard() {
   card.classList.remove("hidden");
   initDeepFeeNote();
   if (!repRoundId) {
-    /* 最近 30 轮汇总：统计表聚合 30 轮；LLM 深度分析仍取最新正常轮 */
+    /* 最近 30 轮汇总：统计表聚合 30 轮；LLM 深度分析按 30 轮数据汇总分析（2026-08-15） */
     loadDeepStat(null);
-    loadDeepTrend();
-    var latest = repLatestNormalRound();
-    if (latest) loadDeepAnalysis(latest.id);
+    loadDeepAnalysis(null);
     return;
   }
   loadDeepStat(base.id);
-  loadDeepTrend();
   loadDeepAnalysis(base.id);
 }
 
@@ -47,7 +44,6 @@ function initDeepFeeNote() {
 function loadDeepStat(roundId) {
   var sec = document.getElementById("deep-stat-section");
   var guide = document.getElementById("deep-guide");
-  var trendSec = document.getElementById("deep-trend-section");
   var anaSec = document.getElementById("deep-analysis-section");
   var isRange = !roundId;  // 最近 30 轮汇总模式
   var url = roundId
@@ -67,12 +63,10 @@ function loadDeepStat(roundId) {
         null
       ));
       sec.innerHTML = "";
-      trendSec.classList.add("hidden");
       anaSec.classList.add("hidden");
       return;
     }
     guide.classList.add("hidden");
-    trendSec.classList.remove("hidden");
     anaSec.classList.remove("hidden");
     renderDeepTable(items, roundId, isRange);
   }).catch(function () {
@@ -203,85 +197,8 @@ function buildDeepTable(items, roundId, isRange) {
   }
 }
 
-/* ② 近 30 轮提及趋势（N12） */
-function loadDeepTrend() {
-  var container = document.getElementById("deep-trend-chart");
-  if (!container) return;
-  geoApi("/api/report/competitor/trend?rounds=30").then(function (data) {
-    var labels = data.labels || [];
-    var series = data.series || [];
-    var note = document.getElementById("deep-trend-note");
-    if (note) {
-      if (data.truncated) {
-        note.textContent = "近 30 轮共提取 " + (data.total || "") +
-          " 家竞品，趋势图只画累计被提到最多的前 3 家。";
-        note.classList.remove("hidden");
-      } else {
-        note.classList.add("hidden");
-      }
-    }
-    if (!labels.length || !series.length) {
-      if (deepTrendChart) { deepTrendChart.dispose(); deepTrendChart = null; }
-      emptyChart(container, "还没有足够的监测数据，跑几轮后再来看趋势。");
-      return;
-    }
-    drawDeepTrend(container, labels, series, null);
-  }).catch(function () {
-    if (deepTrendChart) { deepTrendChart.dispose(); deepTrendChart = null; }
-    emptyChart(container, "还没有足够的监测数据，跑几轮后再来看趋势。");
-  });
-}
-
-function drawDeepTrend(container, labels, series, selected) {
-  if (deepTrendChart) deepTrendChart.dispose();
-  deepTrendChart = echarts.init(container);
-  var selfName = deepSelfName || (series.length ? series[0].name : "");
-  var names = series.map(function (s) { return s.name; });
-  var option = {
-    tooltip: { trigger: "axis", axisPointer: { type: "line" } },
-    legend: { data: names, top: 0 },
-    grid: { left: 40, right: 20, top: 36, bottom: 30 },
-    xAxis: {
-      type: "category",
-      data: labels,
-      axisLine: { lineStyle: { color: "#E2E8F0" } },
-      axisLabel: { color: "#6B7280" },
-    },
-    yAxis: {
-      type: "value",
-      minInterval: 1,
-      axisLabel: { color: "#6B7280" },
-      splitLine: { lineStyle: { color: "#F1F5F9" } },
-    },
-    series: series.map(function (s) {
-      var isSelf = s.name === selfName;
-      return {
-        name: s.name,
-        type: "line",
-        data: s.values,
-        symbol: "circle",
-        symbolSize: 5,
-        connectNulls: true,
-        lineStyle: { width: isSelf ? 2.5 : 2, color: isSelf ? "#2563EB" : "#94A3B8" },
-        itemStyle: { color: isSelf ? "#2563EB" : "#94A3B8" },
-      };
-    }),
-  };
-  if (selected) option.legend.selected = selected;
-  deepTrendChart.setOption(option);
-  deepTrendChart.on("legendselectchanged", function (params) {
-    var sel = params.selected || {};
-    var keep = [];
-    series.forEach(function (s) {
-      if (s.name === selfName) return;
-      if (sel[s.name] !== false) keep.push(s.name);
-    });
-    var q = keep.length ? "&competitors=" + encodeURIComponent(keep.join(",")) : "";
-    geoApi("/api/report/competitor/trend?rounds=30" + q).then(function (d) {
-      drawDeepTrend(container, d.labels || [], d.series || [], sel);
-    }).catch(function () {});
-  });
-}
+/* ② 近 30 轮提及趋势已合并进「历史趋势」卡的「竞品提及」Tab（2026-08-15），
+   绘制逻辑见 report-trend.js loadTrendCompetitor */
 
 /* ③④⑤ 分析状态分区渲染（N14，每 10 秒轮询） */
 function loadDeepAnalysis(roundId) {
@@ -292,7 +209,10 @@ function loadDeepAnalysis(roundId) {
 
 function fetchDeepAnalysis(roundId) {
   if (deepAnalysisRoundId !== roundId) return;
-  geoApi("/api/report/competitor/analysis?round_id=" + roundId).then(function (res) {
+  const url = roundId
+    ? "/api/report/competitor/analysis?round_id=" + roundId
+    : "/api/report/competitor/analysis";
+  geoApi(url).then(function (res) {
     if (deepAnalysisRoundId !== roundId) return;
     var status = res.status || "unavailable";
     var sec = document.getElementById("deep-analysis-section");
@@ -315,7 +235,8 @@ function fetchDeepAnalysis(roundId) {
     }
     if (status === "none") {
       sec.innerHTML =
-        '<div class="deep-placeholder">这一轮 AI 回答里没有提到其他品牌（竞品），没有可分析的内容。统计和趋势不受影响。</div>';
+        '<div class="deep-placeholder">' + (roundId ? "这一轮" : "近 30 轮") +
+        " AI 回答里没有提到其他品牌（竞品），没有可分析的内容。统计和趋势不受影响。</div>";
       return;
     }
     renderDeepAnalysisDone(sec, res.data || {});
@@ -332,8 +253,13 @@ function renderDeepAnalysisDone(sec, data) {
   var advice = data.advice || [];
   var html = "";
 
+  if (data.range === "30") {
+    html += '<div class="deep-sec-title" style="margin-bottom:8px">近 ' +
+      (data.rounds || 30) + " 轮汇总分析</div>";
+  }
   if (data.truncated) {
-    html += '<div class="small-note" style="margin-bottom:8px">本轮共提取 ' +
+    html += '<div class="small-note" style="margin-bottom:8px">' +
+      (data.range === "30" ? "近 " + (data.rounds || 30) + " 轮" : "本轮") + "共提取 " +
       (data.total || competitors.length) +
       " 家竞品，深度分析聚焦被提到次数最多的前 8 家；全部竞品见上方统计表。</div>";
   }
@@ -357,7 +283,9 @@ function renderDeepAnalysisDone(sec, data) {
         html += '<div class="evidence-body hidden">' + ev.map(function (e) {
           var full = e.answer_full ? String(e.answer_full).trim() : "";
           return '<div class="hit-item">' +
-            '<div class="hit-head">' + esc(e.engine_code || "") + "</div>" +
+            '<div class="hit-head">' +
+            (e.round_label ? esc(e.round_label) + " · " : "") +
+            esc(e.engine_code || "") + "</div>" +
             '<div class="hit-question">' + esc(e.question_text || "") + "</div>" +
             '<div class="hit-excerpt">' + highlightWord(e.excerpt || e.answer_excerpt || "", name) + "</div>" +
             (full
@@ -369,7 +297,8 @@ function renderDeepAnalysisDone(sec, data) {
       }
       html += "</div>";
     } else {
-      html += '<div class="reason-card reason-dim">「' + esc(name) + "」本轮 AI 回答里没有提到它</div>";
+      html += '<div class="reason-card reason-dim">「' + esc(name) + "」" +
+        (data.range === "30" ? "近 30 轮 AI 回答里没有提到它" : "本轮 AI 回答里没有提到它") + "</div>";
     }
   });
 

@@ -574,6 +574,20 @@ def competitor_analysis_status():
     brand_id = current_brand_id()
     round_id = request.args.get("round_id", type=int)
     from geo.analyzers import competitor_analysis, llm_client
+    if not round_id:
+        # 「最近 30 轮」汇总分析（2026-08-15）：round_id=NULL 的独立记录，
+        # 按范围内各轮数据整体分析；结果过期（最新轮变化）时查看页面自动重新生成
+        competitor_analysis.trigger_aggregate_if_due(brand_id)
+        with database.session_scope() as s:
+            row = (s.query(database.CompetitorAnalysis)
+                   .filter(database.CompetitorAnalysis.round_id.is_(None),
+                           database.CompetitorAnalysis.brand_id == brand_id).first())
+            if not row:
+                return ok({"status": "none", "data": None, "error_msg": ""},
+                          "获取成功")
+            return ok({"status": row.status or "pending",
+                       "data": database.jloads(row.data, None),
+                       "error_msg": row.error_msg or ""}, "获取成功")
     with database.session_scope() as s:
         round_row = _resolve_round(s, brand_id, round_id)
         rid = round_row.id

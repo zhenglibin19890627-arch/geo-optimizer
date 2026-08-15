@@ -258,15 +258,19 @@ def _brand_context_lines(brand: dict) -> list:
     return lines
 
 
-def _summarize_competitor(brand: dict, name: str, evidences: list) -> tuple:
-    """单竞品原因总结：返回 (summary, source_types, features)。"""
+def _summarize_competitor(brand: dict, name: str, evidences: list,
+                          range_label: str = "本轮") -> tuple:
+    """单竞品原因总结：返回 (summary, source_types, features)。range_label 支持汇总分析。"""
     lines = ["品牌档案："]
     lines += _brand_context_lines(brand)
     lines.append("")
-    lines.append(f"本轮监测里，AI 的回答提到了竞品「{name}」。以下是命中的回答原文摘录：")
+    lines.append(f"{range_label}监测里，AI 的回答提到了竞品「{name}」。以下是命中的回答原文摘录：")
     lines.append("")
     for i, ev in enumerate(evidences, 1):
-        lines.append(f"【第{i}条】引擎：{ev['engine_code']}")
+        head = f"【第{i}条】"
+        if ev.get("round_label"):
+            head += f"轮次：{ev['round_label']}｜"
+        lines.append(head + f"引擎：{ev['engine_code']}")
         lines.append(f"问题：{ev['question_text']}")
         lines.append(f"回答片段：{ev['excerpt']}")
         lines.append("")
@@ -296,13 +300,14 @@ def _summarize_competitor(brand: dict, name: str, evidences: list) -> tuple:
     return summary, source_types, features
 
 
-def _generate_advice(brand: dict, competitors_data: list, self_note: str) -> list:
+def _generate_advice(brand: dict, competitors_data: list, self_note: str,
+                     range_label: str = "本轮") -> list:
     """优化方向建议（3~5 条 {gap, where, what}），1 次调用。"""
     lines = ["品牌档案："]
     lines += _brand_context_lines(brand)
     lines.append("")
     lines.append(self_note)
-    lines.append("本轮 AI 回答里各竞品的情况：")
+    lines.append(f"{range_label}内 AI 回答里各竞品的情况：")
     for c in competitors_data:
         if c["mentioned"]:
             feat = "；".join(c["features"]) if c.get("features") else "（素材未给出突出特点）"
@@ -457,6 +462,191 @@ def _generate_inner(round_id: int, brand_id: int, competitors: list):
     with database.session_scope() as s:
         row = (s.query(database.CompetitorAnalysis)
                .filter(database.CompetitorAnalysis.round_id == round_id).first())
+        if not row:
+            return
+        row.status = STATUS_DONE
+        row.data = database.jdumps(data)
+        row.error_msg = ""
+        row.finished_at = database.now()
+
+
+# ============================================================
+# 「最近 30 轮」汇总分析（2026-08-15）：报告页选汇总视图时，③ 按 30 轮数据整体分析。
+# 存储复用 competitor_analysis 表，round_id=NULL 表示汇总记录（唯一键对 NULL 不冲突），
+# data.latest_round_id 记录生成时最新轮，用于报告页查看时判断是否需要重新生成。
+# ============================================================
+AGGREGATE_MAX_ROUNDS = 30
+
+
+def _recent_normal_round_rows(brand_id: int, limit: int = AGGREGATE_MAX_ROUNDS) -> list:
+    """该品牌最近 limit 个正常轮（task done/缺失），按时间升序返回。"""
+    from geo.core import monitor_task
+    with database.session_scope() as s:
+        status_map = monitor_task.task_status_map(s)
+        rows = [r for r in (s.query(database.MonitorRound)
+                            .filter(database.MonitorRound.brand_id == brand_id)
+                            .order_by(database.MonitorRound.id.desc()).all())
+                if monitor_task.round_is_normal(status_map, r)]
+        return list(reversed(rows[:limit]))
+
+
+def trigger_aggregate_if_due(brand_id: int):
+    """汇总分析触发：竞品取范围内各轮并集、提及规则法现算；无钥匙记 unavailable；
+    结果过期（新轮次产生）或 failed/unavailable（钥匙已补）时重新生成。幂等。"""
+    rows = _recent_normal_round_rows(brand_id)
+    if not rows:
+        return
+    auto = []
+    for r in rows:
+        auto.extend(database.jloads(r.auto_competitors, []) or [])
+    auto = list(dict.fromkeys(str(c).strip() for c in auto if str(c).strip()))
+    if not auto:
+        return
+    latest_id = rows[-1].id
+
+    brand = database.get_brand(brand_id)
+    from geo.analyzers import mention as mention_mod
+    brand_names = mention_mod.build_brand_names(brand)
+    with database.session_scope() as s:
+        results = (s.query(database.MonitorResult)
+                   .filter(database.MonitorResult.round_id.in_([r.id for r in rows])).all())
+        answered = [x for x in results if x.answer_text]
+        if not answered:
+            return
+        mentioned_any = any(
+            mention_mod.competitor_mentions(x.answer_text, auto, brand_names)
+            for x in answered)
+        if not mentioned_any:
+            return
+        existing = (s.query(database.CompetitorAnalysis)
+                    .filter(database.CompetitorAnalysis.round_id.is_(None),
+                            database.CompetitorAnalysis.brand_id == brand_id).first())
+        if existing is not None:
+            if existing.status in (STATUS_PENDING, STATUS_RUNNING):
+                return  # 正在生成，别重复触发
+            if existing.status == STATUS_DONE:
+                data = database.jloads(existing.data, None) or {}
+                if data.get("latest_round_id") == latest_id:
+                    return  # 已是最新结果
+            s.delete(existing)  # unavailable / failed / 结果过期 → 重新生成
+        if not llm_client.is_configured():
+            s.add(database.CompetitorAnalysis(
+                round_id=None, brand_id=brand_id, status=STATUS_UNAVAILABLE,
+                data=None, error_msg="", finished_at=database.now()))
+            return
+        s.add(database.CompetitorAnalysis(
+            round_id=None, brand_id=brand_id, status=STATUS_PENDING))
+    threading.Thread(target=generate_aggregate,
+                     args=(brand_id, [r.id for r in rows], auto, latest_id),
+                     daemon=True).start()
+
+
+def generate_aggregate(brand_id: int, round_ids: list, competitors: list,
+                       latest_round_id: int):
+    try:
+        _generate_aggregate_inner(brand_id, round_ids, competitors, latest_round_id)
+    except Exception:
+        traceback.print_exc()
+        _set_failed_aggregate(brand_id, FALLBACK_ERROR)
+
+
+def _set_failed_aggregate(brand_id: int, message: str):
+    with database.session_scope() as s:
+        row = (s.query(database.CompetitorAnalysis)
+               .filter(database.CompetitorAnalysis.round_id.is_(None),
+                       database.CompetitorAnalysis.brand_id == brand_id).first())
+        if not row:
+            return
+        row.status = STATUS_FAILED
+        row.error_msg = message
+        row.finished_at = database.now()
+
+
+def _aggregate_evidence_map(s, round_ids: list, competitors: list) -> tuple:
+    """跨轮证据（每竞品最多 EVIDENCE_MAX 条，优先最近轮）+ 每竞品累计提及次数。"""
+    label_by_id = {rid: f"第{i}轮" for i, rid in enumerate(round_ids, 1)}
+    items = {name: [] for name in competitors}
+    hits = {name: 0 for name in competitors}
+    for rid in reversed(round_ids):  # 最近轮优先保留证据
+        results = (s.query(database.MonitorResult)
+                   .filter(database.MonitorResult.round_id == rid)
+                   .order_by(database.MonitorResult.id.asc()).all())
+        for r in results:
+            if not r.answer_text:
+                continue
+            for c in database.jloads(r.competitor_mentions, []) or []:
+                name = str(c.get("name") or "").strip()
+                if name not in items:
+                    continue
+                hits[name] = hits.get(name, 0) + (c.get("count") or 0)
+                if len(items[name]) < EVIDENCE_MAX:
+                    items[name].append({
+                        "round_label": label_by_id.get(rid, ""),
+                        "engine_code": r.engine_code or "",
+                        "question_text": r.question_text or "",
+                        "excerpt": _truncate(r.answer_text, EVIDENCE_CHARS),
+                        "answer_full": r.answer_text,
+                    })
+    return items, hits
+
+
+def _generate_aggregate_inner(brand_id: int, round_ids: list, competitors: list,
+                              latest_round_id: int):
+    brand = database.get_brand(brand_id)
+    range_label = f"近 {len(round_ids)} 轮"
+    with database.session_scope() as s:
+        row = (s.query(database.CompetitorAnalysis)
+               .filter(database.CompetitorAnalysis.round_id.is_(None),
+                       database.CompetitorAnalysis.brand_id == brand_id).first())
+        if not row:
+            return
+        row.status = STATUS_RUNNING
+        evidence_map, hits = _aggregate_evidence_map(s, round_ids, competitors)
+        results = (s.query(database.MonitorResult)
+                   .filter(database.MonitorResult.round_id.in_(round_ids)).all())
+        self_answered = len([r for r in results if r.answer_text])
+        self_mentioned = len([r for r in results if r.answer_text and r.is_mentioned])
+
+    order = {name: i for i, name in enumerate(competitors)}
+    focus = sorted(competitors, key=lambda n: (-hits.get(n, 0), order.get(n, 999)))[
+        :ANALYSIS_MAX_COMPETITORS]
+
+    competitors_data = []
+    for name in focus:
+        evidences = evidence_map.get(name, []) or []
+        if evidences:
+            summary, source_types, features = _summarize_competitor(
+                brand, name, evidences, range_label)
+        else:
+            summary, source_types, features = UNMENTIONED_SUMMARY, [], []
+        competitors_data.append({
+            "name": name, "mentioned": bool(evidences),
+            "summary": summary, "source_types": source_types,
+            "features": features, "evidence": evidences,
+        })
+
+    self_note = (f"{range_label}内我方「{brand.get('brand_name') or ''}」在 "
+                 f"{self_mentioned}/{self_answered} 条有效回答里被提到。")
+    advice = _generate_advice(brand, competitors_data, self_note, range_label)
+
+    data = {
+        "is_speculative": True,
+        "competitors": [
+            {"name": c["name"], "mentioned": c["mentioned"], "summary": c["summary"],
+             "source_types": c["source_types"], "evidence": c["evidence"]}
+            for c in competitors_data
+        ],
+        "advice": advice,
+        "truncated": len(competitors) > len(focus),
+        "total": len(competitors),
+        "range": "30",
+        "rounds": len(round_ids),
+        "latest_round_id": latest_round_id,
+    }
+    with database.session_scope() as s:
+        row = (s.query(database.CompetitorAnalysis)
+               .filter(database.CompetitorAnalysis.round_id.is_(None),
+                       database.CompetitorAnalysis.brand_id == brand_id).first())
         if not row:
             return
         row.status = STATUS_DONE

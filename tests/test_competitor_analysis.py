@@ -208,6 +208,110 @@ def test_trend_capped_top10(client, tmpdb):
     assert d2["truncated"] is False
 
 
+# ---------------- 「最近 30 轮」汇总分析 ----------------
+
+def test_analysis_status_aggregate(client, tmpdb, monkeypatch):
+    """汇总视图（不带 round_id）：按范围内各轮数据触发汇总分析（round_id=NULL 记录）。"""
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+    monkeypatch.setattr(competitor_analysis, "generate_aggregate",
+                        lambda *a, **k: None)
+    _seed(tmpdb, ["好孩子"], ["好孩子很好，值得推荐"],
+          brand_id=3, brand_name="汇总牌")
+    _seed(tmpdb, ["好孩子"], ["好孩子也不错"],
+          brand_id=3, brand_name="汇总牌")
+
+    r = client.get("/api/report/competitor/analysis?brand_id=3")
+    d = r.get_json()["data"]
+    assert d["status"] == competitor_analysis.STATUS_PENDING
+    with database.session_scope() as s:
+        row = (s.query(database.CompetitorAnalysis)
+               .filter(database.CompetitorAnalysis.round_id.is_(None),
+                       database.CompetitorAnalysis.brand_id == 3).first())
+        assert row is not None
+        assert row.round_id is None
+
+
+def test_analysis_status_aggregate_none(client, tmpdb, monkeypatch):
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+    monkeypatch.setattr(competitor_analysis, "generate_aggregate",
+                        lambda *a, **k: None)
+    _seed(tmpdb, [], ["这轮没提其他品牌"], brand_id=4, brand_name="无竞品牌")
+    r = client.get("/api/report/competitor/analysis?brand_id=4")
+    assert r.get_json()["data"]["status"] == "none"
+
+
+def test_generate_aggregate_inner(tmpdb, monkeypatch):
+    names = [f"竞品{n}有限公司" for n in range(12)]
+    rid1 = _seed(tmpdb, names,
+                 ["竞品0有限公司出现", "竞品1有限公司出现"],
+                 comps_by_answer={
+                     0: [{"name": "竞品0有限公司", "count": 2, "position": 1}],
+                     1: [{"name": "竞品1有限公司", "count": 1, "position": 1}]},
+                 brand_id=5, brand_name="聚合牌")
+    rid2 = _seed(tmpdb, names, ["竞品0有限公司再次出现"],
+                 comps_by_answer={
+                     0: [{"name": "竞品0有限公司", "count": 1, "position": 1}]},
+                 brand_id=5, brand_name="聚合牌")
+    with database.session_scope() as s:
+        s.add(database.CompetitorAnalysis(
+            round_id=None, brand_id=5, status=competitor_analysis.STATUS_PENDING))
+
+    monkeypatch.setattr(competitor_analysis, "_summarize_competitor",
+                        lambda brand, name, evs, range_label="本轮":
+                        (f"总结：{name}", ["行业媒体报道类"], ["特点"]))
+    monkeypatch.setattr(competitor_analysis, "_generate_advice",
+                        lambda brand, cd, note, range_label="本轮":
+                        [{"gap": "g", "where": "w", "what": "t"}])
+
+    competitor_analysis._generate_aggregate_inner(5, [rid1, rid2], names, rid2)
+
+    with database.session_scope() as s:
+        row = (s.query(database.CompetitorAnalysis)
+               .filter(database.CompetitorAnalysis.round_id.is_(None),
+                       database.CompetitorAnalysis.brand_id == 5).first())
+        assert row.status == competitor_analysis.STATUS_DONE
+        data = database.jloads(row.data, None)
+        assert data["range"] == "30"
+        assert data["rounds"] == 2
+        assert data["latest_round_id"] == rid2
+        assert data["total"] == 12
+        assert data["truncated"] is True
+        comps = data["competitors"]
+        assert len(comps) == competitor_analysis.ANALYSIS_MAX_COMPETITORS
+        mentioned = [c["name"] for c in comps if c["mentioned"]]
+        # 累计次数：竞品0 3 次 > 竞品1 1 次，其余未提及
+        assert mentioned == ["竞品0有限公司", "竞品1有限公司"]
+        ev0 = comps[0]["evidence"]
+        assert ev0 and ev0[0]["round_label"] == "第2轮"  # 最近轮优先保留
+
+
+def test_trigger_aggregate_regenerates_when_stale(tmpdb, monkeypatch):
+    """新轮次产生后汇总结果过期：再次触发会重新生成（done 行被替换为 pending）。"""
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+    monkeypatch.setattr(competitor_analysis, "generate_aggregate",
+                        lambda *a, **k: None)
+    rid1 = _seed(tmpdb, ["好孩子"], ["好孩子很好"], brand_id=6, brand_name="再生牌")
+    competitor_analysis.trigger_aggregate_if_due(6)
+    with database.session_scope() as s:
+        row = (s.query(database.CompetitorAnalysis)
+               .filter(database.CompetitorAnalysis.round_id.is_(None),
+                       database.CompetitorAnalysis.brand_id == 6).first())
+        assert row is not None
+        row.status = competitor_analysis.STATUS_DONE
+        row.data = database.jdumps({"latest_round_id": rid1})
+
+    # 新增一轮 → 过期 → 再触发：旧 done 行被删，重新 pending
+    _seed(tmpdb, ["好孩子"], ["好孩子还是很好"], brand_id=6, brand_name="再生牌")
+    competitor_analysis.trigger_aggregate_if_due(6)
+    with database.session_scope() as s:
+        row = (s.query(database.CompetitorAnalysis)
+               .filter(database.CompetitorAnalysis.round_id.is_(None),
+                       database.CompetitorAnalysis.brand_id == 6).first())
+        assert row is not None
+        assert row.status == competitor_analysis.STATUS_PENDING
+        assert row.data is None
+
+
 # ---------------- 深度分析聚焦前 8 家 ----------------
 
 def test_generate_inner_cap(tmpdb, monkeypatch):

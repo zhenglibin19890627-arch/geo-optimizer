@@ -25,11 +25,13 @@
       <span class="concept"><span class="q-mark">?</span><span class="bubble">情感倾向：AI 提到你时是夸（正面）、说坏话（负面）、还是就事论事（中性）。</span></span>
       <span class="concept"><span class="q-mark">?</span><span class="bubble">净情感率：夸你的回答数减去说坏话的回答数，再除以总回答数。结果越接近 100% 越好。</span></span>
     </div>
-    <div class="small-note">蓝线是常规提问、绿线是联网提问，都已排除已停止、未成功的轮次。</div>
+    <div class="small-note" id="trend-mode-note">蓝线是常规提问、绿线是联网提问，都已排除已停止、未成功的轮次。</div>
+    <div class="small-note hidden" id="trend-comp-note"></div>
     <div class="tabs">
       <div class="tab-item active" data-metric="score">可见度评分</div>
       <div class="tab-item" data-metric="mention_rate">提及率</div>
       <div class="tab-item" data-metric="sentiment">情感倾向</div>
+      <div class="tab-item" data-metric="competitor">竞品提及</div>
     </div>
     <div id="trend-chart" style="width:100%;height:320px"></div>
   </div>
@@ -60,12 +62,6 @@
     </div>
     <div id="deep-guide" class="hidden"></div>
     <div id="deep-stat-section" class="mt-12"></div>
-    <div id="deep-trend-section" class="mt-16">
-      <div class="deep-sec-title">近 30 轮提及趋势</div>
-      <div class="small-note">与趋势图口径一致：已停止、未成功的轮次不计入。</div>
-      <div class="small-note hidden" id="deep-trend-note"></div>
-      <div id="deep-trend-chart" class="mt-8" style="width:100%;height:260px"></div>
-    </div>
     <div id="deep-analysis-section" class="mt-16"></div>
   </div>
 

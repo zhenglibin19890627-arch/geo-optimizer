@@ -12,7 +12,6 @@ let repMetric = "score";
 let repRoundId = null;
 let repRoundCount = 0;
 let trendChart = null;
-let deepTrendChart = null;
 let deepAnalysisTimer = null;
 let deepAnalysisRoundId = null;
 let repRoundsAll = [];
@@ -145,6 +144,15 @@ function repTrendRounds(count, cb) {
 
 function loadTrend() {
   const container = document.getElementById("trend-chart");
+  if (repMetric === "competitor") {
+    /* 竞品提及 Tab：合并自竞品深度分析卡片（2026-08-15），口径不变：近 30 轮 */
+    loadTrendCompetitor(container);
+    return;
+  }
+  const modeNote = document.getElementById("trend-mode-note");
+  const compNote = document.getElementById("trend-comp-note");
+  if (modeNote) modeNote.classList.remove("hidden");
+  if (compNote) compNote.classList.add("hidden");
   if (repRoundCount < 1) {
     /* 无数据：空状态引导（03b 3.4） */
     container.innerHTML = "";
@@ -313,6 +321,88 @@ function renderTrendChart(container, labels, nValues, wValues) {
   trendChart.setOption(option);
 }
 
+
+/* ---------------- 竞品提及 Tab（合并自竞品深度分析卡片，2026-08-15） ---------------- */
+
+function loadTrendCompetitor(container) {
+  if (!container) return;
+  const modeNote = document.getElementById("trend-mode-note");
+  if (modeNote) modeNote.classList.add("hidden");
+  geoApi("/api/report/competitor/trend?rounds=30").then(function (data) {
+    const labels = data.labels || [];
+    const series = data.series || [];
+    const note = document.getElementById("trend-comp-note");
+    if (note) {
+      if (data.truncated) {
+        note.textContent = "近 30 轮共提取 " + (data.total || "") +
+          " 家竞品，趋势图只画累计被提到最多的前 3 家。";
+        note.classList.remove("hidden");
+      } else {
+        note.classList.add("hidden");
+      }
+    }
+    if (!labels.length || !series.length) {
+      if (trendChart) { trendChart.dispose(); trendChart = null; }
+      emptyChart(container, "还没有足够的监测数据，跑几轮后再来看趋势。");
+      return;
+    }
+    drawTrendCompetitor(container, labels, series, null);
+  }).catch(function () {
+    if (trendChart) { trendChart.dispose(); trendChart = null; }
+    emptyChart(container, "还没有足够的监测数据，跑几轮后再来看趋势。");
+  });
+}
+
+function drawTrendCompetitor(container, labels, series, selected) {
+  if (trendChart) trendChart.dispose();
+  trendChart = echarts.init(container);
+  const selfName = series.length ? series[0].name : "";
+  const names = series.map(function (s) { return s.name; });
+  const option = {
+    tooltip: { trigger: "axis", axisPointer: { type: "line" } },
+    legend: { data: names, top: 0 },
+    grid: { left: 40, right: 20, top: 36, bottom: 30 },
+    xAxis: {
+      type: "category",
+      data: labels,
+      axisLine: { lineStyle: { color: "#E2E8F0" } },
+      axisLabel: { color: "#6B7280" },
+    },
+    yAxis: {
+      type: "value",
+      minInterval: 1,
+      axisLabel: { color: "#6B7280" },
+      splitLine: { lineStyle: { color: "#F1F5F9" } },
+    },
+    series: series.map(function (s) {
+      const isSelf = s.name === selfName;
+      return {
+        name: s.name,
+        type: "line",
+        data: s.values,
+        symbol: "circle",
+        symbolSize: 5,
+        connectNulls: true,
+        lineStyle: { width: isSelf ? 2.5 : 2, color: isSelf ? "#2563EB" : "#94A3B8" },
+        itemStyle: { color: isSelf ? "#2563EB" : "#94A3B8" },
+      };
+    }),
+  };
+  if (selected) option.legend.selected = selected;
+  trendChart.setOption(option);
+  trendChart.on("legendselectchanged", function (params) {
+    const sel = params.selected || {};
+    const keep = [];
+    series.forEach(function (s) {
+      if (s.name === selfName) return;
+      if (sel[s.name] !== false) keep.push(s.name);
+    });
+    const q = keep.length ? "&competitors=" + encodeURIComponent(keep.join(",")) : "";
+    geoApi("/api/report/competitor/trend?rounds=30" + q).then(function (d) {
+      drawTrendCompetitor(container, d.labels || [], d.series || [], sel);
+    }).catch(function () {});
+  });
+}
 
 /* ---------------- 引用信源 ---------------- */
 
