@@ -26,6 +26,32 @@ FALLBACK_ERROR = "暂时无法分析，请稍后再试"
 EVIDENCE_MAX = 3          # 每竞品最多 3 条证据
 EVIDENCE_CHARS = 500      # 每条证据原文截断长度
 RETRY_TIMES = 1           # 单次模型调用失败重试次数
+# 自动提取的竞品可能很多（LLM 一轮提取几十家）：深度分析只聚焦被提到最多的
+# 前 N 家，控制费用与报告长度；统计表/趋势不受影响，仍展示全部。
+ANALYSIS_MAX_COMPETITORS = 8
+
+_QUOTE_CHARS = "“”\"'‘’「」『』【】《》〈〉（）()[]<>"
+_WRAP_LEAD = ("例如", "比如", "譬如")
+
+
+def _strip_name_wraps(name: str) -> str:
+    """清洗 LLM 提取的包装杂质：如“XX有限公司”→XX有限公司（引号/括号/如/例如前缀）。"""
+    b = str(name or "").strip()
+    if not b:
+        return ""
+    had_quote = any(q in b for q in "“”\"'‘’「」『』")
+    for _ in range(4):
+        prev = b
+        b = b.strip(_QUOTE_CHARS + "，,。.;；:：、 ")
+        for p in _WRAP_LEAD:
+            if b.startswith(p) and len(b) > len(p) + 2:
+                b = b[len(p):].strip()
+        # 原本带引号的“如「XX」”形态：剥掉引号后再去“如”；不带引号的品牌名（如家酒店）不动
+        if had_quote and b.startswith("如") and len(b) > 2:
+            b = b[1:].strip()
+        if b == prev:
+            break
+    return b
 
 # 测试注入点：默认走真实分析模型
 _chat = llm_client.chat
@@ -77,11 +103,11 @@ def _rule_extract_companies(texts: list, exclude: list) -> list:
 
 
 def _clean_brands(names: list, self_related: list) -> list:
-    """清洗：排除自己品牌（含全称等子串形式）/信息平台噪音/超长；子串归一保留最长形式。"""
+    """清洗：包装杂质（引号/如/例如前缀）/自己品牌/信息平台噪音/超长；子串归一保留最长形式。"""
     cleaned = []
     for b in names:
-        b = str(b or "").strip()
-        if not b or len(b) > 40:
+        b = _strip_name_wraps(b)
+        if len(b) < 2 or len(b) > 40:
             continue
         if any(e and e in b for e in self_related):  # 子串匹配：全称“浙江威启…有限公司”也排除
             continue
@@ -348,14 +374,15 @@ def trigger_if_due(round_id: int, brand_id: int):
         answered = [r for r in results if r.answer_text]
         if not answered:  # metrics.total=0：无有效回答不生成
             return
-        mentioned_any = False
-        for r in answered:
-            for c in database.jloads(r.competitor_mentions, []) or []:
-                if str(c.get("name") or "").strip() in competitors:
-                    mentioned_any = True
-                    break
-            if mentioned_any:
-                break
+        # 提及判断规则法现算（2026-08-15）：不依赖落库 competitor_mentions，
+        # 与统计接口 _competitor_stats 口径一致，旧轮次没回算明细也能正确触发
+        from geo.analyzers import mention as mention_mod
+        brand_row = s.get(database.BrandProfile, brand_id)
+        brand_names = mention_mod.build_brand_names(
+            brand_row.to_dict() if brand_row else {})
+        mentioned_any = any(
+            mention_mod.competitor_mentions(r.answer_text, competitors, brand_names)
+            for r in answered)
         if not mentioned_any:  # 本轮竞品提及为空：无可分析内容
             return
         if not llm_client.is_configured():
@@ -393,8 +420,14 @@ def _generate_inner(round_id: int, brand_id: int, competitors: list):
         self_mentioned = len([r for r in results if r.answer_text and r.is_mentioned])
     # running 已提交；后续模型调用各自独立写库（api_call_log），不持有写事务
 
+    # 聚焦被提到次数最多的前 N 家（自动提取名单可能几十家）：控费用、控页面长度
+    hits = {name: len(evidence_map.get(name, []) or []) for name in competitors}
+    order = {name: i for i, name in enumerate(competitors)}
+    focus = sorted(competitors, key=lambda n: (-hits.get(n, 0), order.get(n, 999)))[
+        :ANALYSIS_MAX_COMPETITORS]
+
     competitors_data = []
-    for name in competitors:
+    for name in focus:
         evidences = evidence_map.get(name, []) or []
         if evidences:
             summary, source_types, features = _summarize_competitor(brand, name, evidences)
@@ -418,6 +451,8 @@ def _generate_inner(round_id: int, brand_id: int, competitors: list):
             for c in competitors_data
         ],
         "advice": advice,
+        "truncated": len(competitors) > len(focus),
+        "total": len(competitors),
     }
     with database.session_scope() as s:
         row = (s.query(database.CompetitorAnalysis)

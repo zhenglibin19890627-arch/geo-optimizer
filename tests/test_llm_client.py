@@ -3,7 +3,11 @@
 from geo.analyzers import llm_client
 
 
-def test_厂商默认deepseek():
+def test_厂商默认deepseek(monkeypatch):
+    # 未配置 analysis_vendor 时回落 deepseek（不读真实库，避免受用户设置影响）
+    def fake_get(key, default=None, session=None):
+        return default
+    monkeypatch.setattr(llm_client.database, "get_setting", fake_get)
     assert llm_client.get_analysis_vendor() == "deepseek"
 
 

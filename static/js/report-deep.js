@@ -306,6 +306,11 @@ function fetchDeepAnalysis(roundId) {
         ' <a class="deep-link-go" href="/static/settings.html#keys">去设置页</a></div>';
       return;
     }
+    if (status === "none") {
+      sec.innerHTML =
+        '<div class="deep-placeholder">这一轮 AI 回答里没有提到其他品牌（竞品），没有可分析的内容。统计和趋势不受影响。</div>';
+      return;
+    }
     renderDeepAnalysisDone(sec, res.data || {});
   }).catch(function () {
     if (deepAnalysisRoundId !== roundId) return;
@@ -319,6 +324,12 @@ function renderDeepAnalysisDone(sec, data) {
   var competitors = data.competitors || [];
   var advice = data.advice || [];
   var html = "";
+
+  if (data.truncated) {
+    html += '<div class="small-note" style="margin-bottom:8px">本轮共提取 ' +
+      (data.total || competitors.length) +
+      " 家竞品，深度分析聚焦被提到次数最多的前 8 家；全部竞品见上方统计表。</div>";
+  }
 
   competitors.forEach(function (c) {
     var name = c.name || "";

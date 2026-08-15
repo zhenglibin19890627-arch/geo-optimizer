@@ -552,14 +552,36 @@ def competitor_mentions():
 def competitor_analysis_status():
     brand_id = current_brand_id()
     round_id = request.args.get("round_id", type=int)
+    from geo.analyzers import competitor_analysis, llm_client
     with database.session_scope() as s:
         round_row = _resolve_round(s, brand_id, round_id)
+        rid = round_row.id
+        bid = round_row.brand_id or brand_id
         row = (s.query(database.CompetitorAnalysis)
-               .filter(database.CompetitorAnalysis.round_id == round_row.id).first())
-        if not row:
-            # 该轮未触发（无有效回答/竞品空/无提及）→ 按 unavailable 语义返回
-            return ok({"status": "unavailable", "data": None, "error_msg": ""},
-                      "获取成功")
-        return ok({"status": row.status or "pending",
-                   "data": database.jloads(row.data, None),
-                   "error_msg": row.error_msg or ""}, "获取成功")
+               .filter(database.CompetitorAnalysis.round_id == rid).first())
+        if row is not None and row.status != competitor_analysis.STATUS_UNAVAILABLE:
+            return ok({"status": row.status or "pending",
+                       "data": database.jloads(row.data, None),
+                       "error_msg": row.error_msg or ""}, "获取成功")
+        retry = False
+        if row is not None:
+            # 当时没钥匙记了 unavailable；现在钥匙已填 → 删行重试
+            if llm_client.is_configured():
+                s.delete(row)
+                retry = True
+            else:
+                return ok({"status": competitor_analysis.STATUS_UNAVAILABLE,
+                           "data": None, "error_msg": ""}, "获取成功")
+    # 2026-08-15：该轮还没有分析记录（旧轮次/收尾未触发/钥匙已补填）→ 查看报告时
+    # 按需触发；条件不满足返回 none（无竞品提及），前端展示中性空态而非误导文案
+    if row is None or retry:
+        competitor_analysis.trigger_if_due(rid, bid)
+        with database.session_scope() as s:
+            row2 = (s.query(database.CompetitorAnalysis)
+                    .filter(database.CompetitorAnalysis.round_id == rid).first())
+            if not row2:
+                return ok({"status": "none", "data": None, "error_msg": ""},
+                          "获取成功")
+            return ok({"status": row2.status or "pending",
+                       "data": database.jloads(row2.data, None),
+                       "error_msg": row2.error_msg or ""}, "获取成功")
