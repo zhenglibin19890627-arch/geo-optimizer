@@ -257,17 +257,10 @@ function updateEstimate() {
   const calls = qs * es;
   const minutesLow = Math.max(Math.round(calls / 50 * 10), 1);
   const minutesHigh = Math.max(Math.round(calls / 50 * 15), minutesLow + 1);
-  const bubble = ' <span class="concept"><span class="q-mark">?</span><span class="bubble">花费按各 AI 平台明码标价估算，实际以账单为准。豆包选 lite 档可以省不少钱，档位在设置页可换。</span></span>';
-  const extra = calls > 50 ? "（勾选越多，耗时和花费越多）" : "";
-  if (monMode === "web") {
-    document.getElementById("mon-estimate").innerHTML =
-      "预估：本轮约 " + minutesLow + "-" + (minutesHigh + 5) + " 分钟 · 约 2-5 元" + extra +
-      ' <span class="small-note">（联网费用为估算，以平台账单为准）</span>' + bubble;
-  } else {
-    const money = calls <= 50 ? "约 1-2.5 元" : "花费会相应增加";
-    document.getElementById("mon-estimate").innerHTML =
-      "预估：本轮约 " + minutesLow + "-" + minutesHigh + " 分钟 · " + money + extra + bubble;
-  }
+  const totalHigh = monMode === "web" ? minutesHigh + 5 : minutesHigh;
+  const extra = calls > 50 ? "（勾选越多，耗时越长）" : "";
+  document.getElementById("mon-estimate").innerHTML =
+    "预估：本轮约 " + minutesLow + "-" + totalHigh + " 分钟" + extra;
 }
 
 /* ---------------- 发起监测 ---------------- */
