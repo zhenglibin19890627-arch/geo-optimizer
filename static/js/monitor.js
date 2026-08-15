@@ -167,15 +167,20 @@ function renderEList() {
     row.appendChild(right);
     area.appendChild(row);
 
-    /* 同 key 多模型（常规/联网档均支持）：多档位引擎展开模型勾选（默认勾当前档）。
-       联网档优先用 web_model_options（平台联网白名单，如千问排除实时翻译模型） */
+    /* 同 key 多模型（常规/联网档均支持）：型号一律列出（哪怕只有一档），
+       多档位可勾选多个；联网档优先用 web_model_options（平台联网白名单） */
     const groupOpts = (webMode && k.web_model_options && k.web_model_options.length)
       ? k.web_model_options
       : k.model_options;
-    if (groupOpts && groupOpts.length > 1) {
+    if (groupOpts && groupOpts.length >= 1) {
       const mg = document.createElement("div");
       mg.className = "model-group";
-      mg.style.cssText = "margin:0 0 10px 28px;display:flex;flex-wrap:wrap;gap:4px 14px;";
+      mg.style.cssText = "margin:0 0 10px 28px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center";
+      const label = document.createElement("span");
+      label.className = "small-note";
+      label.style.cssText = "font-size:12px;flex:none";
+      label.textContent = "模型：";
+      mg.appendChild(label);
       groupOpts.forEach(function (opt) {
         /* 默认勾选：常规档=当前档；联网档=联网档模型（接口下发 web_model） */
         const defaultModel = webMode ? (k.web_model || k.model) : k.model;
