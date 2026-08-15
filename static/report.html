@@ -11,12 +11,10 @@
 
 <div class="page">
   <div class="page-title">报告</div>
-  <div class="page-sub">AI 对你的态度变好了还是变坏了、你和竞品谁更受 AI 喜欢、AI 从哪些网站认识你</div>
 
   <!-- 卡片A：常规 vs 联网 效果对比（近 30 轮汇总，固定口径） -->
   <div class="card hidden" id="compare-card">
     <div class="card-title">常规 vs 联网 效果对比</div>
-    <div class="card-sub">近 30 轮汇总（已停止、未成功的轮次不计入）：常规提问测「AI 记住了多少你」，联网提问测「AI 能不能搜到你」。</div>
     <div id="compare-body"></div>
   </div>
 
@@ -27,7 +25,6 @@
       <span class="concept"><span class="q-mark">?</span><span class="bubble">情感倾向：AI 提到你时是夸（正面）、说坏话（负面）、还是就事论事（中性）。</span></span>
       <span class="concept"><span class="q-mark">?</span><span class="bubble">净情感率：夸你的回答数减去说坏话的回答数，再除以总回答数。结果越接近 100% 越好。</span></span>
     </div>
-    <div class="card-sub">把每次监测连成线，一眼看出 AI 对你的态度变化</div>
     <div class="small-note">蓝线是常规提问、绿线是联网提问，都已排除已停止、未成功的轮次。</div>
     <div class="tabs">
       <div class="tab-item active" data-metric="score">可见度评分</div>
@@ -41,7 +38,6 @@
   <div class="card" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
     <div style="flex:1;min-width:220px">
       <div class="card-title" style="margin:0">选择查看哪一轮</div>
-      <div class="score-sub" style="margin:0">下方是所选轮次详情；历史趋势是近 30 轮总览</div>
     </div>
     <select class="select" id="report-round-select" style="width:auto;min-width:220px"></select>
     <div class="score-sub" id="report-round-time" style="margin:0"></div>
@@ -52,9 +48,7 @@
     <div class="card-title">引用信源排行
       <span class="concept"><span class="q-mark">?</span><span class="bubble">AI 回答时引用了哪些网站的信息。知道这些，你就知道该把内容布局到哪里去。</span></span>
     </div>
-    <div class="card-sub">AI 回答时引用了哪些网站的信息（同一网站被多家 AI 引用时次数累计，并标注是哪些 AI 引用的）</div>
     <div id="sources-area"></div>
-    <div class="small-note mt-8">AI 是从这些网站了解到你的。想让 AI 更多提到你，可以优先在这些网站布局内容。</div>
   </div>
 
   <!-- 卡片B：竞品深度分析（03b 7.2） -->
@@ -73,12 +67,6 @@
       <div id="deep-trend-chart" class="mt-8" style="width:100%;height:260px"></div>
     </div>
     <div id="deep-analysis-section" class="mt-16"></div>
-  </div>
-
-  <!-- 卡片C：R1 口径说明块（03b 7.3） -->
-  <div class="info-bar r1-note">
-    <div class="r1-title">小提示：监测结果和在 App 里问为什么不一样？</div>
-    <div>系统是通过接口了解 AI 已掌握的知识；你在 App 或网页上手动提问看到的内容，可能与监测结果略有不同（App 版通常带实时联网搜索），这是正常现象。</div>
   </div>
 
   <!-- 卡片4：本轮详情（引擎明细） -->

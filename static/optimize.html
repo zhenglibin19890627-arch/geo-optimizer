@@ -11,14 +11,12 @@
 
 <div class="page">
   <div class="page-title">内容优化</div>
-  <div class="page-sub">把"想被 AI 引用的内容"交给系统，拿回"改哪里、怎么改"的具体建议</div>
 
   <div class="grid-2" style="grid-template-columns: 1.4fr 1fr">
     <div>
       <!-- 卡片1：输入内容 -->
       <div class="card">
         <div class="card-title">输入内容</div>
-        <div class="card-sub">选一种方式，把要优化的内容交给系统</div>
         <div class="tabs">
           <div class="tab-item active" data-tab="url">网页链接</div>
           <div class="tab-item" data-tab="text">粘贴文字</div>
@@ -27,7 +25,7 @@
         <div class="field" id="url-field">
           <label class="field-label">网页链接</label>
           <input class="input" id="opt-url" placeholder="https://你的网页地址">
-          <div class="field-hint">请只提交你自己拥有或有权使用的页面内容进行分析。系统只读取公开可访问的网页，不会绕过登录、付费墙或验证码，抓取内容仅保存在你电脑上。</div>
+          <div class="field-hint">请只提交你自己拥有或有权使用的内容。</div>
         </div>
 
         <div class="field hidden" id="text-field">
@@ -59,7 +57,6 @@
       <div class="card-head">
         <div>
           <div class="card-title">历史记录</div>
-          <div class="card-sub">点一条，回看当时的分析结果</div>
         </div>
       </div>
       <div id="opt-history-area"></div>

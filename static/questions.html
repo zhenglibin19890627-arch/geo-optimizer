@@ -11,25 +11,20 @@
 
 <div class="page">
   <div class="page-title">问题库</div>
-  <div class="page-sub">管理"用户会去问 AI 的问题"——用关键词扩展、手动增删、分组整理、开关参与监测</div>
 
   <!-- 卡片1：用关键词扩展更多问法 -->
   <div class="card">
     <div class="card-title">用关键词扩展更多问法</div>
-    <div class="card-sub">输入几个词，系统帮你变出更多用户可能问 AI 的问题</div>
     <div class="field">
       <label class="field-label">本次优化目的/方向（选填）</label>
       <input class="input" id="exp-direction" placeholder="比如：这次重点突出智慧教室改造案例">
-      <div class="field-hint">填了之后，AI 生成的问题会围绕这个方向，和你的优化目标更相关。</div>
     </div>
     <div style="display:flex;gap:12px;flex-wrap:wrap">
       <input class="input" id="exp-keywords" style="flex:1;min-width:240px" placeholder="输入关键词，多个用逗号分开">
       <button class="btn btn-primary" id="exp-generate">生成问法</button>
     </div>
 
-    <div class="mt-16" id="exp-empty-hint">
-      <div class="score-sub">输入关键词，系统帮你变出更多问法</div>
-    </div>
+    <div class="mt-16" id="exp-empty-hint"></div>
 
     <div class="hidden" id="exp-waiting">
       <div style="display:flex;align-items:center;gap:12px">
@@ -39,7 +34,6 @@
     </div>
 
     <div class="hidden" id="exp-result">
-      <div class="card-sub mt-8">生成的问法（勾选想要的，点"加入问题库"）</div>
       <div class="gen-grid" id="exp-grid"></div>
       <div class="mt-12" style="display:flex;gap:12px">
         <button class="btn btn-primary" id="exp-add">加入问题库(0)</button>
@@ -53,7 +47,6 @@
     <div class="card-head">
       <div>
         <div class="card-title">我的问题库（<span id="qbank-count" class="num">0</span> 个）</div>
-        <div class="card-sub">这些问题是监测时要拿去问 AI 的</div>
       </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap">
         <button class="btn btn-primary" id="qbank-add-btn">+ 手动添加</button>

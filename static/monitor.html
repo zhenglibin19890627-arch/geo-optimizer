@@ -11,14 +11,12 @@
 
 <div class="page">
   <div class="page-title">监测中心</div>
-  <div class="page-sub">发起一轮"问 5 家 AI"的监测，实时看进度；也可以手动粘贴备用</div>
 
   <!-- 卡片1：发起监测 -->
   <div class="card">
     <div class="card-head">
       <div>
         <div class="card-title">发起监测</div>
-        <div class="card-sub">选好问题和 AI，系统会替你把问题挨家问一遍</div>
       </div>
     </div>
 
@@ -29,16 +27,14 @@
     <div class="mode-select" id="mode-select">
       <div class="mode-card active" data-mode="base">
         <div class="mode-title"><span class="mode-dot"></span>常规提问（推荐）</div>
-        <div class="mode-desc">AI 凭自己已经记住的知识回答。</div>
       </div>
       <div class="mode-card" data-mode="web">
         <div class="mode-title"><span class="mode-dot"></span>联网提问</div>
-        <div class="mode-desc">AI 先上网搜最新的内容再回答，能更快看到你新发的内容。</div>
       </div>
     </div>
 
     <div class="card-title mt-16">问题</div>
-    <div class="score-sub mb-8">问题库的勾选情况 <span class="num" id="q-count-text">已选 0/0 个问题</span> <a class="btn-text" href="/static/questions.html">去问题库管理 →</a></div>
+    <div class="score-sub mb-8"><span class="num" id="q-count-text">已选 0/0 个问题</span> <a class="btn-text" href="/static/questions.html">去问题库管理 →</a></div>
     <div style="display:flex;align-items:center;gap:8px" class="mb-8">
       <label class="checkbox-row" style="padding:0"><input type="checkbox" id="q-select-all"> 全选</label>
     </div>
@@ -46,7 +42,7 @@
 
     <div class="card-title mt-16">引擎</div>
     <div class="hidden orange-banner" id="mon-web-banner">部分引擎暂不支持联网提问，已在下方置灰。</div>
-    <div class="score-sub mb-8">哪些 AI 参与本轮监测 <span class="num" id="e-count-text">已选 0/0 家</span></div>
+    <div class="score-sub mb-8"><span class="num" id="e-count-text">已选 0/0 家</span></div>
     <div style="display:flex;align-items:center;gap:8px" class="mb-8">
       <label class="checkbox-row" style="padding:0"><input type="checkbox" id="e-select-all"> 全选</label>
     </div>
@@ -84,7 +80,6 @@
   <div class="card">
     <div class="collapse-head" id="paste-toggle">▸ 手动粘贴备用通道</div>
     <div class="collapse-body" id="paste-body">
-      <div class="card-sub mt-8">如果某家 AI 暂时不好用，你也可以自己在那边问完，把回答贴回来让系统分析</div>
       <div class="form-row mt-8">
         <div class="field" style="margin-bottom:12px">
           <label class="field-label">引擎</label>
@@ -110,7 +105,7 @@
     <div class="card-head">
       <div>
         <div class="card-title">监测轮次列表</div>
-        <div class="card-sub">每次监测都会存下来，方便你回看 AI 每次怎么评价你。提及率 <span class="concept"><span class="q-mark">?</span><span class="bubble">这一轮问了 100 个问题，AI 回答里提到你的占多少。比如 40% 就是 10 个回答里有 4 个提到你。</span></span></div>
+        <div class="card-sub">提及率 <span class="concept"><span class="q-mark">?</span><span class="bubble">这一轮问了 100 个问题，AI 回答里提到你的占多少。比如 40% 就是 10 个回答里有 4 个提到你。</span></span></div>
       </div>
     </div>
     <div id="round-list-area"></div>

@@ -168,9 +168,6 @@ function buildDeepTable(items, roundId, isRange) {
   }
 
   var html = "";
-  /* 竞品一律为系统从 AI 回答里自动提取（2026-08-15 起无竞品档案设置） */
-  html += '<div class="small-note" style="margin-bottom:8px">竞品为系统从 AI 回答里自动提取，' +
-    "每轮结果可能不同。</div>";
   html += '<div class="deep-sec-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
     "<span>" + esc(rangeTitle) + "</span>" +
     (rest.length
@@ -378,7 +375,6 @@ function renderDeepAnalysisDone(sec, data) {
 
   if (advice.length) {
     html += '<div class="deep-advice-head mt-16">下一步优化方向</div>' +
-      '<div class="card-sub">系统根据「竞品被提到、你没有被提到」的差距生成建议。建议仅供参考，不保证做了之后 AI 就一定会提到你。</div>' +
       '<div class="advice-stack">' +
       advice.map(function (a) {
         return '<div class="advice-card">' +
