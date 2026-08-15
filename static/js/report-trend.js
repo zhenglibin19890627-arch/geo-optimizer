@@ -33,7 +33,7 @@ function loadRoundsSelect(selectId) {
     sel.innerHTML = "";
     const allOpt = document.createElement("option");
     allOpt.value = "";
-    allOpt.textContent = "最近 30 轮（趋势图范围）";
+    allOpt.textContent = "最近 30 轮";
     sel.appendChild(allOpt);
 
     items.forEach(function (r) {
@@ -71,6 +71,9 @@ function loadRoundsSelect(selectId) {
       loadCompareCard();
       loadDeepCard();
     } else if (items.length) {
+      /* 默认选最新一轮：下拉框回填该轮（此前只设 repRoundId 不设 sel.value，
+         导致 repSelectedRound() 读不到选中轮、常规轮的信源卡不隐藏） */
+      sel.value = String(items[0].id);
       repRoundId = items[0].id;
       repShowRoundHint();
       loadSources();
