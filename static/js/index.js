@@ -148,17 +148,24 @@ function renderLastRound(area, lastRound) {
   geoApi("/api/report/competitor?round_id=" + lastRound.id).then(function (data) {
     const items = data.items || [];
     const mine = items.find(function (i) { return i.is_self; });
-    const others = items.filter(function (i) { return !i.is_self && i.mention_count > 0; });
+    const others = items
+      .filter(function (i) { return !i.is_self && i.mention_count > 0; })
+      .sort(function (a, b) { return (b.mention_count || 0) - (a.mention_count || 0); });
     const line = document.getElementById("competitor-line");
     if (!line) return;
-    if (mine) {
-      let text = "你被提到 " + mine.mention_count + " 次";
-      const othersText = others.map(function (i) { return i.name + " 被提到 " + i.mention_count + " 次"; });
-      if (othersText.length) text += "，" + othersText.join("，");
-      line.textContent = "竞品对比：" + text;
-    } else {
-      line.textContent = "竞品对比：暂无可对比的数据";
+    const shortName = function (n) {
+      n = String(n || "");
+      return n.length > 12 ? n.slice(0, 12) + "…" : n;
+    };
+    let text = "";
+    if (mine) text = "你被提到 " + (mine.mention_count || 0) + " 次";
+    const top = others.slice(0, 3);
+    if (top.length) {
+      text += (text ? "；竞品：" : "竞品：") +
+        top.map(function (i) { return shortName(i.name) + " " + (i.mention_count || 0) + " 次"; }).join("、") +
+        (others.length > 3 ? "，另 " + (others.length - 3) + " 家" : "");
     }
+    line.textContent = "竞品对比：" + (text || "暂无可对比的数据");
   }).catch(function () {
     const line = document.getElementById("competitor-line");
     if (line) line.textContent = "竞品对比：暂无可对比的数据";
