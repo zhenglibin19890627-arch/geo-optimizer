@@ -355,7 +355,9 @@ def _run_monitor_task_inner(task_id: int):
 
         brand = database.get_brand(brand_id)
         brand_names = mention.build_brand_names(brand)
-        competitors = brand.get("competitors") or []
+        # 竞品设置已取消（2026-08-15）：分析时不传档案竞品；
+        # 本轮竞品由收尾自动提取后回算顺位/竞品明细（见 competitor_analysis.finalize_competitors）
+        competitors = []
         questions = {q.id: q for q in s.query(database.QuestionBank)
                      .filter(database.QuestionBank.id.in_(question_ids)).all()}
         q_objects = [questions[qid] for qid in question_ids if qid in questions]
@@ -502,18 +504,13 @@ def _run_monitor_task_inner(task_id: int):
             _cancelled_task_ids.discard(task_id)
         s.commit()
 
-    # 收尾异步触发竞品深度分析（02d 3.3.3）：仅 done 且非取消分支；条件不满足
-    # 或钥匙缺失时自行降级（不生成/unavailable），绝不中断本轮监测收尾
+    # 收尾异步：自动提取本轮竞品 → 回算顺位/竞品明细 → 触发竞品深度分析
+    # （2026-08-15 起竞品不再来自品牌设置，全部由回答自动提取）
+    # 仅 done 且非取消分支；条件不满足或钥匙缺失时自行降级，绝不中断本轮监测收尾
     if not cancelled:
         try:
-            competitor_analysis.trigger_if_due(round_id, brand_id)
-        except Exception:
-            import traceback
-            traceback.print_exc()
-        # 收尾异步自动提取本轮回答中出现的品牌（纳入竞品分析）；零阻断
-        try:
             threading.Thread(
-                target=competitor_analysis.extract_auto_brands,
+                target=competitor_analysis.finalize_competitors,
                 args=(round_id, brand_id), daemon=True).start()
         except Exception:
             import traceback

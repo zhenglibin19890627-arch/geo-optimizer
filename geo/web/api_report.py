@@ -149,8 +149,8 @@ def report_competitor():
         total = max(len(answered), 1)
         brand = database.get_brand(brand_id)
         auto = database.jloads(round_row.auto_competitors, []) or []
-        entities = ([brand.get("brand_name") or "我方"]
-                    + (brand.get("competitors") or []) + list(auto))
+        # 2026-08-15：竞品一律取本轮自动提取名单
+        entities = [brand.get("brand_name") or "我方"] + list(auto)
         items = []
         for name in entities:
             name = str(name).strip()
@@ -160,7 +160,7 @@ def report_competitor():
             items.append({"name": name, "mention_count": count,
                           "mention_rate": round(count / total, 3),
                           "is_self": name == (brand.get("brand_name") or "")})
-        # 去重（自动竞品可能与档案竞品重名）
+        # 去重（自动提取名单可能含重复项）
         seen = set()
         items = [it for it in items
                  if not (it["name"] in seen or seen.add(it["name"]))]
@@ -270,7 +270,7 @@ def _competitor_stats(s, round_id: int, competitors: list, self_name: str,
                       brand_names: list = None) -> list:
     """逐实体统计：{name, mention_count, mentioned_answers, avg_first_position, is_self}。
 
-    竞品名单为「品牌档案竞品 + 本轮自动提取竞品」并集，统一规则法现算
+    竞品名单一律取本轮自动提取名单，统一规则法现算
     （mention.competitor_mentions），口径一致且不依赖落库明细。
     """
     from geo.analyzers import mention as mention_mod
@@ -361,9 +361,7 @@ def competitor_detail():
         brand = database.get_brand(brand_id)
         from geo.analyzers import mention as mention_mod
         brand_names = mention_mod.build_brand_names(brand)
-        archive_comps = [str(c).strip() for c in (brand.get("competitors") or [])
-                         if str(c).strip()]
-        # 竞品名单 = 品牌档案竞品 + 本轮自动提取竞品（并集）
+        # 2026-08-15：竞品一律来自自动提取（品牌档案竞品已取消）
         if round_id:
             round_row = _resolve_round(s, brand_id, round_id)
             auto = database.jloads(round_row.auto_competitors, []) or []
@@ -375,15 +373,14 @@ def competitor_detail():
             rounds = _recent_normal_rounds(s, brand_id, limit=30, mode=mode)
             if not rounds:
                 return ok({"round_id": None, "round_time": None,
-                           "archive_empty": not archive_comps, "range": "30",
+                           "range": "30",
                            "items": []}, "获取成功")
             auto = []
             for rr in rounds:
                 auto.extend(database.jloads(rr.auto_competitors, []) or [])
             round_time = None
             round_label = "近 30 轮"
-        competitors = [str(c).strip() for c in
-                       (brand.get("competitors") or []) + list(auto)]
+        competitors = [str(c).strip() for c in list(auto)]
         competitors = list(dict.fromkeys(c for c in competitors if c))
         if not competitors:
             items = []
@@ -398,7 +395,6 @@ def competitor_detail():
         return ok({
             "round_id": round_id,
             "round_time": round_time,
-            "archive_empty": not archive_comps,
             "range": "30" if not round_id else "round",
             "round_label": round_label,
             "items": items,
@@ -433,8 +429,6 @@ def competitor_trend():
 
     with database.session_scope() as s:
         brand = database.get_brand(brand_id)
-        archive = [str(c).strip() for c in (brand.get("competitors") or [])]
-        archive = list(dict.fromkeys(c for c in archive if c))
         status_map = monitor_task.task_status_map(s)
         normal = [r for r in (s.query(database.MonitorRound)
                               .filter(database.MonitorRound.brand_id == brand_id)
@@ -445,15 +439,21 @@ def competitor_trend():
             raise ApiError("还没有任何监测数据，先发起一轮监测吧")
         labels = [f"第{i}轮" for i in range(1, len(rows) + 1)]
 
+        # 2026-08-15：竞品一律来自自动提取——取范围内各轮 auto_competitors 并集
+        auto = []
+        for r in rows:
+            auto.extend(database.jloads(r.auto_competitors, []) or [])
+        auto = list(dict.fromkeys(str(c).strip() for c in auto if str(c).strip()))
+
         series = []
         self_name = brand.get("brand_name") or ""
         if self_name:
             series.append({"name": self_name, "values": [
                 _round_self_mention_total(s, r.id) for r in rows]})
         if wanted:
-            names = [n for n in archive if n in wanted]
+            names = [n for n in auto if n in wanted]
         else:
-            names = archive
+            names = auto
         for name in names:
             series.append({"name": name, "values": [
                 _round_mention_total(s, r.id, name) for r in rows]})
@@ -496,14 +496,14 @@ def competitor_mentions():
     from geo.engines import get_adapter
     with database.session_scope() as s:
         brand = database.get_brand(brand_id)
-        archive = [str(c).strip() for c in (brand.get("competitors") or [])]
         brand_names = mention_mod.build_brand_names(brand)
         # 我方品牌（含别名）走我方命中明细分支；竞品名单内走既有竞品分支
         is_self = competitor in brand_names
         round_row = _resolve_round(s, brand_id, round_id)
         auto = database.jloads(round_row.auto_competitors, []) or []
-        if not is_self and competitor not in archive and competitor not in auto:
-            raise ApiError("这个竞品不在当前品牌档案或本轮自动提取的名单里")
+        # 2026-08-15：竞品一律来自本轮自动提取名单
+        if not is_self and competitor not in auto:
+            raise ApiError("这个竞品不在本轮自动提取的名单里")
         results = (s.query(database.MonitorResult)
                    .filter(database.MonitorResult.round_id == round_row.id)
                    .order_by(database.MonitorResult.id.asc()).all())

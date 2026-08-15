@@ -57,14 +57,14 @@ function loadDeepStat(roundId) {
     deepRoundTime = data.round_time || "";
     var items = data.items || [];
     if (!items.length) {
-      /* 竞品档案为空：整卡替换为引导（03b 7.2.10） */
+      /* 本轮回答里没有提取到其他品牌：整卡替换为空状态（2026-08-15 竞品全部自动提取） */
       guide.classList.remove("hidden");
       guide.innerHTML = "";
       guide.appendChild(emptyState(
         "",
-        "先到设置里填上你的竞争对手名单，这里才会出现竞品分析。",
-        "去设置页",
-        function () { location.href = "/static/settings.html#brand"; }
+        "本轮 AI 回答里没有提取到其他品牌（竞品），暂无可对比数据。",
+        "",
+        null
       ));
       sec.innerHTML = "";
       trendSec.classList.add("hidden");
@@ -74,21 +74,21 @@ function loadDeepStat(roundId) {
     guide.classList.add("hidden");
     trendSec.classList.remove("hidden");
     anaSec.classList.remove("hidden");
-    renderDeepTable(items, roundId, !!data.archive_empty, isRange);
+    renderDeepTable(items, roundId, isRange);
   }).catch(function () {
     sec.innerHTML = "";
     sec.appendChild(emptyState("", "没有收集到回答，没有可统计的数据。", "", null));
   });
 }
 
-function renderDeepTable(items, roundId, archiveEmpty, isRange) {
+function renderDeepTable(items, roundId, isRange) {
   /* 数据缺失（轮次无回答）→ 空状态；否则正常表格 */
   var allZero = items.every(function (it) {
     return !(it.mention_count || 0) && !(it.mentioned_answers || 0);
   });
   if (allZero) {
     if (isRange) {
-      buildDeepTable(items, roundId, archiveEmpty, isRange);
+      buildDeepTable(items, roundId, isRange);
       return;
     }
     geoApi("/api/monitor/rounds/" + roundId).then(function (d) {
@@ -98,17 +98,17 @@ function renderDeepTable(items, roundId, archiveEmpty, isRange) {
         sec.innerHTML = "";
         sec.appendChild(emptyState("", "这轮没有收集到回答，没有可统计的数据。", "", null));
       } else {
-        buildDeepTable(items, roundId, archiveEmpty, isRange);
+        buildDeepTable(items, roundId, isRange);
       }
     }).catch(function () {
-      buildDeepTable(items, roundId, archiveEmpty, isRange);
+      buildDeepTable(items, roundId, isRange);
     });
     return;
   }
-  buildDeepTable(items, roundId, archiveEmpty, isRange);
+  buildDeepTable(items, roundId, isRange);
 }
 
-function buildDeepTable(items, roundId, archiveEmpty, isRange) {
+function buildDeepTable(items, roundId, isRange) {
   var sec = document.getElementById("deep-stat-section");
   var selfName = "";
   items.forEach(function (it) { if (it.is_self) selfName = it.name; });
@@ -168,11 +168,9 @@ function buildDeepTable(items, roundId, archiveEmpty, isRange) {
   }
 
   var html = "";
-  if (archiveEmpty) {
-    html += '<div class="small-note" style="margin-bottom:8px">档案里还没填竞品名单，' +
-      "当前竞品是系统从回答里自动提取的；" +
-      '<a class="btn-text" href="/static/settings.html#brand">去设置页填竞品</a>，对比会更全。</div>';
-  }
+  /* 竞品一律为系统从 AI 回答里自动提取（2026-08-15 起无竞品档案设置） */
+  html += '<div class="small-note" style="margin-bottom:8px">竞品为系统从 AI 回答里自动提取，' +
+    "每轮结果可能不同。</div>";
   html += '<div class="deep-sec-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
     "<span>" + esc(rangeTitle) + "</span>" +
     (rest.length

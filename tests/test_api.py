@@ -332,6 +332,7 @@ def test_报告接口趋势信源竞品(client):
             task_id=task.id, brand_id=1, mode="normal", mention_rate=0.5,
             net_sentiment=0.3, overall_score=70,
             summary=database.jdumps({"total_answers": 2, "mentioned_answers": 1}),
+            auto_competitors=database.jdumps(["好孩子"]),
             finished_at=datetime.now())
         s.add(round_row)
         s.flush()
@@ -381,7 +382,7 @@ def test_报告接口趋势信源竞品(client):
     assert items[0]["count"] == 1
     assert items[0]["engines"][0]["engine_code"] == "deepseek"
 
-    # 竞品对比（自己 + 档案竞品）
+    # 竞品对比（自己 + 本轮自动提取竞品）
     r = client.get(f"/api/report/competitor?brand_id=1&round_id={rid}")
     items = r.get_json()["data"]["items"]
     by_name = {it["name"]: it for it in items}

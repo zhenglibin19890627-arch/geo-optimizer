@@ -39,7 +39,8 @@ def _validate_brand_fields(data: dict) -> dict:
         "product_name": product_name,
         "brand_aliases": _split_list(data.get("brand_aliases")),
         "brand_description": str(data.get("brand_description") or "").strip(),
-        "competitors": _split_list(data.get("competitors")),
+        # 竞品设置已取消（2026-08-15）：竞品由 AI 回答自动提取，不再接收配置
+        "competitors": [],
         "auto_monitor": True if data.get("auto_monitor") is None else bool(data.get("auto_monitor")),
     }
 

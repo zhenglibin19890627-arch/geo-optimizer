@@ -86,8 +86,6 @@ def expand_questions(keywords: list, count: int = 10, direction: str = None,
         desc = str(brand.get("brand_description") or "").strip()
         if len(desc) > 300:
             desc = desc[:300] + "……"
-        competitors = [str(c).strip() for c in (brand.get("competitors") or [])
-                       if str(c).strip()]
         intro_parts = []
         if product:
             intro_parts.append(f"核心产品/服务：{product}")
@@ -102,8 +100,6 @@ def expand_questions(keywords: list, count: int = 10, direction: str = None,
             clue_parts.append(f"业务：{product}")
         if desc:
             clue_parts.append(f"卖点/场景：{desc}")
-        if competitors:
-            clue_parts.append(f"同类竞争：{'、'.join(competitors)}")
         clues = "；".join(clue_parts) or "（暂无简介，结合品牌名与关键词推断）"
 
         prompt = f"""# Role: GEO 品牌曝光测试问题生成专家
@@ -118,7 +114,6 @@ def expand_questions(keywords: list, count: int = 10, direction: str = None,
 - 优化方向：{direction or "（未指定，结合品牌定位自行把握）"}
 - 核心关键词：{'、'.join(keywords)}
 - 目标用户画像（可选）：（未提供）
-- 竞品品牌（可选）：{'、'.join(competitors) if competitors else "（未提供）"}
 
 ## Task
 一次性生成 **{count} 个测试问题**，用于模拟真实用户在 AI 搜索引擎中的提问，验证 AI 回答中是否会自然推荐/提及目标品牌（{brand_name}）。
@@ -144,7 +139,6 @@ def expand_questions(keywords: list, count: int = 10, direction: str = None,
 
 ### 三、与品牌信息的关联（自然融入，不强制）
 - 参考品牌简介中的关键词、使用场景、人群标签来构造问题上下文，使 AI 回答时更可能推荐目标品牌。
-- 若提供了竞品，可设计 1-2 个"竞品对比"问题，观察 AI 是否同时提及目标品牌。
 - 每条问题的 expected_trigger 写明：预期可能触发品牌被提及的信号（线索标签或场景信号），没有就写"自然推荐"。
 
 ## Output Format

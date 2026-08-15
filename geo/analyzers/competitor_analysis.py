@@ -100,11 +100,11 @@ def _clean_brands(names: list, self_related: list) -> list:
 
 
 def extract_auto_brands(round_id: int, brand_id: int):
-    """收尾异步：从本轮回答中提取被提到的品牌，存入 round.auto_competitors。
+    """从本轮回答中提取被提到的品牌，存入 round.auto_competitors，并回算
+    各回答的顺位/竞品明细（2026-08-15 起竞品全部来自自动提取，档案竞品已取消）。
 
     双保险：分析模型（LLM）语义提取 + 规则法（企业名模式）兜底合并；
     无分析钥匙时规则法仍可用（零成本）。失败静默，绝不影响监测收尾。
-    提取结果供竞品统计按「档案竞品 + 自动提取竞品」并集纳入分析。
     """
     try:
         brand = database.get_brand(brand_id)
@@ -149,9 +149,34 @@ def extract_auto_brands(round_id: int, brand_id: int):
             row = s.get(database.MonitorRound, round_id)
             if row:
                 row.auto_competitors = database.jdumps(cleaned)
+            # 回算：用自动提取的竞品名单重算每条回答的顺位与竞品明细
+            # （分析时无档案竞品，position 暂为 1/竞品明细为空）
+            from geo.analyzers import mention as mention_mod
+            rows = (s.query(database.MonitorResult)
+                    .filter(database.MonitorResult.round_id == round_id).all())
+            brand_names = [n for n in dict.fromkeys([self_name] + aliases) if n]
+            for r in rows:
+                if not r.answer_text:
+                    continue
+                mentioned = mention_mod.mention_count(r.answer_text, brand_names) > 0
+                if mentioned:
+                    r.mention_position = mention_mod.brand_position(
+                        r.answer_text, brand_names, cleaned)
+                r.competitor_mentions = database.jdumps(
+                    mention_mod.competitor_mentions(r.answer_text, cleaned, brand_names))
     except Exception:
         # 静默：自动提取失败不影响监测收尾与既有竞品分析
         return
+
+
+def finalize_competitors(round_id: int, brand_id: int):
+    """监测收尾统一入口：提取竞品（含回算）→ 触发竞品深度分析。"""
+    extract_auto_brands(round_id, brand_id)
+    try:
+        trigger_if_due(round_id, brand_id)
+    except Exception:
+        import traceback
+        traceback.print_exc()
 
 
 def _chat_with_retry(prompt: str, **kwargs) -> str:
@@ -298,12 +323,20 @@ def _set_failed(round_id: int, message: str):
 
 
 def trigger_if_due(round_id: int, brand_id: int):
-    """监测收尾触发（02d 3.3.3）：条件全满足才生成，钥匙缺失记 unavailable。"""
-    brand = database.get_brand(brand_id)
-    competitors = [str(c).strip() for c in (brand.get("competitors") or [])]
-    competitors = list(dict.fromkeys(c for c in competitors if c))
-    if not competitors:
-        return
+    """监测收尾触发（02d 3.3.3）：条件全满足才生成，钥匙缺失记 unavailable。
+
+    2026-08-15 起竞品名单一律取本轮自动提取结果（round.auto_competitors），
+    不再使用品牌档案配置的竞品。
+    """
+    with database.session_scope() as s:
+        round_row = s.get(database.MonitorRound, round_id)
+        if not round_row:
+            return
+        competitors = [str(c).strip() for c in
+                       (database.jloads(round_row.auto_competitors, []) or [])]
+        competitors = list(dict.fromkeys(c for c in competitors if c))
+        if not competitors:
+            return
     with database.session_scope() as s:
         # 每轮至多 1 条：重复收尾不重复生成
         existing = (s.query(database.CompetitorAnalysis)

@@ -83,7 +83,6 @@ def generate_suggestions(content: str, brand: dict, keywords: list) -> list:
     brand_name = brand.get("brand_name") or "我的品牌"
     product = brand.get("product_name") or ""
     desc = brand.get("brand_description") or ""
-    comps = "、".join(brand.get("competitors") or []) or "（未填写）"
     kw_text = "、".join([k for k in keywords if k]) or "（未填写）"
 
     excerpt = content[:40000]
@@ -91,7 +90,7 @@ def generate_suggestions(content: str, brand: dict, keywords: list) -> list:
         "你是一名中文 GEO（生成式引擎优化）顾问，帮助品牌的内容更容易被豆包、DeepSeek、"
         "Kimi、通义千问等 AI 引擎在回答用户问题时引用和推荐。\n"
         f"品牌名：{brand_name}\n产品：{product}\n品牌一句话介绍：{desc}\n"
-        f"竞争对手：{comps}\n希望覆盖的关键词：{kw_text}\n"
+        f"希望覆盖的关键词：{kw_text}\n"
         "下面是用户提交的网页/文章内容：\n"
         f"\"\"\"\n{excerpt}\n\"\"\"\n"
         "请从 GEO 角度给出 5-8 条具体、可执行的优化建议，例如：结构化信息（小标题、FAQ）、"

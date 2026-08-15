@@ -14,17 +14,7 @@ let setKeys = [];
 let setBrands = [];
 let setBrandData = {};
 
-let setBrandEditPending = false;
-
-/* 从报告页竞品空引导跳来：#brand → 滚到品牌管理卡并自动打开当前品牌编辑弹窗（B3） */
-function triggerBrandEdit() {
-  const el = document.getElementById("brand");
-  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-  const cur = setBrandData[getBrandId()];
-  if (cur) {
-    setTimeout(function () { openBrandEditModal(cur.id); }, 300);
-  }
-}
+/* 顶栏「＋ 新建品牌」跳转：#brand-new → 自动打开新建品牌弹窗（B3） */
 
 function setInit() {
   loadBrands();
@@ -53,8 +43,6 @@ function setInit() {
     setTimeout(function () {
       openBrandCreateModal();
     }, 300);
-  } else if (hash === "#brand") {
-    setBrandEditPending = true;
   } else if (hash === "#keys" || hash === "#schedule") {
     setTimeout(function () {
       const el = document.getElementById(hash.slice(1));
@@ -64,7 +52,6 @@ function setInit() {
   /* 已在设置页时顶栏「＋ 新建品牌」再次点击（hash 不变不重载）兜底 */
   window.addEventListener("hashchange", function () {
     if (location.hash === "#brand-new") openBrandCreateModal();
-    else if (location.hash === "#brand") triggerBrandEdit();
   });
 }
 
@@ -77,10 +64,6 @@ function loadBrands() {
     setBrands.forEach(function (b) { setBrandData[b.id] = b; });
     renderBrandList();
     updateScheduleBrandCount();
-    if (setBrandEditPending) {
-      setBrandEditPending = false;
-      triggerBrandEdit();
-    }
   }).catch(function () {});
 }
 
@@ -102,11 +85,7 @@ function renderBrandList() {
 
 function brandSubLine(b) {
   const product = (b.product_name || "").trim();
-  const compCount = (b.competitors || []).length;
-  if (product && compCount > 0) return product + " · 竞品 " + compCount + " 家";
-  if (product) return product;
-  if (compCount > 0) return "竞品 " + compCount + " 家";
-  return "";
+  return product;
 }
 
 function renderBrandRow(b) {
@@ -145,7 +124,6 @@ function saveBrandAutoMonitor(id, newVal) {
     product_name: base.product_name || "",
     brand_aliases: base.brand_aliases || [],
     brand_description: base.brand_description || "",
-    competitors: base.competitors || [],
     auto_monitor: newVal,
   }).then(function (saved) {
     setBrandData[id] = saved;
@@ -173,8 +151,6 @@ function openBrandEditModal(id) {
     '<div class="field"><label class="field-label">一句话介绍</label>' +
     '<textarea class="textarea" id="eb-desc" style="min-height:80px" placeholder="告诉 AI 你是谁，最多 200 字">' + esc(b.brand_description || "") + "</textarea>" +
     '<div class="field-hint" id="eb-desc-count">' + ((b.brand_description || "").length) + "/200 字</div></div>" +
-    '<div class="field"><label class="field-label">竞品名单</label>' +
-    '<input class="input" id="eb-comp" placeholder="多个用逗号分开，比如：竞品A, 竞品B" value="' + esc((b.competitors || []).join(", ")) + '"></div>' +
     '<div class="field" style="display:flex;align-items:center;gap:10px">' +
     '<label class="switch"><input type="checkbox" id="eb-auto" ' + (b.auto_monitor ? "checked" : "") + "><span class=\"slider\"></span></label>" +
     '<span style="font-weight:600">参加每日自动监测</span></div>' +
@@ -224,7 +200,6 @@ function openBrandEditModal(id) {
       product_name: mask.querySelector("#eb-product").value.trim(),
       brand_aliases: mask.querySelector("#eb-aliases").value,
       brand_description: descInput.value.trim(),
-      competitors: mask.querySelector("#eb-comp").value,
       auto_monitor: mask.querySelector("#eb-auto").checked,
     }).then(function (saved) {
       close();

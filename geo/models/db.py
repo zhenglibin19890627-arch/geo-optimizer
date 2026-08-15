@@ -503,7 +503,8 @@ def save_brand(data: dict, brand_id: int = 1) -> dict:
         row.product_name = (data.get("product_name") or "").strip()
         row.brand_aliases = jdumps(data.get("brand_aliases") or [])
         row.brand_description = (data.get("brand_description") or "").strip()
-        row.competitors = jdumps(data.get("competitors") or [])
+        # 竞品设置已取消（2026-08-15）：竞品一律由 AI 回答自动提取，此处固定清空
+        row.competitors = "[]"
         if data.get("auto_monitor") is not None:
             row.auto_monitor = bool(data["auto_monitor"])
         row.updated_at = now()

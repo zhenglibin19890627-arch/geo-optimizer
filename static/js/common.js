@@ -232,8 +232,6 @@ function openBrandCreateModal() {
     '<div class="field"><label class="field-label">一句话介绍</label>' +
     '<textarea class="textarea" id="nb-desc" style="min-height:80px" placeholder="告诉 AI 你是谁，最多 200 字"></textarea>' +
     '<div class="field-hint" id="nb-desc-count">0/200 字</div></div>' +
-    '<div class="field"><label class="field-label">竞品名单</label>' +
-    '<input class="input" id="nb-comp" placeholder="多个用逗号分开，比如：竞品A, 竞品B"></div>' +
     '<div class="field" style="display:flex;align-items:center;gap:10px">' +
     '<label class="switch"><input type="checkbox" id="nb-auto" checked><span class="slider"></span></label>' +
     '<span style="font-weight:600">参加每日自动监测</span></div>' +
@@ -283,7 +281,6 @@ function openBrandCreateModal() {
       product_name: mask.querySelector("#nb-product").value.trim(),
       brand_aliases: mask.querySelector("#nb-aliases").value,
       brand_description: descInput.value.trim(),
-      competitors: mask.querySelector("#nb-comp").value,
       auto_monitor: mask.querySelector("#nb-auto").checked,
     }).then(function (saved) {
       close();
@@ -394,8 +391,7 @@ function maybeShowGuide() {
           '<input class="input" id="g-brand-product" placeholder="比如：婴儿推车" value="' + esc(b.product_name || "") + '"></div>' +
           '<div class="field"><label class="field-label">一句话介绍</label>' +
           '<textarea class="textarea" id="g-brand-desc" placeholder="让别人快速了解你，比如：做母婴用品的国产品牌" style="min-height:70px">' + esc(b.brand_description || "") + "</textarea>" +
-          '</div><div class="field"><label class="field-label">竞品名单（可后补）</label>' +
-          '<input class="input" id="g-brand-comp" placeholder="多个用逗号分开，比如：竞品A, 竞品B" value="' + esc((b.competitors || []).join(", ")) + '"></div>';
+          "</div>";
         document.getElementById("g-brand-name").addEventListener("input", function () {
           if (this.value.length > 50) {
             this.value = this.value.slice(0, 50);
@@ -454,7 +450,6 @@ function maybeShowGuide() {
           product_name: document.getElementById("g-brand-product").value.trim(),
           brand_aliases: [],
           brand_description: document.getElementById("g-brand-desc").value.trim(),
-          competitors: document.getElementById("g-brand-comp").value,
         }).then(function (saved) {
           brand = saved;
           setBrandId(saved.id);

@@ -140,7 +140,8 @@ def monitor_paste():
     adapter = get_adapter(engine_code)
     brand = database.get_brand(brand_id)
     brand_names = mention.build_brand_names(brand)
-    competitors = brand.get("competitors") or []
+    # 竞品设置已取消（2026-08-15）：手动粘贴无自动提取流程，竞品名单为空
+    competitors = []
 
     question_id = None
     with database.session_scope() as s:
@@ -226,10 +227,11 @@ def round_detail(round_id):
                 d["display_name"] = r.engine_code
             result_list.append(d)
 
-        # 竞品对比：自己 vs 各家竞品（用该轮归属品牌的档案，历史轮次永不串品牌）
+        # 竞品对比：自己 vs 本轮自动提取的竞品（2026-08-15 起竞品不再来自品牌设置）
         brand = database.get_brand(round_row.brand_id or 1)
         brand_names = mention.build_brand_names(brand)
-        competitor_compare = _competitor_compare(result_list, brand, brand_names)
+        auto = database.jloads(round_row.auto_competitors, []) or []
+        competitor_compare = _competitor_compare(result_list, brand, brand_names, auto)
 
         # 引用信源排行
         sources_top = _sources_top(result_list)
@@ -250,10 +252,11 @@ def round_detail(round_id):
         }, "获取成功")
 
 
-def _competitor_compare(result_list: list, brand: dict, brand_names: list) -> list:
+def _competitor_compare(result_list: list, brand: dict, brand_names: list,
+                        auto: list = None) -> list:
     answered = [r for r in result_list if r.get("answer_text")]
     total = max(len(answered), 1)
-    entities = [brand.get("brand_name") or ""] + (brand.get("competitors") or [])
+    entities = [brand.get("brand_name") or ""] + list(auto or [])
     items = []
     for name in entities:
         name = str(name).strip()
