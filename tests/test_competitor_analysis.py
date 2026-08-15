@@ -4,7 +4,7 @@
 - 名称清洗（LLM 输出的如“XX公司”包装杂质）；
 - trigger_if_due 规则法现算提及（不依赖落库 competitor_mentions，旧轮次也能触发）；
 - 报告页分析状态接口按需触发 / 无提及返回 none；
-- 深度分析聚焦被提到最多的前 8 家（truncated 标记）。
+- 深度分析聚焦被提到最多的前 5 家（truncated 标记）。
 """
 
 import os
@@ -312,7 +312,48 @@ def test_trigger_aggregate_regenerates_when_stale(tmpdb, monkeypatch):
         assert row.data is None
 
 
-# ---------------- 深度分析聚焦前 8 家 ----------------
+def test_analysis_status_regenerates_when_cap_shrunk(client, tmpdb, monkeypatch):
+    """聚焦上限下调（8→5）后，旧结果多于上限 → 查看时删行重新生成。"""
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+    monkeypatch.setattr(competitor_analysis, "generate",
+                        lambda *a, **k: None)
+    rid = _seed(tmpdb, ["好孩子"], ["好孩子很好，值得推荐"])
+    with database.session_scope() as s:
+        s.add(database.CompetitorAnalysis(
+            round_id=rid, brand_id=1, status=competitor_analysis.STATUS_DONE,
+            data=database.jdumps({
+                "competitors": [{"name": f"旧竞品{i}"} for i in range(10)],
+                "advice": [], "total": 10, "truncated": True})))
+    r = client.get(f"/api/report/competitor/analysis?brand_id=1&round_id={rid}")
+    assert r.get_json()["data"]["status"] == competitor_analysis.STATUS_PENDING
+
+
+def test_aggregate_regenerates_when_cap_shrunk(tmpdb, monkeypatch):
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+    monkeypatch.setattr(competitor_analysis, "generate_aggregate",
+                        lambda *a, **k: None)
+    rid = _seed(tmpdb, ["好孩子"], ["好孩子很好"], brand_id=7, brand_name="缩容牌")
+    competitor_analysis.trigger_aggregate_if_due(7)
+    with database.session_scope() as s:
+        row = (s.query(database.CompetitorAnalysis)
+               .filter(database.CompetitorAnalysis.round_id.is_(None),
+                       database.CompetitorAnalysis.brand_id == 7).first())
+        row.status = competitor_analysis.STATUS_DONE
+        row.data = database.jdumps({
+            "latest_round_id": rid,
+            "competitors": [{"name": f"旧竞品{i}"} for i in range(10)],
+            "advice": [], "total": 10, "truncated": True})
+    # 最新轮未变但结果超上限 → 仍应重新生成
+    competitor_analysis.trigger_aggregate_if_due(7)
+    with database.session_scope() as s:
+        row = (s.query(database.CompetitorAnalysis)
+               .filter(database.CompetitorAnalysis.round_id.is_(None),
+                       database.CompetitorAnalysis.brand_id == 7).first())
+        assert row.status == competitor_analysis.STATUS_PENDING
+        assert row.data is None
+
+
+# ---------------- 深度分析聚焦前 5 家 ----------------
 
 def test_generate_inner_cap(tmpdb, monkeypatch):
     names = [f"竞品{n}有限公司" for n in range(12)]

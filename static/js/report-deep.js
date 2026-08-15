@@ -261,7 +261,7 @@ function renderDeepAnalysisDone(sec, data) {
     html += '<div class="small-note" style="margin-bottom:8px">' +
       (data.range === "30" ? "近 " + (data.rounds || 30) + " 轮" : "本轮") + "共提取 " +
       (data.total || competitors.length) +
-      " 家竞品，深度分析聚焦被提到次数最多的前 8 家；全部竞品见上方统计表。</div>";
+      " 家竞品，深度分析聚焦被提到次数最多的前 5 家；全部竞品见上方统计表。</div>";
   }
 
   competitors.forEach(function (c) {

@@ -594,12 +594,19 @@ def competitor_analysis_status():
         bid = round_row.brand_id or brand_id
         row = (s.query(database.CompetitorAnalysis)
                .filter(database.CompetitorAnalysis.round_id == rid).first())
-        if row is not None and row.status != competitor_analysis.STATUS_UNAVAILABLE:
-            return ok({"status": row.status or "pending",
-                       "data": database.jloads(row.data, None),
-                       "error_msg": row.error_msg or ""}, "获取成功")
         retry = False
-        if row is not None:
+        if row is not None and row.status != competitor_analysis.STATUS_UNAVAILABLE:
+            data = database.jloads(row.data, None) or {}
+            # 聚焦上限下调（8→5）后旧结果多于上限 → 删行重新生成
+            if row.status == competitor_analysis.STATUS_DONE and \
+                    len(data.get("competitors") or []) > competitor_analysis.ANALYSIS_MAX_COMPETITORS:
+                s.delete(row)
+                retry = True
+            else:
+                return ok({"status": row.status or "pending",
+                           "data": database.jloads(row.data, None),
+                           "error_msg": row.error_msg or ""}, "获取成功")
+        elif row is not None:
             # 当时没钥匙记了 unavailable；现在钥匙已填 → 删行重试
             if llm_client.is_configured():
                 s.delete(row)

@@ -28,7 +28,8 @@ EVIDENCE_CHARS = 500      # 每条证据原文截断长度
 RETRY_TIMES = 1           # 单次模型调用失败重试次数
 # 自动提取的竞品可能很多（LLM 一轮提取几十家）：深度分析只聚焦被提到最多的
 # 前 N 家，控制费用与报告长度；统计表/趋势不受影响，仍展示全部。
-ANALYSIS_MAX_COMPETITORS = 8
+# （2026-08-15 按用户要求 8 → 5；旧结果多于上限时查看页面会自动重新生成）
+ANALYSIS_MAX_COMPETITORS = 5
 
 _QUOTE_CHARS = "“”\"'‘’「」『』【】《》〈〉（）()[]<>"
 _WRAP_LEAD = ("例如", "比如", "譬如")
@@ -526,9 +527,11 @@ def trigger_aggregate_if_due(brand_id: int):
                 return  # 正在生成，别重复触发
             if existing.status == STATUS_DONE:
                 data = database.jloads(existing.data, None) or {}
-                if data.get("latest_round_id") == latest_id:
-                    return  # 已是最新结果
-            s.delete(existing)  # unavailable / failed / 结果过期 → 重新生成
+                # 已是最新且未超聚焦上限（上限下调时旧结果需重生成）
+                if data.get("latest_round_id") == latest_id and \
+                        len(data.get("competitors") or []) <= ANALYSIS_MAX_COMPETITORS:
+                    return
+            s.delete(existing)  # unavailable / failed / 结果过期 / 超上限 → 重新生成
         if not llm_client.is_configured():
             s.add(database.CompetitorAnalysis(
                 round_id=None, brand_id=brand_id, status=STATUS_UNAVAILABLE,
