@@ -39,60 +39,14 @@ function repInit() {
   });
 }
 
-/* ---------------- 轮次下拉 ---------------- */
-
-function repCompareSides() {
-  var sel = repSelectedRound();
-  var selOk = sel && ((sel.task_status || "") === "" || (sel.task_status || "") === "done");
-  var normal = null;
-  var web = null;
-  if (selOk) {
-    if ((sel.mode || "normal") === "normal") normal = sel;
-    else web = sel;
-  }
-  repNormalRounds().forEach(function (r) {
-    if (!normal && (r.mode || "normal") === "normal") normal = r;
-    if (!web && r.mode === "web") web = r;
-  });
-  return { normal: normal, web: web };
-}
+/* ---------------- 常规 vs 联网 对比（固定近 30 轮汇总口径） ---------------- */
 
 function loadCompareCard() {
-  var card = document.getElementById("compare-card");
-  var body = document.getElementById("compare-body");
-  if (!repRoundId) {
-    loadCompareRange30();
-    return;
-  }
-  var sides = repCompareSides();
-  if (!sides.normal && !sides.web) {
-    card.classList.add("hidden");
-    return;
-  }
-  card.classList.remove("hidden");
-  body.innerHTML = "";
-  if (sides.normal && !sides.web) {
-    body.appendChild(emptyState(
-      "",
-      "还没有联网提问的监测。去监测中心发起一轮「联网提问」，这里就能对比了。",
-      "去发起监测",
-      function () { location.href = "/static/monitor.html"; }
-    ));
-    return;
-  }
-  if (!sides.normal && sides.web) {
-    body.appendChild(emptyState(
-      "",
-      "还没有常规提问的监测。去监测中心发起一轮「常规提问」吧。",
-      "去发起监测",
-      function () { location.href = "/static/monitor.html"; }
-    ));
-    return;
-  }
-  renderCompareView(sides.normal, sides.web);
+  /* 固定口径：只显示近 30 轮汇总，不随所选轮次切换 */
+  loadCompareRange30();
 }
 
-/* 最近 30 轮模式：常规 vs 联网 汇总对比（平均提及率 + 30 轮累计提到列表） */
+/* 近 30 轮汇总对比（各模式平均提及率 + 结论；不显示提及次数明细） */
 function loadCompareRange30() {
   var card = document.getElementById("compare-card");
   var body = document.getElementById("compare-body");
@@ -124,76 +78,13 @@ function loadCompareRange30() {
       '<div class="cmp-num" style="color:#16A34A">' + (web.length ? repPct(wRate) : "—") + "</div>" +
       '<div class="cmp-desc">共 ' + web.length + " 轮 · AI 先上网搜再回答时提到你的平均比例</div></div>" +
       "</div>" +
-      '<div class="cmp-conclusion">' + esc(conclusion) + "</div>" +
-      '<div class="compare-grid">' +
-      '<div class="cmp-list"><div class="cmp-list-title">常规提问近 30 轮累计提到：</div>' +
-      '<div class="cmp-list-line" id="cmp-list-normal"><span class="score-sub">加载中…</span></div></div>' +
-      '<div class="cmp-list"><div class="cmp-list-title">联网提问近 30 轮累计提到：</div>' +
-      '<div class="cmp-list-line" id="cmp-list-web"><span class="score-sub">加载中…</span></div></div>' +
-      "</div>";
-
-    geoApi("/api/report/competitor/detail?mode=normal").then(function (d) {
-      document.getElementById("cmp-list-normal").innerHTML = competitorListHtml(d.items || []);
-    }).catch(function () {
-      document.getElementById("cmp-list-normal").innerHTML = '<span class="score-sub">—</span>';
-    });
-    geoApi("/api/report/competitor/detail?mode=web").then(function (d) {
-      document.getElementById("cmp-list-web").innerHTML = competitorListHtml(d.items || []);
-    }).catch(function () {
-      document.getElementById("cmp-list-web").innerHTML = '<span class="score-sub">—</span>';
-    });
+      '<div class="cmp-conclusion">' + esc(conclusion) + "</div>";
   });
 }
 
 function repPct(rate) {
   if (rate === null || rate === undefined) return "—";
   return Math.round(rate * 100) + "%";
-}
-
-function competitorListHtml(items) {
-  var list = (items || []).filter(function (it) { return (it.mention_count || 0) > 0; });
-  if (!list.length) return '<span class="score-sub">—</span>';
-  return list.map(function (it) {
-    var cls = it.is_self ? "cmp-me" : "cmp-them";
-    return '<span class="' + cls + '">' + esc(it.name) + " " + (it.mention_count || 0) + " 次</span>";
-  }).join('<span class="cmp-sep"> · </span>');
-}
-
-function renderCompareView(normalRound, webRound) {
-  var body = document.getElementById("compare-body");
-  var nRate = normalRound.mention_rate;
-  var wRate = webRound.mention_rate;
-  var conclusion = (wRate || 0) > (nRate || 0)
-    ? "联网提问下 AI 更容易提到你：你新发的内容已经能被搜到，但 AI 记住的还不深，建议继续长期做内容积累。"
-    : "两边差不多：优化目前主要停留在「被记住」的层面。想让用户在 AI 里搜到你，可以多在官网、行业媒体发内容。";
-
-  body.innerHTML =
-    '<div class="compare-grid">' +
-    '<div class="cmp-box"><div class="cmp-title">常规提问</div>' +
-    '<div class="cmp-num" style="color:#2563EB">' + repPct(nRate) + "</div>" +
-    '<div class="cmp-desc">AI 凭记忆回答时提到你的比例</div></div>' +
-    '<div class="cmp-box"><div class="cmp-title">联网提问</div>' +
-    '<div class="cmp-num" style="color:#16A34A">' + repPct(wRate) + "</div>" +
-    '<div class="cmp-desc">AI 先上网搜再回答时提到你的比例</div></div>' +
-    "</div>" +
-    '<div class="cmp-conclusion">' + esc(conclusion) + "</div>" +
-    '<div class="compare-grid">' +
-    '<div class="cmp-list"><div class="cmp-list-title">常规提问下 AI 提到：</div>' +
-    '<div class="cmp-list-line" id="cmp-list-normal"><span class="score-sub">加载中…</span></div></div>' +
-    '<div class="cmp-list"><div class="cmp-list-title">联网提问下 AI 提到：</div>' +
-    '<div class="cmp-list-line" id="cmp-list-web"><span class="score-sub">加载中…</span></div></div>' +
-    "</div>";
-
-  geoApi("/api/report/competitor/detail?round_id=" + normalRound.id).then(function (d) {
-    document.getElementById("cmp-list-normal").innerHTML = competitorListHtml(d.items || []);
-  }).catch(function () {
-    document.getElementById("cmp-list-normal").innerHTML = '<span class="score-sub">—</span>';
-  });
-  geoApi("/api/report/competitor/detail?round_id=" + webRound.id).then(function (d) {
-    document.getElementById("cmp-list-web").innerHTML = competitorListHtml(d.items || []);
-  }).catch(function () {
-    document.getElementById("cmp-list-web").innerHTML = '<span class="score-sub">—</span>';
-  });
 }
 
 /* ---------------- 卡片B：竞品深度分析（03b 7.2，N11-N14） ---------------- */

@@ -13,6 +13,13 @@
   <div class="page-title">报告</div>
   <div class="page-sub">AI 对你的态度变好了还是变坏了、你和竞品谁更受 AI 喜欢、AI 从哪些网站认识你</div>
 
+  <!-- 卡片A：常规 vs 联网 效果对比（近 30 轮汇总，固定口径） -->
+  <div class="card hidden" id="compare-card">
+    <div class="card-title">常规 vs 联网 效果对比</div>
+    <div class="card-sub">近 30 轮汇总（已停止、未成功的轮次不计入）：常规提问测「AI 记住了多少你」，联网提问测「AI 能不能搜到你」。</div>
+    <div id="compare-body"></div>
+  </div>
+
   <!-- 卡片1：历史趋势（07z 任务2：移到筛选框上方，作为"不动的总览"） -->
   <div class="card">
     <div class="card-title">历史趋势
@@ -38,13 +45,6 @@
     </div>
     <select class="select" id="report-round-select" style="width:auto;min-width:220px"></select>
     <div class="score-sub" id="report-round-time" style="margin:0"></div>
-  </div>
-
-  <!-- 卡片A：常规 vs 联网 效果对比（03b 7.1） -->
-  <div class="card hidden" id="compare-card">
-    <div class="card-title">常规 vs 联网 效果对比</div>
-    <div class="card-sub">常规提问测「AI 记住了多少你」，联网提问测「AI 能不能搜到你」。两边一比，就知道你的优化作用在了哪一层。</div>
-    <div id="compare-body"></div>
   </div>
 
   <!-- 卡片3：引用信源排行 -->
