@@ -155,6 +155,12 @@ def normalize_models(engine_codes: list, models: dict, web: bool = False) -> dic
         if current:
             allowed.add(current)
         if web:
+            # 联网档白名单：配置了 web_model_options 则只允许该子集
+            # （如通义千问实时翻译模型不支持联网协议），否则回落全量档位
+            web_opts = {o.get("name") for o in (meta.get("web_model_options") or [])
+                        if isinstance(o, dict) and o.get("name")}
+            if web_opts:
+                allowed = web_opts
             try:
                 wm = get_web_adapter(code).get_web_model()
             except Exception:

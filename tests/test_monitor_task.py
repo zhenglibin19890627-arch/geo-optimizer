@@ -97,3 +97,15 @@ def test_normalize_models_联网档可显式选模型():
     wm = get_web_adapter("qwen").get_web_model()
     m = normalize_models(["qwen"], {"qwen": [wm]}, web=True)
     assert m["qwen"] == [wm]
+
+
+def test_normalize_models_联网档白名单拦截实时翻译模型():
+    # 通义千问实时翻译模型不支持联网提问协议：联网档白名单只含 qwen3.7-max
+    import pytest
+    from geo.core.monitor_task import normalize_models
+    from geo.engines.base import EngineError
+    with pytest.raises(EngineError):
+        normalize_models(
+            ["qwen"], {"qwen": ["qwen3.5-livetranslate-flash-realtime"]}, web=True)
+    m = normalize_models(["qwen"], {"qwen": ["qwen3.7-max-2026-05-20"]}, web=True)
+    assert m["qwen"] == ["qwen3.7-max-2026-05-20"]

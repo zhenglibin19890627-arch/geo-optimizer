@@ -42,6 +42,13 @@ def test_deepseek支持联网且走Responses适配器():
     assert web.display_name == "DeepSeek"
 
 
+def test_qwen联网档白名单下发():
+    from geo.engines import adapter_meta
+    meta = adapter_meta("qwen")
+    names = [o["name"] for o in meta["web_model_options"]]
+    assert names == ["qwen3.7-max-2026-05-20"]  # 实时翻译模型不在联网白名单
+
+
 def test_联网档四家引擎齐全():
     # DeepSeek（Responses API）+ 豆包（Responses API）+ 通义千问 + 腾讯元宝
     for code in ("deepseek", "doubao", "qwen", "yuanbao"):

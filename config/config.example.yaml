@@ -53,6 +53,10 @@ engines:
     base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
     # 联网提问走 enable_search 增强（无需申请，接口自动联网）
     supports_web_search: true
+    # 联网档模型（实时翻译专用模型不支持联网提问协议，联网档仅此一档）
+    web_model: "qwen3.7-max-2026-05-20"
+    web_model_options:
+      - { name: "qwen3.7-max-2026-05-20", desc: "" }
     # 默认档
     model: "qwen3.7-max-2026-05-20"
     model_options:
@@ -148,7 +152,7 @@ monitor:
   min_interval: 1.5           # 两次调用之间最短间隔（秒）
   max_interval: 3.0           # 两次调用之间最长间隔（秒）
   max_retries: 2              # 单条失败最多重试次数
-  retry_backoff_seconds: 2    # 重试等待的起始秒数（指数翻倍）
+  retry_backoff_seconds: 6    # 重试等待的起始秒数（指数翻倍；429 限流时更有耐心）
   estimated_seconds_per_call: 10   # 单次调用预估耗时（秒），用于“预计还需多久”
   catchup_hours: 26           # 距上次成功监测超过该小时数，启动时自动补跑一轮
 

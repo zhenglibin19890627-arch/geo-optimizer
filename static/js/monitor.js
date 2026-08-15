@@ -167,12 +167,16 @@ function renderEList() {
     row.appendChild(right);
     area.appendChild(row);
 
-    /* 同 key 多模型（常规/联网档均支持）：多档位引擎展开模型勾选（默认勾当前档） */
-    if (k.model_options && k.model_options.length > 1) {
+    /* 同 key 多模型（常规/联网档均支持）：多档位引擎展开模型勾选（默认勾当前档）。
+       联网档优先用 web_model_options（平台联网白名单，如千问排除实时翻译模型） */
+    const groupOpts = (webMode && k.web_model_options && k.web_model_options.length)
+      ? k.web_model_options
+      : k.model_options;
+    if (groupOpts && groupOpts.length > 1) {
       const mg = document.createElement("div");
       mg.className = "model-group";
       mg.style.cssText = "margin:0 0 10px 28px;display:flex;flex-wrap:wrap;gap:4px 14px;";
-      k.model_options.forEach(function (opt) {
+      groupOpts.forEach(function (opt) {
         /* 默认勾选：常规档=当前档；联网档=联网档模型（接口下发 web_model） */
         const defaultModel = webMode ? (k.web_model || k.model) : k.model;
         const isDefault = opt.name === defaultModel;

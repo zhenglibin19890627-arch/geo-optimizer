@@ -56,6 +56,12 @@ def adapter_meta(code: str) -> dict:
     for opt in cfg.get("model_options") or []:
         if isinstance(opt, dict):
             model_options.append({"name": opt.get("name", ""), "desc": opt.get("desc", "")})
+    # 联网档可选的模型子集（如通义千问实时翻译模型不支持联网协议）；
+    # 未配置则回落全量 model_options
+    web_model_options = []
+    for opt in cfg.get("web_model_options") or []:
+        if isinstance(opt, dict):
+            web_model_options.append({"name": opt.get("name", ""), "desc": opt.get("desc", "")})
     return {
         "engine": code,
         "display_name": adapter.display_name,
@@ -65,5 +71,6 @@ def adapter_meta(code: str) -> dict:
         "model": adapter.get_model(),
         "web_model": adapter.get_web_model(),
         "model_options": model_options,
+        "web_model_options": web_model_options,
         "supports_web_search": bool(adapter.supports_web_search),
     }
