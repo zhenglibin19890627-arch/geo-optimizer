@@ -191,12 +191,12 @@ def test_trend_capped_top10(client, tmpdb):
     d = r.get_json()["data"]
     assert d["total"] == 15
     assert d["truncated"] is True
-    assert len(d["series"]) == 11  # 自己 + 前 10 家竞品
+    assert len(d["series"]) == 4  # 自己 + 前 3 家竞品
     assert d["series"][0]["name"] == "测试牌"
     comp = [s["name"] for s in d["series"][1:]]
-    assert len(comp) == 10
+    assert len(comp) == 3
     # 被提到次数最多的排最前
-    assert comp[:3] == ["竞品0有限公司", "竞品1有限公司", "竞品2有限公司"]
+    assert comp == ["竞品0有限公司", "竞品1有限公司", "竞品2有限公司"]
     # 值口径：竞品0 累计 3 次
     assert d["series"][1]["values"] == [3]
 

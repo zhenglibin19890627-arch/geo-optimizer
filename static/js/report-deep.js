@@ -217,7 +217,7 @@ function loadDeepTrend() {
     if (note) {
       if (data.truncated) {
         note.textContent = "近 30 轮共提取 " + (data.total || "") +
-          " 家竞品，趋势图只画累计被提到最多的前 10 家。";
+          " 家竞品，趋势图只画累计被提到最多的前 3 家。";
         note.classList.remove("hidden");
       } else {
         note.classList.add("hidden");

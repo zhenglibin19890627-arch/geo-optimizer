@@ -402,9 +402,9 @@ def competitor_detail():
 
 
 # ---------------- N12 近 30 轮逐竞品提及序列（含我方） ----------------
-# 自动提取的竞品并集可能上百家：趋势图默认只画累计被提到最多的前 N 家，
+# 自动提取的竞品并集可能上百家：趋势图默认只画累计被提到最多的前 3 家，
 # 否则图例挤爆整个图表（前端图例取消选择时用 wanted 精确过滤，不受上限影响）。
-TREND_MAX_COMPETITORS = 10
+TREND_MAX_COMPETITORS = 3
 
 
 def _round_self_mention_total(s, round_id: int) -> int:
