@@ -213,6 +213,16 @@ function loadDeepTrend() {
   geoApi("/api/report/competitor/trend?rounds=30").then(function (data) {
     var labels = data.labels || [];
     var series = data.series || [];
+    var note = document.getElementById("deep-trend-note");
+    if (note) {
+      if (data.truncated) {
+        note.textContent = "近 30 轮共提取 " + (data.total || "") +
+          " 家竞品，趋势图只画累计被提到最多的前 10 家。";
+        note.classList.remove("hidden");
+      } else {
+        note.classList.add("hidden");
+      }
+    }
     if (!labels.length || !series.length) {
       if (deepTrendChart) { deepTrendChart.dispose(); deepTrendChart = null; }
       emptyChart(container, "还没有足够的监测数据，跑几轮后再来看趋势。");

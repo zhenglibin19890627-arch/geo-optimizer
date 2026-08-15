@@ -9,6 +9,7 @@
 
 import os
 import tempfile
+from urllib.parse import quote
 
 import pytest
 
@@ -56,16 +57,17 @@ def client(app):
     return app.test_client()
 
 
-def _seed(tmpdb, auto_names, answers, comps_by_answer=None):
-    """建品牌 1 + 轮次 + 回答（competitor_mentions 默认空，模拟旧轮次未回算）；返回轮次 id。"""
+def _seed(tmpdb, auto_names, answers, comps_by_answer=None, brand_id=1,
+          brand_name="威启"):
+    """建品牌 + 轮次 + 回答（competitor_mentions 默认空，模拟旧轮次未回算）；返回轮次 id。"""
     with database.session_scope() as s:
-        if not s.get(database.BrandProfile, 1):
+        if not s.get(database.BrandProfile, brand_id):
             s.add(database.BrandProfile(
-                id=1, brand_name="威启", product_name="实验室改造",
+                id=brand_id, brand_name=brand_name, product_name="实验室改造",
                 brand_aliases=database.jdumps(["威启科技"]),
                 brand_description="", competitors="[]", auto_monitor=True))
         rnd = database.MonitorRound(
-            brand_id=1, mode="normal", mention_rate=0.5,
+            brand_id=brand_id, mode="normal", mention_rate=0.5,
             net_sentiment=0.0, overall_score=70, summary="{}",
             auto_competitors=database.jdumps(auto_names))
         s.add(rnd)
@@ -74,7 +76,7 @@ def _seed(tmpdb, auto_names, answers, comps_by_answer=None):
         for i, a in enumerate(answers, 1):
             comps = (comps_by_answer or {}).get(i - 1) or []
             s.add(database.MonitorResult(
-                round_id=rid, brand_id=1, engine_code="deepseek",
+                round_id=rid, brand_id=brand_id, engine_code="deepseek",
                 model="m", question_id=1, question_text="监测用问题",
                 answer_text=a, is_mentioned=False, mention_count=0,
                 sentiment="neutral", sources="[]",
@@ -171,6 +173,39 @@ def test_analysis_status_unavailable_retry(client, tmpdb, monkeypatch):
     monkeypatch.setattr(llm_client, "is_configured", lambda: True)
     r = client.get(f"/api/report/competitor/analysis?brand_id=1&round_id={rid}")
     assert r.get_json()["data"]["status"] == competitor_analysis.STATUS_PENDING
+
+
+# ---------------- 近 30 轮提及趋势：自动提取并集上百家 → 只画前 10 ----------------
+
+def test_trend_capped_top10(client, tmpdb):
+    names = [f"竞品{n}有限公司" for n in range(15)]
+    # 独立品牌 2，避免同库其他用例的轮次混入聚合
+    _seed(tmpdb, names, ["竞品0有限公司 竞品1有限公司 竞品2有限公司 都在"],
+          comps_by_answer={0: [
+              {"name": "竞品0有限公司", "count": 3, "position": 1},
+              {"name": "竞品1有限公司", "count": 2, "position": 2},
+              {"name": "竞品2有限公司", "count": 1, "position": 3}]},
+          brand_id=2, brand_name="测试牌")
+
+    r = client.get("/api/report/competitor/trend?brand_id=2&rounds=30")
+    d = r.get_json()["data"]
+    assert d["total"] == 15
+    assert d["truncated"] is True
+    assert len(d["series"]) == 11  # 自己 + 前 10 家竞品
+    assert d["series"][0]["name"] == "测试牌"
+    comp = [s["name"] for s in d["series"][1:]]
+    assert len(comp) == 10
+    # 被提到次数最多的排最前
+    assert comp[:3] == ["竞品0有限公司", "竞品1有限公司", "竞品2有限公司"]
+    # 值口径：竞品0 累计 3 次
+    assert d["series"][1]["values"] == [3]
+
+    # wanted（图例取消选择）过滤不受上限影响
+    q = quote("竞品0有限公司,竞品1有限公司")
+    r2 = client.get(f"/api/report/competitor/trend?brand_id=2&rounds=30&competitors={q}")
+    d2 = r2.get_json()["data"]
+    assert [s["name"] for s in d2["series"]] == ["测试牌", "竞品0有限公司", "竞品1有限公司"]
+    assert d2["truncated"] is False
 
 
 # ---------------- 深度分析聚焦前 8 家 ----------------

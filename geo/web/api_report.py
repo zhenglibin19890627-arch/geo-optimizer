@@ -402,16 +402,9 @@ def competitor_detail():
 
 
 # ---------------- N12 近 30 轮逐竞品提及序列（含我方） ----------------
-def _round_mention_total(s, round_id: int, name: str) -> int:
-    """本轮某竞品的提及次数合计（跨回答累加，规则法）。"""
-    rows = (s.query(database.MonitorResult)
-            .filter(database.MonitorResult.round_id == round_id).all())
-    total = 0
-    for r in rows:
-        for c in database.jloads(r.competitor_mentions, []) or []:
-            if str(c.get("name") or "").strip() == name:
-                total += c.get("count") or 0
-    return total
+# 自动提取的竞品并集可能上百家：趋势图默认只画累计被提到最多的前 N 家，
+# 否则图例挤爆整个图表（前端图例取消选择时用 wanted 精确过滤，不受上限影响）。
+TREND_MAX_COMPETITORS = 10
 
 
 def _round_self_mention_total(s, round_id: int) -> int:
@@ -444,20 +437,48 @@ def competitor_trend():
         for r in rows:
             auto.extend(database.jloads(r.auto_competitors, []) or [])
         auto = list(dict.fromkeys(str(c).strip() for c in auto if str(c).strip()))
+        auto_set = set(auto)
+
+        # 逐轮逐竞品提及次数（基于落库明细，收尾已回算；一次遍历避免 N×M 查询放大）
+        per_round = []
+        for r in rows:
+            totals_r = {}
+            results = (s.query(database.MonitorResult)
+                       .filter(database.MonitorResult.round_id == r.id).all())
+            for res in results:
+                for c in database.jloads(res.competitor_mentions, []) or []:
+                    name = str(c.get("name") or "").strip()
+                    if name:
+                        totals_r[name] = totals_r.get(name, 0) + (c.get("count") or 0)
+            per_round.append(totals_r)
+
+        grand = {}
+        for tr in per_round:
+            for name, cnt in tr.items():
+                if name in auto_set:
+                    grand[name] = grand.get(name, 0) + cnt
+
+        if wanted:
+            names = [n for n in auto if n in wanted]
+        else:
+            # 累计提及降序，只画前 TREND_MAX_COMPETITORS 家
+            ranked = sorted(auto, key=lambda n: -grand.get(n, 0))
+            names = ranked[:TREND_MAX_COMPETITORS]
 
         series = []
         self_name = brand.get("brand_name") or ""
         if self_name:
             series.append({"name": self_name, "values": [
                 _round_self_mention_total(s, r.id) for r in rows]})
-        if wanted:
-            names = [n for n in auto if n in wanted]
-        else:
-            names = auto
         for name in names:
             series.append({"name": name, "values": [
-                _round_mention_total(s, r.id, name) for r in rows]})
-        return ok({"labels": labels, "series": series}, "获取成功")
+                tr.get(name, 0) for tr in per_round]})
+        return ok({
+            "labels": labels,
+            "series": series,
+            "truncated": (not wanted) and len(auto) > len(names),
+            "total": len(auto),
+        }, "获取成功")
 
 
 # ---------------- N13 指定竞品命中明细 ----------------
