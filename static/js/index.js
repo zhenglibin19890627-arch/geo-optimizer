@@ -173,13 +173,20 @@ function renderLastRound(area, lastRound) {
 }
 
 /* 下次自动监测 */
+function fmtScheduleModes(modes) {
+  const arr = modes || [];
+  if (arr.indexOf("web") >= 0 && arr.indexOf("normal") >= 0) return "常规 + 联网";
+  if (arr.indexOf("web") >= 0) return "仅联网";
+  return "仅常规";
+}
+
 function renderSchedule(area, schedule) {
   const enabled = !!schedule.enabled;
   const nextRun = schedule.next_run_time;
   let main = "";
   if (enabled) {
     main = '<div class="mt-8" style="font-size:20px;font-weight:700;color:var(--primary)">⏰ ' + esc(fmtNextRun(nextRun)) + "</div>" +
-      '<div class="score-sub mt-8">定时监测已开启，将于每天指定时间自动执行</div>';
+      '<div class="score-sub mt-8">定时监测已开启（' + esc(fmtScheduleModes(schedule.modes)) + "），将于每天指定时间自动执行</div>";
   } else {
     main = '<div class="score-sub mt-8">尚未设置定时监测；在设置页开启后，将于每天指定时间自动执行</div>';
   }

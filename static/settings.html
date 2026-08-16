@@ -56,11 +56,12 @@
       <button class="btn btn-primary" id="schedule-save">保存</button>
       <span class="saved-hint hidden" id="schedule-saved-hint">已保存 ✓</span>
     </div>
-    <div class="mt-8" style="display:flex;align-items:center;gap:10px">
-      <label class="switch"><input type="checkbox" id="schedule-web-mode"><span class="slider"></span></label>
-      <span>定时监测使用联网提问</span>
+    <div class="mt-8" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <span style="font-weight:600">监测模式（可多选）</span>
+      <label class="checkbox-row" style="padding:0"><input type="checkbox" id="schedule-mode-normal"> 常规提问</label>
+      <label class="checkbox-row" style="padding:0"><input type="checkbox" id="schedule-mode-web"> 联网提问</label>
     </div>
-    <div class="web-cost-note hidden" id="schedule-web-cost">每天费用增加约 0.5~2.5 元，每月约增加 15~75 元（以平台账单为准）。</div>
+    <div class="web-cost-note hidden" id="schedule-web-cost">联网模式每天费用增加约 0.5~2.5 元，每月约增加 15~75 元（以平台账单为准）。</div>
     <div class="score-sub mt-8 hidden" id="schedule-brand-count"></div>
     <div class="score-sub mt-8" id="schedule-next">下次自动监测：--</div>
     <div class="score-sub mt-8">请保持程序运行，定时监测才能按时执行</div>

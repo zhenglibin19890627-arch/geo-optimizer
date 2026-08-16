@@ -33,8 +33,11 @@ function setInit() {
       this.checked ? "定时监测已开启" : "定时监测已关闭";
     document.getElementById("schedule-time").disabled = !this.checked;
   });
-  document.getElementById("schedule-web-mode").addEventListener("change", function () {
-    document.getElementById("schedule-web-cost").classList.toggle("hidden", !this.checked);
+  ["normal", "web"].forEach(function (mode) {
+    document.getElementById("schedule-mode-" + mode).addEventListener("change", function () {
+      document.getElementById("schedule-web-cost").classList.toggle(
+        "hidden", !document.getElementById("schedule-mode-web").checked);
+    });
   });
   document.getElementById("schedule-save").addEventListener("click", saveSchedule);
 
@@ -449,9 +452,12 @@ function loadSchedule() {
     document.getElementById("schedule-time").disabled = !s.enabled;
     document.getElementById("schedule-enabled-text").textContent =
       s.enabled ? "定时监测已开启" : "定时监测已关闭";
-    const webMode = !!s.web_mode;
-    document.getElementById("schedule-web-mode").checked = webMode;
-    document.getElementById("schedule-web-cost").classList.toggle("hidden", !webMode);
+    const modes = (s.modes || []).slice();
+    if (!modes.length) modes.push(s.web_mode ? "web" : "normal");
+    document.getElementById("schedule-mode-normal").checked = modes.indexOf("normal") >= 0;
+    document.getElementById("schedule-mode-web").checked = modes.indexOf("web") >= 0;
+    document.getElementById("schedule-web-cost").classList.toggle(
+      "hidden", modes.indexOf("web") < 0);
     document.getElementById("schedule-next").textContent = s.next_run_time
       ? "下次自动监测：" + s.next_run_time.slice(0, 16).replace("T", " ")
       : "下次自动监测：定时未开启时不会自动监测";
@@ -461,10 +467,16 @@ function loadSchedule() {
 function saveSchedule() {
   const enabled = document.getElementById("schedule-enabled").checked;
   const time = document.getElementById("schedule-time").value || "08:30";
-  const webMode = document.getElementById("schedule-web-mode").checked;
+  const modes = [];
+  if (document.getElementById("schedule-mode-normal").checked) modes.push("normal");
+  if (document.getElementById("schedule-mode-web").checked) modes.push("web");
+  if (!modes.length) {
+    showToast("请至少选择一种监测模式（常规提问或联网提问）", "error");
+    return;
+  }
   const btn = document.getElementById("schedule-save");
   btn.disabled = true;
-  apiPut("/api/schedule", { enabled: enabled, time: time, web_mode: webMode }).then(function (s) {
+  apiPut("/api/schedule", { enabled: enabled, time: time, modes: modes }).then(function (s) {
     btn.disabled = false;
     const hint = document.getElementById("schedule-saved-hint");
     hint.classList.remove("hidden");

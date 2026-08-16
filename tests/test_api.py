@@ -227,7 +227,9 @@ def test_定时设置读写与非法时间拦截(client):
     assert body["data"]["enabled"] is True
     assert body["data"]["time"] == "08:30"
     assert body["data"]["plain_hint"]
+    assert body["data"]["modes"] in (["normal"], ["web"])  # 旧设置兼容
 
+    # 旧字段 web_mode 仍兼容 → modes=['web']
     r = client.put("/api/schedule", json={"time": "07:15", "enabled": False, "web_mode": True})
     assert r.get_json()["code"] == 0
     r = client.get("/api/schedule")
@@ -235,6 +237,23 @@ def test_定时设置读写与非法时间拦截(client):
     assert d["time"] == "07:15"
     assert d["enabled"] is False
     assert d["web_mode"] is True
+    assert d["modes"] == ["web"]
+
+    # 2026-08-16：多选模式（常规+联网）；空数组/非法值拦截
+    r = client.put("/api/schedule", json={"modes": ["normal", "web"]})
+    assert r.get_json()["code"] == 0
+    d = client.get("/api/schedule").get_json()["data"]
+    assert d["modes"] == ["normal", "web"]
+    assert d["web_mode"] is True
+    r = client.put("/api/schedule", json={"modes": ["normal"]})
+    assert r.get_json()["code"] == 0
+    d = client.get("/api/schedule").get_json()["data"]
+    assert d["modes"] == ["normal"]
+    assert d["web_mode"] is False
+    r = client.put("/api/schedule", json={"modes": []})
+    assert r.get_json()["code"] == 1
+    r = client.put("/api/schedule", json={"modes": ["nope"]})
+    assert r.get_json()["code"] == 1
 
     r = client.put("/api/schedule", json={"time": "25:99"})
     assert r.get_json()["code"] == 1

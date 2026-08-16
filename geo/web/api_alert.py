@@ -51,11 +51,12 @@ def alert_read(alert_id):
 def schedule_get():
     enabled = bool(database.get_setting("schedule_enabled", True))
     time_str = str(database.get_setting("schedule_time", "08:30"))
-    web_mode = bool(database.get_setting("schedule_web_mode", False))
+    modes = scheduler.effective_modes()
     return ok({
         "enabled": enabled,
         "time": time_str,
-        "web_mode": web_mode,
+        "modes": modes,
+        "web_mode": "web" in modes,  # 兼容旧前端
         "next_run_time": scheduler.next_run_time(),
         "plain_hint": PLAIN_HINT,
     }, "获取成功")
@@ -67,7 +68,17 @@ def schedule_put():
     data = get_json()
     if "enabled" in data:
         database.set_setting("schedule_enabled", bool(data["enabled"]))
-    if "web_mode" in data:
+    if "modes" in data:
+        # 2026-08-16：支持常规/联网多选（至少一种）
+        modes = list(dict.fromkeys(str(m).strip() for m in (data["modes"] or [])))
+        modes = [m for m in modes if m in ("normal", "web")]
+        if not modes:
+            raise ApiError("请至少选择一种监测模式（常规提问或联网提问）")
+        database.set_setting("schedule_modes", database.jdumps(modes))
+        database.set_setting("schedule_web_mode", "web" in modes)
+    elif "web_mode" in data:  # 旧前端兼容
+        database.set_setting("schedule_modes",
+                             database.jdumps(["web"] if data["web_mode"] else ["normal"]))
         database.set_setting("schedule_web_mode", bool(data["web_mode"]))
     if data.get("time"):
         time_str = str(data["time"]).strip()

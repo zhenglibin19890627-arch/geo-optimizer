@@ -23,6 +23,20 @@ def _effective_enabled() -> bool:
     return bool(database.get_setting("schedule_enabled", True))
 
 
+def effective_modes() -> list:
+    """定时监测模式：['normal'] / ['web'] / ['normal','web']（2026-08-16 起可多选）。
+
+    读取设置键 schedule_modes（JSON 数组）；未设置时兼容旧 schedule_web_mode
+    布尔键（True→['web']，False→['normal']）。
+    """
+    modes = database.jloads(database.get_setting("schedule_modes", None), []) or []
+    modes = list(dict.fromkeys(str(m).strip() for m in modes
+                               if str(m).strip() in ("normal", "web")))
+    if not modes:
+        return ["web"] if database.get_setting("schedule_web_mode", False) else ["normal"]
+    return modes
+
+
 def _last_done_task(s) -> database.MonitorTask:
     return (s.query(database.MonitorTask)
             .filter(database.MonitorTask.status == "done")
@@ -48,53 +62,57 @@ def run_scheduled_monitor(background: bool = True):
                       (s.query(database.BrandProfile)
                        .filter(database.BrandProfile.auto_monitor == True)
                        .order_by(database.BrandProfile.id.asc()).all())]
-            web_mode = bool(database.get_setting("schedule_web_mode", False))
+            modes = effective_modes()
 
         active = [b for b in brands if (b.get("brand_name") or "").strip()]
         if not active:
             print("【定时监测】还没有任何品牌参加每日自动监测（可以在设置页打开），本轮已跳过。")
             return
 
+        mode_labels = {"normal": "常规提问", "web": "联网提问"}
         names = "、".join(f"「{b['brand_name']}」" for b in active)
-        mode_label = "联网提问" if web_mode else "常规提问"
-        print(f"【定时监测】本轮用{mode_label}监测 {len(active)} 个品牌：先测{names}。")
+        mode_label = " + ".join(mode_labels[m] for m in modes)
+        print(f"【定时监测】本轮按「{mode_label}」监测 {len(active)} 个品牌：先测{names}。")
 
         for b in active:
             brand_id = b["id"]
             brand_name = b["brand_name"]
-            # 发起前复查全局互斥：手动监测若恰好在串行间隙发起，则本轮到此为止
             with database.session_scope() as s:
-                if monitor_task.any_task_running(s):
-                    print("【定时监测】有一轮监测正在跑，本轮到此为止，下次定时时间再继续。")
-                    return
                 qids = [q.id for q in s.query(database.QuestionBank)
                         .filter(database.QuestionBank.brand_id == brand_id,
                                 database.QuestionBank.enabled == True).all()]
-
-            if web_mode:
-                engines = monitor_task.web_auto_engines()
-            else:
-                engines = monitor_task.enabled_auto_engines()
             if not qids:
                 print(f"【定时监测】「{brand_name}」的问题库是空的，跳过它，继续下一个品牌。")
                 continue
-            if not engines:
-                if web_mode:
-                    print(f"【定时监测】「{brand_name}」联网提问的引擎钥匙还没填"
-                          "（DeepSeek、豆包、通义千问、腾讯元宝至少一家），跳过它，继续下一个品牌。")
+            for mode in modes:
+                # 每种模式发起前复查全局互斥：手动监测若恰好在串行间隙发起，则本轮到此为止
+                with database.session_scope() as s:
+                    if monitor_task.any_task_running(s):
+                        print("【定时监测】有一轮监测正在跑，本轮到此为止，下次定时时间再继续。")
+                        return
+                if mode == "web":
+                    engines = monitor_task.web_auto_engines()
                 else:
-                    print(f"【定时监测】「{brand_name}」的引擎钥匙还没填，"
-                          "跳过它，继续下一个品牌。请到设置页填写钥匙。")
-                continue
-            try:
-                task_id = monitor_task.start_monitor_task(
-                    qids, engines, task_type="scheduled", brand_id=brand_id,
-                    mode="web" if web_mode else "normal")
-            except engine_base.EngineError as e:
-                print(f"【定时监测】「{brand_name}」发起失败：{e.message}，跳过它，继续下一个品牌。")
-                continue
-            print(f"【定时监测】「{brand_name}」开始（任务 {task_id}），等它跑完再测下一个……")
-            _wait_task_end(task_id, brand_name)
+                    engines = monitor_task.enabled_auto_engines()
+                if not engines:
+                    if mode == "web":
+                        print(f"【定时监测】「{brand_name}」联网提问的引擎钥匙还没填"
+                              "（DeepSeek、豆包、通义千问、腾讯元宝至少一家），跳过该模式。")
+                    else:
+                        print(f"【定时监测】「{brand_name}」的引擎钥匙还没填，"
+                              "跳过该模式。请到设置页填写钥匙。")
+                    continue
+                try:
+                    task_id = monitor_task.start_monitor_task(
+                        qids, engines, task_type="scheduled", brand_id=brand_id,
+                        mode=mode)
+                except engine_base.EngineError as e:
+                    print(f"【定时监测】「{brand_name}」{mode_labels[mode]}发起失败："
+                          f"{e.message}，跳过该模式，继续。")
+                    continue
+                print(f"【定时监测】「{brand_name}」{mode_labels[mode]}开始"
+                      f"（任务 {task_id}），等它跑完再继续……")
+                _wait_task_end(task_id, brand_name)
 
     if background:
         threading.Thread(target=_do, daemon=True).start()
