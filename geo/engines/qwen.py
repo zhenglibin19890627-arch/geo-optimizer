@@ -7,8 +7,8 @@
 OpenAI 兼容模式的 enable_search 拿不到引用，故联网档不走兼容模式。
 
 端点选择（按模型类型，DashScope 官方口径）：
-- 文本模型（qwen-plus / qwen3-max / deepseek-v4-pro 等）→ text-generation；
-- 多模态模型（qwen3.7-plus / qwen3-vl-plus / qwen-vl-* 等）→ multimodal-generation，
+- 文本模型（qwen-plus / qwen3-max / qwen3.7-max / deepseek-v4-pro 等）→ text-generation；
+- 多模态模型（qwen-vl-* / -vl 系列等）→ multimodal-generation，
   消息 content 需为 [{text: ...}] 数组、响应 content 也可能为数组；
 - 若请求 400 且提示 url error（模型类型与端点不匹配），自动换另一端点重试一次。
 
@@ -39,8 +39,11 @@ class QwenAdapter(EngineAdapter):
     _NATIVE_BASE = "https://dashscope.aliyuncs.com/api/v1/services/aigc"
     _TEXT_EP = f"{_NATIVE_BASE}/text-generation/generation"
     _MULTIMODAL_EP = f"{_NATIVE_BASE}/multimodal-generation/generation"
-    # 多模态模型名特征（文档点名：qwen3.7-plus、qwen3-vl-plus、qwen-vl-* 等）
-    _MULTIMODAL_MARKERS = ("-vl", "qwen3.7")
+    # 多模态模型名特征（-vl 系列）。2026-08-16 修正：不再把 "qwen3.7" 前缀整体当多模态——
+    # qwen3.7-max 是纯文本模型，误走 multimodal 端点虽然能返回 200，但会静默丢掉
+    # search_info.search_results（信源为空）；text 端点 + enable_source 才返回来源。
+    # 真正的多模态模型走 text 端点会报 400 url error，由端点重试自动兜底。
+    _MULTIMODAL_MARKERS = ("-vl",)
 
     @classmethod
     def _is_multimodal(cls, model: str) -> bool:
@@ -105,6 +108,12 @@ class QwenAdapter(EngineAdapter):
                 "result_format": "message",
                 "temperature": temp,
                 "enable_search": True,
+                # 2026-08-16：官方文档（platform.qianwenai.com web-search）要求
+                # search_options.enable_source=true 才在响应的 search_info.search_results
+                # 里返回来源列表（index/title/url）；不加则联网回答不带来源，信源排行为空
+                "search_options": {
+                    "enable_source": True,
+                },
             },
         }
         headers = {

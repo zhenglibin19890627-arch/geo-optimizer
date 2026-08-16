@@ -49,6 +49,51 @@ def test_qwen联网档白名单下发():
     assert names == ["qwen3.7-max-2026-05-20"]  # 实时翻译模型不在联网白名单
 
 
+def test_qwen联网请求带enable_source并解析来源(monkeypatch):
+    """2026-08-16：联网请求必须带 search_options.enable_source，
+    响应的 search_info.search_results 才会被解析进 sources。"""
+    from geo.engines import qwen as qwen_mod
+    captured = {}
+
+    class FakeResp:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {
+                "output": {
+                    "choices": [{"message": {"content": "回答内容 [1]"}}],
+                    "search_info": {"search_results": [
+                        {"index": 1, "title": "示例网",
+                         "url": "https://example.com/a"}]},
+                },
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        captured["url"] = url
+        captured["payload"] = json
+        return FakeResp()
+
+    monkeypatch.setattr(qwen_mod.requests, "post", fake_post)
+    adapter = qwen_mod.QwenAdapter()
+    res = adapter._dashscope_chat_once(
+        qwen_mod.QwenAdapter._TEXT_EP,
+        [{"role": "user", "content": "杭州天气"}], "qwen-plus", 0.3, 60)
+    params = captured["payload"]["parameters"]
+    assert params["enable_search"] is True
+    assert params["search_options"] == {"enable_source": True}
+    assert res.sources and res.sources[0]["url"] == "https://example.com/a"
+
+
+def test_qwen37max按文本模型路由():
+    """2026-08-16：qwen3.7-max 是纯文本模型，误走多模态端点会静默丢搜索来源。"""
+    from geo.engines.qwen import QwenAdapter
+    assert QwenAdapter._is_multimodal("qwen3.7-max-2026-05-20") is False
+    assert QwenAdapter._is_multimodal("qwen3.7-plus") is False
+    assert QwenAdapter._is_multimodal("qwen-vl-max") is True
+
+
 def test_联网档四家引擎齐全():
     # DeepSeek（Responses API）+ 豆包（Responses API）+ 通义千问 + 腾讯元宝
     for code in ("deepseek", "doubao", "qwen", "yuanbao"):
