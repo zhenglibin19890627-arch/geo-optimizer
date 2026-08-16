@@ -75,6 +75,13 @@ engines:
     base_url: "https://tokenhub.tencentmaas.com/v1"
     # 联网提问走 enable_enhancement 功能增强（含搜索与引用）
     supports_web_search: true
+    # 腾讯云「联网搜索API」（SearchPro）凭据（可选，2026-08-16）：
+    # TokenHub chat 接口不返回搜索来源，填上后元宝联网档会用 SearchPro
+    # 按同一问题拉取信源（需先在腾讯云开通「联网搜索API」，
+    # 文档 https://cloud.tencent.com/document/api/1806/121811）。
+    # 注意：这是腾讯云 SecretId/SecretKey，不是 TokenHub 的 sk- 钥匙。
+    wsa_secret_id: ""
+    wsa_secret_key: ""
     # 默认档
     model: "hy3"
     model_options:

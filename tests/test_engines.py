@@ -1,5 +1,7 @@
 """引擎注册表与各引擎适配器单测。"""
 
+import json
+
 import pytest
 
 from geo.engines import AUTO_CODES, EngineError_NotFound, get_adapter, get_web_adapter
@@ -92,6 +94,77 @@ def test_qwen37max按文本模型路由():
     assert QwenAdapter._is_multimodal("qwen3.7-max-2026-05-20") is False
     assert QwenAdapter._is_multimodal("qwen3.7-plus") is False
     assert QwenAdapter._is_multimodal("qwen-vl-max") is True
+
+
+def test_tencent_wsa_search解析来源并带TC3签名(monkeypatch):
+    """2026-08-16：腾讯云联网搜索API（SearchPro）→ 标准信源 + TC3 签名头。"""
+    from geo.engines import tencent_wsa
+
+    captured = {}
+
+    class FakeResp:
+        def json(self):
+            return {"Response": {"Pages": [
+                json.dumps({"title": "示例页", "url": "https://example.com/a",
+                            "site": "示例网"})]}}
+
+    def fake_post(url, data=None, headers=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["body"] = data
+        return FakeResp()
+
+    monkeypatch.setattr(tencent_wsa.requests, "post", fake_post)
+    out = tencent_wsa.search("测试词", "AKIDx", "SECRETx")
+    assert out and out[0]["url"] == "https://example.com/a"
+    assert captured["url"] == "https://wsa.tencentcloudapi.com"
+    assert captured["headers"]["X-TC-Action"] == "SearchPro"
+    assert captured["headers"]["X-TC-Version"] == "2025-05-08"
+    assert captured["headers"]["Authorization"].startswith(
+        "TC3-HMAC-SHA256 Credential=AKIDx/")
+    assert json.loads(captured["body"].decode("utf-8")) == {
+        "Query": "测试词", "Mode": 0}
+
+
+def test_tencent_wsa_error抛WsaError(monkeypatch):
+    from geo.engines import tencent_wsa
+
+    class FakeResp:
+        def json(self):
+            return {"Response": {"Error": {
+                "Code": "ResourceNotFound", "Message": "用户资源未开通"}}}
+
+    monkeypatch.setattr(tencent_wsa.requests, "post",
+                        lambda *a, **k: FakeResp())
+    with pytest.raises(tencent_wsa.WsaError):
+        tencent_wsa.search("测试词", "AKIDx", "SECRETx")
+
+
+def test_yuanbao联网档无WSA凭据静默无信源(monkeypatch):
+    from geo.engines.base import ChatResult
+    from geo.engines.yuanbao import YuanbaoAdapter
+    a = YuanbaoAdapter()
+    a.cfg = {"api_key": "sk-x", "wsa_secret_id": "", "wsa_secret_key": ""}
+    monkeypatch.setattr(a, "call_openai_compatible",
+                        lambda *args, **kw: ChatResult(text="答", model="hy3"))
+    res = a.chat([{"role": "user", "content": "问题"}], web_search=True)
+    assert res.sources is None
+
+
+def test_yuanbao联网档挂SearchPro信源(monkeypatch):
+    from geo.engines import tencent_wsa
+    from geo.engines.base import ChatResult
+    from geo.engines.yuanbao import YuanbaoAdapter
+    a = YuanbaoAdapter()
+    a.cfg = {"api_key": "sk-x", "wsa_secret_id": "AKIDx",
+             "wsa_secret_key": "SECRETx"}
+    monkeypatch.setattr(a, "call_openai_compatible",
+                        lambda *args, **kw: ChatResult(text="答", model="hy3"))
+    monkeypatch.setattr(tencent_wsa, "search",
+                        lambda q, sid, skey: [{"title": "t",
+                                               "url": "https://example.com/x"}])
+    res = a.chat([{"role": "user", "content": "龙泉市公司"}], web_search=True)
+    assert res.sources == [{"title": "t", "url": "https://example.com/x"}]
 
 
 def test_联网档四家引擎齐全():
