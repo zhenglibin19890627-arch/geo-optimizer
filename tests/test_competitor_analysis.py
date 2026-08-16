@@ -9,6 +9,7 @@
 
 import os
 import tempfile
+from datetime import datetime, timedelta
 from urllib.parse import quote
 
 import pytest
@@ -373,6 +374,84 @@ def test_extract_keeps_rule_brands_when_llm_fails(tmpdb, monkeypatch):
 
 
 # ---------------- 深度分析聚焦前 5 家 ----------------
+
+def test_finalize_rule_first_even_when_llm_fails(tmpdb, monkeypatch):
+    """收尾链路：规则法立即落库并触发分析，LLM 慢/失败不影响（2026-08-16）。"""
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+
+    def boom(*a, **k):
+        raise llm_client.AnalysisError("网关超时")
+
+    monkeypatch.setattr(competitor_analysis, "_chat", boom)
+    monkeypatch.setattr(competitor_analysis, "generate", lambda *a, **k: None)
+    rid = _seed(tmpdb, [], ["龙泉市海盾智能工程有限公司很好"])
+    competitor_analysis.finalize_competitors(rid, 1)
+    with database.session_scope() as s:
+        r = s.get(database.MonitorRound, rid)
+        assert database.jloads(r.auto_competitors, []) == ["龙泉市海盾智能工程有限公司"]
+        row = (s.query(database.CompetitorAnalysis)
+               .filter(database.CompetitorAnalysis.round_id == rid).first())
+        assert row is not None
+        assert row.status == competitor_analysis.STATUS_PENDING
+
+
+def test_generate_inner_partial_failure(tmpdb, monkeypatch):
+    """单个竞品总结失败/建议失败 → 降级为提示语与空建议，仍记 done（2026-08-16）。"""
+    names = [f"竞品{n}有限公司" for n in range(5)]
+    rid = _seed(tmpdb, names, ["竞品0有限公司和竞品1有限公司都在"],
+                comps_by_answer={0: [
+                    {"name": "竞品0有限公司", "count": 2, "position": 1},
+                    {"name": "竞品1有限公司", "count": 1, "position": 2}]})
+    with database.session_scope() as s:
+        s.add(database.CompetitorAnalysis(
+            round_id=rid, brand_id=1, status=competitor_analysis.STATUS_PENDING))
+
+    calls = {"n": 0}
+
+    def flaky(brand, name, evs, range_label="本轮"):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise llm_client.AnalysisError("超时")
+        return (f"总结：{name}", [], [])
+
+    def fail_advice(*a, **k):
+        raise llm_client.AnalysisError("失败")
+
+    monkeypatch.setattr(competitor_analysis, "_summarize_competitor", flaky)
+    monkeypatch.setattr(competitor_analysis, "_generate_advice", fail_advice)
+    competitor_analysis._generate_inner(rid, 1, names)
+    with database.session_scope() as s:
+        row = (s.query(database.CompetitorAnalysis)
+               .filter(database.CompetitorAnalysis.round_id == rid).first())
+        assert row.status == competitor_analysis.STATUS_DONE
+        data = database.jloads(row.data, None)
+        mentioned = [c for c in data["competitors"] if c["mentioned"]]
+        assert mentioned[0]["summary"] == competitor_analysis.SUMMARY_FALLBACK
+        assert mentioned[1]["summary"].startswith("总结：")
+        assert data["advice"] == []
+
+
+def test_analysis_status_failed_retry_after_cooldown(client, tmpdb, monkeypatch):
+    """分析失败后，冷却期（10 分钟）过了再看报告 → 自动重新生成（2026-08-16）。"""
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+    monkeypatch.setattr(competitor_analysis, "generate", lambda *a, **k: None)
+
+    rid = _seed(tmpdb, ["好孩子"], ["好孩子很好，值得推荐"])
+    with database.session_scope() as s:
+        s.add(database.CompetitorAnalysis(
+            round_id=rid, brand_id=1, status=competitor_analysis.STATUS_FAILED,
+            finished_at=datetime.now() - timedelta(minutes=20)))
+    r = client.get(f"/api/report/competitor/analysis?brand_id=1&round_id={rid}")
+    assert r.get_json()["data"]["status"] == competitor_analysis.STATUS_PENDING
+
+    rid2 = _seed(tmpdb, ["好孩子"], ["好孩子也不错"])
+    with database.session_scope() as s:
+        s.add(database.CompetitorAnalysis(
+            round_id=rid2, brand_id=1, status=competitor_analysis.STATUS_FAILED,
+            finished_at=datetime.now()))
+    r = client.get(f"/api/report/competitor/analysis?brand_id=1&round_id={rid2}")
+    assert r.get_json()["data"]["status"] == competitor_analysis.STATUS_FAILED
+
 
 def test_generate_inner_cap(tmpdb, monkeypatch):
     names = [f"竞品{n}有限公司" for n in range(12)]

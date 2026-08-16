@@ -602,6 +602,17 @@ def competitor_analysis_status():
                     len(data.get("competitors") or []) > competitor_analysis.ANALYSIS_MAX_COMPETITORS:
                 s.delete(row)
                 retry = True
+            elif row.status == competitor_analysis.STATUS_FAILED:
+                # 2026-08-16：分析失败（多为模型临时抖动）→ 冷却 10 分钟后查看时自动重试
+                from datetime import datetime as _dt
+                finished = row.finished_at
+                if finished is None or (_dt.now() - finished).total_seconds() > 600:
+                    s.delete(row)
+                    retry = True
+                else:
+                    return ok({"status": row.status or "pending",
+                               "data": database.jloads(row.data, None),
+                               "error_msg": row.error_msg or ""}, "获取成功")
             else:
                 return ok({"status": row.status or "pending",
                            "data": database.jloads(row.data, None),

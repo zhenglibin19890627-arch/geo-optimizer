@@ -22,6 +22,7 @@ STATUS_FAILED = "failed"
 STATUS_UNAVAILABLE = "unavailable"
 
 UNMENTIONED_SUMMARY = "本轮 AI 回答里没有提到它"
+SUMMARY_FALLBACK = "本轮暂时无法生成该竞品的总结，请稍后重试"
 FALLBACK_ERROR = "暂时无法分析，请稍后再试"
 EVIDENCE_MAX = 3          # 每竞品最多 3 条证据
 EVIDENCE_CHARS = 500      # 每条证据原文截断长度
@@ -76,11 +77,10 @@ def _extract_json(text: str):
     raise llm_client.AnalysisError("分析结果格式不对，请稍后再试")
 
 
-# 自动提取品牌：本轮回答最多看 10 条、每条截断 500 字（控制 token 成本）
-AUTO_BRAND_MAX_ANSWERS = 10
-# 提取用的回答截断长度：企业名常出现在回答中后段，500 字会漏（实测 1200-2100 字回答
-# 里第 3-5 个企业名被截掉）。1500 字覆盖大部分回答全文，一轮一次调用成本可控。
-AUTO_BRAND_CHARS = 1500
+# 自动提取品牌：本轮回答最多看 8 条、每条截断 1000 字（控制 token 成本与
+# 推理模型耗时；规则法不截断，企业名由规则法保证召回）
+AUTO_BRAND_MAX_ANSWERS = 8
+AUTO_BRAND_CHARS = 1000
 # 规则兜底：企业名模式（LLM 漏提时兜底提取，双保险）。
 # 前段排除标点/括号/“为/公司”等前缀干扰（如“总公司为浙江龙威…”“前身为杭州鼎林…”只取公司名本身）
 _COMPANY_RE = re.compile(r"[^，。；：、（）()·\-—\s为*#]{2,20}?(?:有限责任公司|股份有限公司|有限公司)")
@@ -126,12 +126,15 @@ def _clean_brands(names: list, self_related: list) -> list:
     return final
 
 
-def extract_auto_brands(round_id: int, brand_id: int):
+def extract_auto_brands(round_id: int, brand_id: int, with_llm: bool = True):
     """从本轮回答中提取被提到的品牌，存入 round.auto_competitors，并回算
     各回答的顺位/竞品明细（2026-08-15 起竞品全部来自自动提取，档案竞品已取消）。
 
     双保险：分析模型（LLM）语义提取 + 规则法（企业名模式）兜底合并；
     无分析钥匙时规则法仍可用（零成本）。失败静默，绝不影响监测收尾。
+
+    with_llm=False：只跑规则法（秒级落库），供收尾立即生效使用；
+    LLM 补充提取在后台线程单独跑（见 finalize_competitors），慢也不阻塞分析触发。
     """
     try:
         brand = database.get_brand(brand_id)
@@ -149,10 +152,15 @@ def extract_auto_brands(round_id: int, brand_id: int):
         rule_brands = _rule_extract_companies(texts, exclude)
         cleaned = _clean_brands(rule_brands, exclude)
 
-        # LLM 语义提取（无钥匙时跳过，规则结果仍生效）
-        if llm_client.is_configured():
-            # 2026-08-16：LLM 提取失败（网关错误/返回非 JSON）不能吞掉规则法结果——
-            # 此前异常会整体静默返回，导致规则法找到的竞品也不落库（定时联网轮竞品为空）
+        if not cleaned:
+            return
+        _save_and_recompute(round_id, self_name, aliases, cleaned)
+
+        # LLM 语义提取（with_llm=False 或无钥匙时跳过，规则结果仍生效）
+        if with_llm and llm_client.is_configured():
+            # 2026-08-16：LLM 提取失败（网关错误/返回非 JSON/超时）不能吞掉规则法结果——
+            # 此前异常会整体静默返回，导致规则法找到的竞品也不落库（定时联网轮竞品为空）；
+            # 另：分析模型可能很慢（推理模型数十秒~数分钟），先落规则结果、再后台补 LLM 名单
             try:
                 pieces = []
                 for i, t in enumerate(texts[:AUTO_BRAND_MAX_ANSWERS], 1):
@@ -171,44 +179,66 @@ def extract_auto_brands(round_id: int, brand_id: int):
                 raw = _chat_with_retry(prompt, temperature=0)
                 brands = _extract_json(raw)
                 if isinstance(brands, list):
-                    cleaned = _clean_brands(cleaned + brands, exclude)
+                    merged = _clean_brands(
+                        [str(c).strip() for c in
+                         (database.jloads(_current_auto(round_id), []) or [])] + brands,
+                        exclude)
+                    if merged:
+                        _save_and_recompute(round_id, self_name, aliases, merged)
             except Exception:
-                pass  # 规则法结果照常落库
-
-        if not cleaned:
-            return
-        with database.session_scope() as s:
-            row = s.get(database.MonitorRound, round_id)
-            if row:
-                row.auto_competitors = database.jdumps(cleaned)
-            # 回算：用自动提取的竞品名单重算每条回答的顺位与竞品明细
-            # （分析时无档案竞品，position 暂为 1/竞品明细为空）
-            from geo.analyzers import mention as mention_mod
-            rows = (s.query(database.MonitorResult)
-                    .filter(database.MonitorResult.round_id == round_id).all())
-            brand_names = [n for n in dict.fromkeys([self_name] + aliases) if n]
-            for r in rows:
-                if not r.answer_text:
-                    continue
-                mentioned = mention_mod.mention_count(r.answer_text, brand_names) > 0
-                if mentioned:
-                    r.mention_position = mention_mod.brand_position(
-                        r.answer_text, brand_names, cleaned)
-                r.competitor_mentions = database.jdumps(
-                    mention_mod.competitor_mentions(r.answer_text, cleaned, brand_names))
+                pass  # 规则法结果已落库
     except Exception:
         # 静默：自动提取失败不影响监测收尾与既有竞品分析
         return
 
 
+def _current_auto(round_id: int) -> str:
+    """读当前 auto_competitors 原始串（供 LLM 合并时取基线）。"""
+    with database.session_scope() as s:
+        row = s.get(database.MonitorRound, round_id)
+        return row.auto_competitors if row else "[]"
+
+
+def _save_and_recompute(round_id: int, self_name: str, aliases: list, cleaned: list):
+    """落库 auto_competitors + 回算各回答顺位/竞品明细（单事务）。"""
+    from geo.analyzers import mention as mention_mod
+    with database.session_scope() as s:
+        row = s.get(database.MonitorRound, round_id)
+        if row:
+            row.auto_competitors = database.jdumps(cleaned)
+        # 回算：用提取的竞品名单重算每条回答的顺位与竞品明细
+        rows = (s.query(database.MonitorResult)
+                .filter(database.MonitorResult.round_id == round_id).all())
+        brand_names = [n for n in dict.fromkeys([self_name] + aliases) if n]
+        for r in rows:
+            if not r.answer_text:
+                continue
+            mentioned = mention_mod.mention_count(r.answer_text, brand_names) > 0
+            if mentioned:
+                r.mention_position = mention_mod.brand_position(
+                    r.answer_text, brand_names, cleaned)
+            r.competitor_mentions = database.jdumps(
+                mention_mod.competitor_mentions(r.answer_text, cleaned, brand_names))
+
+
 def finalize_competitors(round_id: int, brand_id: int):
-    """监测收尾统一入口：提取竞品（含回算）→ 触发竞品深度分析。"""
-    extract_auto_brands(round_id, brand_id)
+    """监测收尾统一入口（2026-08-16 修订）：
+    ① 规则法秒级提取落库（LLM 慢/挂都不影响）；
+    ② 立即触发竞品深度分析；
+    ③ LLM 语义补充提取放后台线程，完成后覆盖合并名单。
+    """
+    extract_auto_brands(round_id, brand_id, with_llm=False)
     try:
         trigger_if_due(round_id, brand_id)
     except Exception:
         import traceback
         traceback.print_exc()
+    if llm_client.is_configured():
+        try:
+            threading.Thread(target=extract_auto_brands,
+                             args=(round_id, brand_id, True), daemon=True).start()
+        except Exception:
+            pass
 
 
 def _chat_with_retry(prompt: str, **kwargs) -> str:
@@ -438,10 +468,16 @@ def _generate_inner(round_id: int, brand_id: int, competitors: list):
         :ANALYSIS_MAX_COMPETITORS]
 
     competitors_data = []
+    summary_ok = 0
     for name in focus:
         evidences = evidence_map.get(name, []) or []
         if evidences:
-            summary, source_types, features = _summarize_competitor(brand, name, evidences)
+            # 2026-08-16：单个竞品总结失败不拖垮整轮（分析模型偶发抖动），降级为提示语
+            try:
+                summary, source_types, features = _summarize_competitor(brand, name, evidences)
+                summary_ok += 1
+            except Exception:
+                summary, source_types, features = SUMMARY_FALLBACK, [], []
         else:
             summary, source_types, features = UNMENTIONED_SUMMARY, [], []
         competitors_data.append({
@@ -452,7 +488,14 @@ def _generate_inner(round_id: int, brand_id: int, competitors: list):
 
     self_note = (f"本轮我方「{brand.get('brand_name') or ''}」在 {self_mentioned}/{self_answered} "
                  f"条有效回答里被提到。")
-    advice = _generate_advice(brand, competitors_data, self_note)
+    advice = []
+    advice_failed = False
+    try:
+        advice = _generate_advice(brand, competitors_data, self_note)
+    except Exception:
+        advice_failed = True  # 建议失败降级为空列表，总结仍展示
+    if not summary_ok and advice_failed:
+        raise llm_client.AnalysisError(FALLBACK_ERROR)  # 全部失败才记 failed
 
     data = {
         "is_speculative": True,
@@ -620,11 +663,17 @@ def _generate_aggregate_inner(brand_id: int, round_ids: list, competitors: list,
         :ANALYSIS_MAX_COMPETITORS]
 
     competitors_data = []
+    summary_ok = 0
     for name in focus:
         evidences = evidence_map.get(name, []) or []
         if evidences:
-            summary, source_types, features = _summarize_competitor(
-                brand, name, evidences, range_label)
+            # 2026-08-16：单个竞品总结失败不拖垮整轮，降级为提示语
+            try:
+                summary, source_types, features = _summarize_competitor(
+                    brand, name, evidences, range_label)
+                summary_ok += 1
+            except Exception:
+                summary, source_types, features = SUMMARY_FALLBACK, [], []
         else:
             summary, source_types, features = UNMENTIONED_SUMMARY, [], []
         competitors_data.append({
@@ -635,7 +684,14 @@ def _generate_aggregate_inner(brand_id: int, round_ids: list, competitors: list,
 
     self_note = (f"{range_label}内我方「{brand.get('brand_name') or ''}」在 "
                  f"{self_mentioned}/{self_answered} 条有效回答里被提到。")
-    advice = _generate_advice(brand, competitors_data, self_note, range_label)
+    advice = []
+    advice_failed = False
+    try:
+        advice = _generate_advice(brand, competitors_data, self_note, range_label)
+    except Exception:
+        advice_failed = True  # 建议失败降级为空列表，总结仍展示
+    if not summary_ok and advice_failed:
+        raise llm_client.AnalysisError(FALLBACK_ERROR)  # 全部失败才记 failed
 
     data = {
         "is_speculative": True,
