@@ -83,7 +83,7 @@ class BrandProfile(Base):
     brand_aliases = Column(Text)  # JSON 数组
     brand_description = Column(Text)
     competitors = Column(Text)  # JSON 数组
-    auto_monitor = Column(Boolean, default=True)  # 参加每日自动监测开关
+    auto_monitor = Column(Boolean, default=True)  # 参加定时自动监测开关
     updated_at = Column(DateTime)
     created_at = Column(DateTime, default=now)
 

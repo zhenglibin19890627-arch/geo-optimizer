@@ -37,6 +37,34 @@ def effective_modes() -> list:
     return modes
 
 
+def effective_interval_days() -> int:
+    """监测周期（天）：1=每天，2=每 2 天，7=每周……（2026-08-16 起可调）。"""
+    try:
+        n = int(database.get_setting("schedule_interval_days", 1) or 1)
+    except (TypeError, ValueError):
+        n = 1
+    return max(1, min(n, 30))
+
+
+def _last_run_date():
+    raw = database.get_setting("schedule_last_run_date", None)
+    try:
+        return datetime.strptime(str(raw), "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _interval_due() -> bool:
+    """按周期判断今天是否该跑（cron 每天触发，周期>1 时在任务内跳过不足天数）。"""
+    interval = effective_interval_days()
+    if interval <= 1:
+        return True
+    last = _last_run_date()
+    if last is None:
+        return True
+    return (datetime.now().date() - last).days >= interval
+
+
 def _last_done_task(s) -> database.MonitorTask:
     return (s.query(database.MonitorTask)
             .filter(database.MonitorTask.status == "done")
@@ -44,7 +72,7 @@ def _last_done_task(s) -> database.MonitorTask:
 
 
 def run_scheduled_monitor(background: bool = True):
-    """跑一轮定时监测：参加每日自动监测的品牌逐个串行监测（02d 3.1.4）。
+    """跑一轮定时监测：参加定时自动监测的品牌逐个串行监测（02d 3.1.4）。
 
     全局同一时刻只有一轮监测（any_task_running 语义不变）：手动监测进行中
     定时触发即跳过本轮；跨品牌也不并发（同一进程同一批钥匙，串行等待）。
@@ -52,6 +80,10 @@ def run_scheduled_monitor(background: bool = True):
 
     def _do():
         from geo.core import monitor_task
+
+        if not _interval_due():
+            print(f"【定时监测】距离上次监测不足 {effective_interval_days()} 天，本轮按周期跳过。")
+            return
 
         with database.session_scope() as s:
             if monitor_task.any_task_running(s):
@@ -66,8 +98,12 @@ def run_scheduled_monitor(background: bool = True):
 
         active = [b for b in brands if (b.get("brand_name") or "").strip()]
         if not active:
-            print("【定时监测】还没有任何品牌参加每日自动监测（可以在设置页打开），本轮已跳过。")
+            print("【定时监测】还没有任何品牌参加定时自动监测（可以在设置页打开），本轮已跳过。")
             return
+
+        # 本轮算一次执行：记录执行日期，供周期（每 N 天）判断下次应跑时间
+        database.set_setting("schedule_last_run_date",
+                             datetime.now().strftime("%Y-%m-%d"))
 
         mode_labels = {"normal": "常规提问", "web": "联网提问"}
         names = "、".join(f"「{b['brand_name']}」" for b in active)
@@ -220,12 +256,13 @@ def _recover_and_catchup():
             last = _last_done_task(s)
             hours = float(config.get_section("monitor", {}).get("catchup_hours", 26) or 26)
             missed = last is None or (datetime.now() - last.finished_at) > timedelta(hours=hours)
-            if missed and not database.get_setting(_CATCHUP_KEY, False):
+            # 补跑同样遵守监测周期（每 N 天时不能每次启动都补）
+            if missed and _interval_due() and not database.get_setting(_CATCHUP_KEY, False):
                 database.set_setting(_CATCHUP_KEY, True)
                 if last is None:
                     # 全新库：从未监测过，不自动补跑（避免首启产生费用），仅给一句提示
                     print("【定时监测】还没有成功监测过任何一轮：暂不自动补跑，"
-                          "填好钥匙后可以随时手动发起，或等每天的定时时间自动开跑。")
+                          "填好钥匙后可以随时手动发起，或等下次定时时间自动开跑。")
                 else:
                     print("【定时监测】发现距上次成功监测已超过 26 小时，正在自动补跑一轮……")
                     run_scheduled_monitor(background=True)
@@ -238,12 +275,21 @@ def reschedule():
 
 
 def next_run_time():
-    """下次自动监测时间（ISO 字符串或 None）。"""
-    if _scheduler is None:
-        return None
+    """下次自动监测时间（ISO 字符串或 None）；周期>1 时按上次执行日期+周期计算。"""
     if not _effective_enabled():
         return None
-    job = _scheduler.get_job("daily_monitor")
-    if job and job.next_run_time:
-        return job.next_run_time.strftime("%Y-%m-%d %H:%M:%S")
-    return None
+    hour, minute = _parse_time(_effective_time(), fallback=(8, 30))
+    now = datetime.now()
+    interval = effective_interval_days()
+    candidate_date = now.date()
+    if interval > 1:
+        last = _last_run_date()
+        if last is not None:
+            due = last + timedelta(days=interval)
+            if due > now.date():
+                candidate_date = due
+    candidate = datetime(candidate_date.year, candidate_date.month, candidate_date.day,
+                         hour, minute)
+    if candidate <= now:
+        candidate += timedelta(days=1)
+    return candidate.strftime("%Y-%m-%d %H:%M:%S")

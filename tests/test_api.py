@@ -255,6 +255,20 @@ def test_定时设置读写与非法时间拦截(client):
     r = client.put("/api/schedule", json={"modes": ["nope"]})
     assert r.get_json()["code"] == 1
 
+    # 2026-08-16：监测周期可调（1~30 天）
+    r = client.put("/api/schedule", json={"interval_days": 7})
+    assert r.get_json()["code"] == 0
+    d = client.get("/api/schedule").get_json()["data"]
+    assert d["interval_days"] == 7
+    r = client.put("/api/schedule", json={"interval_days": 0})
+    assert r.get_json()["code"] == 1
+    r = client.put("/api/schedule", json={"interval_days": 99})
+    assert r.get_json()["code"] == 1
+    r = client.put("/api/schedule", json={"interval_days": "abc"})
+    assert r.get_json()["code"] == 1
+    r = client.put("/api/schedule", json={"interval_days": 1})
+    assert r.get_json()["code"] == 0
+
     r = client.put("/api/schedule", json={"time": "25:99"})
     assert r.get_json()["code"] == 1
     r = client.put("/api/schedule", json={"time": "abc"})

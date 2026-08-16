@@ -10,7 +10,7 @@ from geo.web import ApiError, current_brand_id, get_json, ok
 
 bp = Blueprint("api_alert", __name__)
 
-PLAIN_HINT = "想让系统每天自动监测，请保持本程序开着（可以最小化窗口，但不要关掉它）"
+PLAIN_HINT = "定时监测需要保持本程序运行（可以最小化窗口，但不要关闭程序）"
 
 
 # ---------------- #22 预警列表 ----------------
@@ -56,6 +56,7 @@ def schedule_get():
         "enabled": enabled,
         "time": time_str,
         "modes": modes,
+        "interval_days": scheduler.effective_interval_days(),
         "web_mode": "web" in modes,  # 兼容旧前端
         "next_run_time": scheduler.next_run_time(),
         "plain_hint": PLAIN_HINT,
@@ -80,6 +81,15 @@ def schedule_put():
         database.set_setting("schedule_modes",
                              database.jdumps(["web"] if data["web_mode"] else ["normal"]))
         database.set_setting("schedule_web_mode", bool(data["web_mode"]))
+    if "interval_days" in data:
+        # 2026-08-16：监测周期可调（1=每天，2=每2天，7=每周，上限 30 天）
+        try:
+            interval = int(data["interval_days"])
+        except (TypeError, ValueError):
+            raise ApiError("监测周期格式不对，请选择「每天 / 每 2 天 / 每 3 天 / 每周」")
+        if not (1 <= interval <= 30):
+            raise ApiError("监测周期需在 1~30 天之间")
+        database.set_setting("schedule_interval_days", interval)
     if data.get("time"):
         time_str = str(data["time"]).strip()
         if not re.match(r"^\d{1,2}:\d{2}$", time_str):

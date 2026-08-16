@@ -41,16 +41,25 @@
     <div class="small-note mt-8">钥匙保存在你电脑的 config.yaml 文件中，不会上传；已填写的钥匙在页面上仅显示脱敏样式。</div>
   </div>
 
-  <!-- 卡片4：每天自动监测 -->
+  <!-- 卡片4：定时自动监测 -->
   <div class="card" id="schedule">
-    <div class="card-title">每天自动监测</div>
+    <div class="card-title">定时自动监测</div>
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
       <span style="display:flex;align-items:center;gap:10px">
         <label class="switch"><input type="checkbox" id="schedule-enabled"><span class="slider"></span></label>
         <span id="schedule-enabled-text">定时监测已开启</span>
       </span>
       <span style="display:flex;align-items:center;gap:8px">
-        <label class="field-label" style="margin:0">每天</label>
+        <label class="field-label" style="margin:0">周期</label>
+        <select class="select" id="schedule-interval" style="width:auto">
+          <option value="1">每天</option>
+          <option value="2">每 2 天</option>
+          <option value="3">每 3 天</option>
+          <option value="7">每周</option>
+        </select>
+      </span>
+      <span style="display:flex;align-items:center;gap:8px">
+        <label class="field-label" style="margin:0">时间</label>
         <input type="time" class="input" id="schedule-time" value="08:30" step="1800" style="width:auto">
       </span>
       <button class="btn btn-primary" id="schedule-save">保存</button>
@@ -61,7 +70,7 @@
       <label class="checkbox-row" style="padding:0"><input type="checkbox" id="schedule-mode-normal"> 常规提问</label>
       <label class="checkbox-row" style="padding:0"><input type="checkbox" id="schedule-mode-web"> 联网提问</label>
     </div>
-    <div class="web-cost-note hidden" id="schedule-web-cost">联网模式每天费用增加约 0.5~2.5 元，每月约增加 15~75 元（以平台账单为准）。</div>
+    <div class="web-cost-note hidden" id="schedule-web-cost">联网模式每轮增加费用约 0.5~2.5 元（以平台账单为准）。</div>
     <div class="score-sub mt-8 hidden" id="schedule-brand-count"></div>
     <div class="score-sub mt-8" id="schedule-next">下次自动监测：--</div>
     <div class="score-sub mt-8">请保持程序运行，定时监测才能按时执行</div>

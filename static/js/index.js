@@ -180,15 +180,21 @@ function fmtScheduleModes(modes) {
   return "仅常规";
 }
 
+function fmtScheduleInterval(days) {
+  const map = { 1: "每天", 2: "每 2 天", 3: "每 3 天", 7: "每周" };
+  return map[days] || ("每 " + days + " 天");
+}
+
 function renderSchedule(area, schedule) {
   const enabled = !!schedule.enabled;
   const nextRun = schedule.next_run_time;
   let main = "";
   if (enabled) {
     main = '<div class="mt-8" style="font-size:20px;font-weight:700;color:var(--primary)">⏰ ' + esc(fmtNextRun(nextRun)) + "</div>" +
-      '<div class="score-sub mt-8">定时监测已开启（' + esc(fmtScheduleModes(schedule.modes)) + "），将于每天指定时间自动执行</div>";
+      '<div class="score-sub mt-8">定时监测已开启（' + esc(fmtScheduleModes(schedule.modes)) +
+      " · " + esc(fmtScheduleInterval(schedule.interval_days || 1)) + "）</div>";
   } else {
-    main = '<div class="score-sub mt-8">尚未设置定时监测；在设置页开启后，将于每天指定时间自动执行</div>';
+    main = '<div class="score-sub mt-8">尚未设置定时监测；在设置页开启后，系统将按设定周期自动执行</div>';
   }
   area.innerHTML = main +
     '<div class="score-sub mt-8">请保持程序运行，定时监测才能按时执行</div>' +

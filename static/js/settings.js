@@ -101,7 +101,7 @@ function renderBrandRow(b) {
     (sub ? '<div class="br-sub">' + esc(sub) + "</div>" : "") +
     "</div>" +
     '<div class="br-actions">' +
-    '<span class="br-auto">参加每日自动监测' +
+    '<span class="br-auto">参加定时自动监测' +
     '<label class="switch"><input type="checkbox" data-auto="' + b.id + '" ' + (b.auto_monitor ? "checked" : "") + ">" +
     '<span class="slider"></span></label></span>' +
     '<button class="btn-text" data-edit="' + b.id + '">编辑</button>' +
@@ -156,8 +156,8 @@ function openBrandEditModal(id) {
     '<div class="field-hint" id="eb-desc-count">' + ((b.brand_description || "").length) + "/200 字</div></div>" +
     '<div class="field" style="display:flex;align-items:center;gap:10px">' +
     '<label class="switch"><input type="checkbox" id="eb-auto" ' + (b.auto_monitor ? "checked" : "") + "><span class=\"slider\"></span></label>" +
-    '<span style="font-weight:600">参加每日自动监测</span></div>' +
-    '<div class="small-note">开启：纳入每天自动监测；关闭：自动监测跳过该品牌。</div>' +
+    '<span style="font-weight:600">参加定时自动监测</span></div>' +
+    '<div class="small-note">开启：纳入定时自动监测；关闭：自动监测跳过该品牌。</div>' +
     "</div>" +
     '<div class="modal-foot">' +
     '<button class="btn btn-secondary" data-act="cancel">取消</button>' +
@@ -456,6 +456,7 @@ function loadSchedule() {
     if (!modes.length) modes.push(s.web_mode ? "web" : "normal");
     document.getElementById("schedule-mode-normal").checked = modes.indexOf("normal") >= 0;
     document.getElementById("schedule-mode-web").checked = modes.indexOf("web") >= 0;
+    document.getElementById("schedule-interval").value = String(s.interval_days || 1);
     document.getElementById("schedule-web-cost").classList.toggle(
       "hidden", modes.indexOf("web") < 0);
     document.getElementById("schedule-next").textContent = s.next_run_time
@@ -467,6 +468,7 @@ function loadSchedule() {
 function saveSchedule() {
   const enabled = document.getElementById("schedule-enabled").checked;
   const time = document.getElementById("schedule-time").value || "08:30";
+  const intervalDays = parseInt(document.getElementById("schedule-interval").value || "1", 10);
   const modes = [];
   if (document.getElementById("schedule-mode-normal").checked) modes.push("normal");
   if (document.getElementById("schedule-mode-web").checked) modes.push("web");
@@ -476,7 +478,9 @@ function saveSchedule() {
   }
   const btn = document.getElementById("schedule-save");
   btn.disabled = true;
-  apiPut("/api/schedule", { enabled: enabled, time: time, modes: modes }).then(function (s) {
+  apiPut("/api/schedule", {
+    enabled: enabled, time: time, modes: modes, interval_days: intervalDays,
+  }).then(function (s) {
     btn.disabled = false;
     const hint = document.getElementById("schedule-saved-hint");
     hint.classList.remove("hidden");

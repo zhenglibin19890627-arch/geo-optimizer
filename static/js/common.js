@@ -234,8 +234,8 @@ function openBrandCreateModal() {
     '<div class="field-hint" id="nb-desc-count">0/200 字</div></div>' +
     '<div class="field" style="display:flex;align-items:center;gap:10px">' +
     '<label class="switch"><input type="checkbox" id="nb-auto" checked><span class="slider"></span></label>' +
-    '<span style="font-weight:600">参加每日自动监测</span></div>' +
-    '<div class="small-note">开启：纳入每天自动监测；关闭：自动监测跳过该品牌。</div>' +
+    '<span style="font-weight:600">参加定时自动监测</span></div>' +
+    '<div class="small-note">开启：纳入定时自动监测；关闭：自动监测跳过该品牌。</div>' +
     "</div>" +
     '<div class="modal-foot">' +
     '<button class="btn btn-secondary" data-act="cancel">取消</button>' +
