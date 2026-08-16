@@ -238,19 +238,19 @@ function scoreBand(score) {
   if (score === null || score === undefined) {
     return { text: "", color: "#9CA3AF" };
   }
-  if (score >= 90) return { text: "非常亮眼", color: "#16A34A" };
-  if (score >= 70) return { text: "表现良好", color: "#2563EB" };
-  if (score >= 50) return { text: "一般般", color: "#F59E0B" };
+  if (score >= 90) return { text: "优秀", color: "#16A34A" };
+  if (score >= 70) return { text: "良好", color: "#2563EB" };
+  if (score >= 50) return { text: "一般", color: "#F59E0B" };
   if (score >= 30) return { text: "偏弱", color: "#EA580C" };
-  return { text: "几乎不认识你", color: "#DC2626" };
+  return { text: "几乎未被认识", color: "#DC2626" };
 }
 
 function scoreSentence(score) {
-  if (score >= 90) return "非常亮眼！AI 回答里经常提到你，而且评价不错、位置靠前";
-  if (score >= 70) return "表现良好，AI 已经认识你，还有提升空间";
-  if (score >= 50) return "一般般，AI 有时提到你，建议按优化建议加强内容布局";
-  if (score >= 30) return "偏弱，AI 很少提到你，建议尽快做内容优化";
-  return "AI 几乎不认识你，从「内容优化建议」开始一步步来吧";
+  if (score >= 90) return "优秀！AI 回答中经常提及你，且评价正面、顺位靠前";
+  if (score >= 70) return "表现良好，AI 已认识你，仍有提升空间";
+  if (score >= 50) return "表现一般，AI 偶尔提及你，建议按优化建议加强内容布局";
+  if (score >= 30) return "表现偏弱，AI 较少提及你，建议尽快进行内容优化";
+  return "AI 几乎未认识你，建议从「内容优化」开始逐步改进";
 }
 
 function sentimentText(code) {

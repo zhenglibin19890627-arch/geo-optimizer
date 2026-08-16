@@ -56,12 +56,12 @@ def overview():
         brand = database.get_brand(brand_id)
         hints = []
         if not brand.get("brand_name"):
-            hints.append("还没有填写品牌信息，请先到「设置」页填一下品牌名")
+            hints.append("尚未填写品牌信息，请先到「设置」页填写品牌名")
         configured = _configured_engines_count(s)
         if configured == 0:
-            hints.append("还没有填任何 AI 引擎的钥匙（API Key），请到「设置」页填写后就能发起监测")
+            hints.append("尚未填写任何 AI 引擎的 API 钥匙，请到「设置」页填写后即可发起监测")
         if 0 < round_count < 3:
-            hints.append(f"再监测 {3 - round_count} 轮后，系统就能帮你盯着数据变化了")
+            hints.append(f"再完成 {3 - round_count} 轮监测后，系统将开始监测数据变化并预警")
 
         return ok({
             "score": score,
@@ -131,9 +131,9 @@ def report_competitor():
         if round_id:
             round_row = s.get(database.MonitorRound, round_id)
             if not round_row:
-                raise ApiError("这轮监测不存在，可能已被清理")
+                raise ApiError("该轮监测不存在，可能已被清理")
             if (round_row.brand_id or 1) != brand_id:
-                raise ApiError("这轮数据属于其他品牌，切换品牌后再查看吧")
+                raise ApiError("该轮数据属于其他品牌，请切换品牌后查看")
             results = (s.query(database.MonitorResult)
                        .filter(database.MonitorResult.round_id == round_id).all())
         else:
@@ -141,7 +141,7 @@ def report_competitor():
                          .filter(database.MonitorRound.brand_id == brand_id)
                          .order_by(database.MonitorRound.id.desc()).first())
             if not round_row:
-                raise ApiError("还没有任何监测数据，先发起一轮监测吧")
+                raise ApiError("暂无监测数据，请先发起一轮监测")
             results = (s.query(database.MonitorResult)
                        .filter(database.MonitorResult.round_id == round_row.id).all())
 
@@ -180,9 +180,9 @@ def report_sources():
         if round_id:
             round_row = s.get(database.MonitorRound, round_id)
             if not round_row:
-                raise ApiError("这轮监测不存在，可能已被清理")
+                raise ApiError("该轮监测不存在，可能已被清理")
             if (round_row.brand_id or 1) != brand_id:
-                raise ApiError("这轮数据属于其他品牌，切换品牌后再查看吧")
+                raise ApiError("该轮数据属于其他品牌，请切换品牌后查看")
             results = (s.query(database.MonitorResult)
                        .filter(database.MonitorResult.round_id == round_id).all())
         else:
@@ -237,9 +237,9 @@ def _resolve_round(s, brand_id: int, round_id):
     if round_id:
         round_row = s.get(database.MonitorRound, round_id)
         if not round_row:
-            raise ApiError("这轮监测不存在，可能已被清理")
+            raise ApiError("该轮监测不存在，可能已被清理")
         if (round_row.brand_id or 1) != brand_id:
-            raise ApiError("这轮数据属于其他品牌，切换品牌后再查看吧")
+            raise ApiError("该轮数据属于其他品牌，请切换品牌后查看")
         return round_row
     status_map = monitor_task.task_status_map(s)
     rows = [r for r in (s.query(database.MonitorRound)
@@ -247,7 +247,7 @@ def _resolve_round(s, brand_id: int, round_id):
                         .order_by(database.MonitorRound.id.desc()).all())
             if monitor_task.round_is_normal(status_map, r)]
     if not rows:
-        raise ApiError("还没有任何监测数据，先发起一轮监测吧")
+        raise ApiError("暂无监测数据，请先发起一轮监测")
     return rows[0]
 
 
@@ -429,7 +429,7 @@ def competitor_trend():
                   if monitor_task.round_is_normal(status_map, r)]
         rows = list(reversed(normal[:rounds]))
         if not rows:
-            raise ApiError("还没有任何监测数据，先发起一轮监测吧")
+            raise ApiError("暂无监测数据，请先发起一轮监测")
         labels = [f"第{i}轮" for i in range(1, len(rows) + 1)]
 
         # 2026-08-15：竞品一律来自自动提取——取范围内各轮 auto_competitors 并集
@@ -511,7 +511,7 @@ def competitor_mentions():
     round_id = request.args.get("round_id", type=int)
     competitor = str(request.args.get("competitor") or "").strip()
     if not competitor:
-        raise ApiError("请先选一个竞品，再看它被提到的具体回答")
+        raise ApiError("请先选择一个竞品")
 
     from geo.analyzers import mention as mention_mod
     from geo.engines import get_adapter
@@ -524,7 +524,7 @@ def competitor_mentions():
         auto = database.jloads(round_row.auto_competitors, []) or []
         # 2026-08-15：竞品一律来自本轮自动提取名单
         if not is_self and competitor not in auto:
-            raise ApiError("这个竞品不在本轮自动提取的名单里")
+            raise ApiError("该竞品不在本轮自动提取名单中")
         results = (s.query(database.MonitorResult)
                    .filter(database.MonitorResult.round_id == round_row.id)
                    .order_by(database.MonitorResult.id.asc()).all())

@@ -58,7 +58,7 @@ function qInit() {
 function expGenerate() {
   const input = document.getElementById("exp-keywords").value.trim();
   if (!input) {
-    showToast("请先填写至少一个关键词，我才能帮你扩展问法", "error");
+    showToast("请先填写至少一个关键词，才能扩展问法", "error");
     return;
   }
   const btn = document.getElementById("exp-generate");
@@ -155,7 +155,7 @@ function hasPlaceholderQuestion(list) {
 }
 
 function placeholderHint() {
-  return '<div class="small-note mt-8" style="margin-bottom:4px">含{品类}的问题，记得把{品类}换成你的产品再监测</div>';
+  return '<div class="small-note mt-8" style="margin-bottom:4px">含{品类}的问题，监测前请将{品类}替换为你的实际产品</div>';
 }
 
 /* ---------------- 分组（N6）与组标签行 ---------------- */

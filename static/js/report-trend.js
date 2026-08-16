@@ -160,8 +160,8 @@ function loadTrend() {
     /* 无数据：空状态引导（03b 3.4） */
     container.innerHTML = "";
     container.appendChild(emptyState(
-      "这个品牌还没有数据",
-      "去监测中心跑一轮吧",
+      "该品牌暂无数据",
+      "请先在监测中心发起一轮监测",
       "去监测中心",
       function () { location.href = "/static/monitor.html"; }
     ));
@@ -176,7 +176,7 @@ function loadTrend() {
     const nValues = (res[0].values) || [];
     const wValues = (res[1].values) || [];
     if (!nValues.length && !wValues.length) {
-      emptyChart(container, "暂时没有可展示的趋势数据，请先到监测中心跑一轮");
+      emptyChart(container, "暂无趋势数据，请先在监测中心发起一轮监测");
       return;
     }
     repTrendRounds(30, function (normalRounds, webRounds) {
@@ -338,7 +338,7 @@ function loadTrendCompetitor(container) {
     if (note) {
       if (data.truncated) {
         note.textContent = "近 30 轮共提取 " + (data.total || "") +
-          " 家竞品，趋势图只画累计被提到最多的前 3 家。";
+          " 家竞品，趋势图仅展示累计提及次数最多的前 3 家。";
         note.classList.remove("hidden");
       } else {
         note.classList.add("hidden");
@@ -346,13 +346,13 @@ function loadTrendCompetitor(container) {
     }
     if (!labels.length || !series.length) {
       if (trendChart) { trendChart.dispose(); trendChart = null; }
-      emptyChart(container, "还没有足够的监测数据，跑几轮后再来看趋势。");
+      emptyChart(container, "监测数据不足，请完成更多轮监测后再查看趋势。");
       return;
     }
     drawTrendCompetitor(container, labels, series, null);
   }).catch(function () {
     if (trendChart) { trendChart.dispose(); trendChart = null; }
-    emptyChart(container, "还没有足够的监测数据，跑几轮后再来看趋势。");
+    emptyChart(container, "监测数据不足，请完成更多轮监测后再查看趋势。");
   });
 }
 
@@ -423,7 +423,7 @@ function loadSources() {
     area.innerHTML = "";
     area.appendChild(emptyState(
       "",
-      "再监测 " + (2 - repRoundCount) + " 轮后，这里会画出 AI 对你的态度变化曲线",
+      "监测轮次不足，暂无法统计引用信源。",
       "",
       null
     ));
@@ -434,10 +434,10 @@ function loadSources() {
     area.innerHTML = "";
     if (!items || !items.length) {
       area.appendChild(emptyState(
-        "还没有引用信源",
+        "暂无引用信源",
         repRoundId
-          ? "这一轮 AI 回答里没有出现可识别的网站引用（目前各家 AI 的联网接口都不返回引用链接，属平台限制）"
-          : "近 30 轮 AI 回答里没有出现可识别的网站引用（目前各家 AI 的联网接口都不返回引用链接，属平台限制）",
+          ? "本轮 AI 回答中未出现可识别的网站引用（目前各家 AI 的联网接口均不返回引用链接，属平台限制）"
+          : "近 30 轮 AI 回答中未出现可识别的网站引用（目前各家 AI 的联网接口均不返回引用链接，属平台限制）",
         "",
         null
       ));

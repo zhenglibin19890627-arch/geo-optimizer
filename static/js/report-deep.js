@@ -58,7 +58,7 @@ function loadDeepStat(roundId) {
       guide.innerHTML = "";
       guide.appendChild(emptyState(
         "",
-        "本轮 AI 回答里没有提取到其他品牌（竞品），暂无可对比数据。",
+        "本轮 AI 回答中未提取到其他品牌（竞品），暂无可对比数据。",
         "",
         null
       ));
@@ -71,7 +71,7 @@ function loadDeepStat(roundId) {
     renderDeepTable(items, roundId, isRange);
   }).catch(function () {
     sec.innerHTML = "";
-    sec.appendChild(emptyState("", "没有收集到回答，没有可统计的数据。", "", null));
+    sec.appendChild(emptyState("", "未收集到有效回答，无统计数据。", "", null));
   });
 }
 
@@ -90,7 +90,7 @@ function renderDeepTable(items, roundId, isRange) {
       if (answered === 0) {
         var sec = document.getElementById("deep-stat-section");
         sec.innerHTML = "";
-        sec.appendChild(emptyState("", "这轮没有收集到回答，没有可统计的数据。", "", null));
+        sec.appendChild(emptyState("", "本轮未收集到有效回答，无统计数据。", "", null));
       } else {
         buildDeepTable(items, roundId, isRange);
       }
@@ -139,7 +139,7 @@ function buildDeepTable(items, roundId, isRange) {
       posCell = it.avg_first_position !== null && it.avg_first_position !== undefined
         ? "第 " + it.avg_first_position + " 位" : "—";
     } else {
-      countCell = '<span class="deep-dim">本轮没被提到</span>';
+      countCell = '<span class="deep-dim">本轮未提及</span>';
       answersCell = "—";
       posCell = "—";
     }
@@ -171,8 +171,8 @@ function buildDeepTable(items, roundId, isRange) {
     "</div>" +
     /* 单表双 tbody：主表 + 折叠行共用同一列宽，展开后列保持对齐 */
     '<table class="table deep-table"><thead><tr>' +
-    "<th>品牌/竞品</th><th>被提到次数</th><th>在几条回答里</th>" +
-    "<th>平均第一次被提到时排第几</th><th></th></tr></thead>" +
+    "<th>品牌/竞品</th><th>提及次数</th><th>提及的回答数</th>" +
+    "<th>平均首次提及顺位</th><th></th></tr></thead>" +
     "<tbody>" + shown.map(rowHtml).join("") + "</tbody>" +
     (rest.length
       ? '<tbody class="deep-more hidden">' + rest.map(rowHtml).join("") + "</tbody>"
@@ -217,26 +217,26 @@ function fetchDeepAnalysis(roundId) {
     var status = res.status || "unavailable";
     var sec = document.getElementById("deep-analysis-section");
     if (status === "pending" || status === "running") {
-      sec.innerHTML = '<div class="deep-placeholder">正在分析中，稍等一会儿再来看。</div>';
+      sec.innerHTML = '<div class="deep-placeholder">分析进行中，请稍候。</div>';
       deepAnalysisTimer = setTimeout(function () { fetchDeepAnalysis(roundId); }, 10000);
       return;
     }
     if (status === "failed") {
-      var msg = "暂时无法分析：这次分析没成功，请稍后再试。统计部分不受影响。";
+      var msg = "分析失败：本次分析未成功，请稍后重试。统计内容不受影响。";
       if (res.error_msg) msg += "（" + res.error_msg + "）";
       sec.innerHTML = '<div class="deep-placeholder">' + esc(msg) + "</div>";
       return;
     }
     if (status === "unavailable") {
       sec.innerHTML =
-        '<div class="deep-placeholder">暂时无法分析：分析用的 AI 钥匙（API Key）还没填。去设置页填上，下一轮监测会自动分析。' +
+        '<div class="deep-placeholder">暂时无法分析：尚未填写分析用 API 钥匙。请在设置页填写，之后的新一轮监测会自动生成分析。' +
         ' <a class="deep-link-go" href="/static/settings.html#keys">去设置页</a></div>';
       return;
     }
     if (status === "none") {
       sec.innerHTML =
         '<div class="deep-placeholder">' + (roundId ? "这一轮" : "近 30 轮") +
-        " AI 回答里没有提到其他品牌（竞品），没有可分析的内容。统计和趋势不受影响。</div>";
+        " AI 回答中未提及其他品牌（竞品），无可分析内容。统计与趋势不受影响。</div>";
       return;
     }
     renderDeepAnalysisDone(sec, res.data || {});
@@ -244,7 +244,7 @@ function fetchDeepAnalysis(roundId) {
     if (deepAnalysisRoundId !== roundId) return;
     var sec = document.getElementById("deep-analysis-section");
     sec.innerHTML =
-      '<div class="deep-placeholder">暂时无法分析：这次分析没成功，请稍后再试。统计部分不受影响。</div>';
+      '<div class="deep-placeholder">分析失败：本次分析未成功，请稍后重试。统计内容不受影响。</div>';
   });
 }
 
@@ -261,18 +261,18 @@ function renderDeepAnalysisDone(sec, data) {
     html += '<div class="small-note" style="margin-bottom:8px">' +
       (data.range === "30" ? "近 " + (data.rounds || 30) + " 轮" : "本轮") + "共提取 " +
       (data.total || competitors.length) +
-      " 家竞品，深度分析聚焦被提到次数最多的前 5 家；全部竞品见上方统计表。</div>";
+      " 家竞品，深度分析聚焦提及次数最多的前 5 家；全部竞品见上方统计表。</div>";
   }
 
   competitors.forEach(function (c) {
     var name = c.name || "";
     if (c.mentioned) {
       html += '<div class="reason-card">' +
-        '<div class="reason-title">为什么提到它——「' + esc(name) + "」</div>" +
+        '<div class="reason-title">被提及原因——「' + esc(name) + "」</div>" +
         '<div class="reason-text">' + esc(c.summary || "") + "</div>";
       var st = c.source_types || [];
       if (st.length) {
-        html += '<div class="spec-row mt-8">AI 大概从哪听说它：' +
+        html += '<div class="spec-row mt-8">推测信源类型：' +
           st.map(function (t) { return '<span class="spec-chip">' + esc(t) + "</span>"; }).join("") +
           "</div>" +
           '<div class="small-note mt-4">' + esc(DEEP_SPEC_NOTE) + "</div>";
@@ -298,7 +298,7 @@ function renderDeepAnalysisDone(sec, data) {
       html += "</div>";
     } else {
       html += '<div class="reason-card reason-dim">「' + esc(name) + "」" +
-        (data.range === "30" ? "近 30 轮 AI 回答里没有提到它" : "本轮 AI 回答里没有提到它") + "</div>";
+        (data.range === "30" ? "近 30 轮 AI 回答中未提及" : "本轮 AI 回答中未提及") + "</div>";
     }
   });
 
@@ -307,9 +307,9 @@ function renderDeepAnalysisDone(sec, data) {
       '<div class="advice-stack">' +
       advice.map(function (a) {
         return '<div class="advice-card">' +
-          '<div class="advice-line"><b>差距在哪：</b>' + esc(a.gap || "") + "</div>" +
-          '<div class="advice-line"><b>去哪做：</b>' + esc(a.where || "") + "</div>" +
-          '<div class="advice-line"><b>做什么：</b>' + esc(a.what || "") + "</div>" +
+          '<div class="advice-line"><b>差距分析：</b>' + esc(a.gap || "") + "</div>" +
+          '<div class="advice-line"><b>优化渠道：</b>' + esc(a.where || "") + "</div>" +
+          '<div class="advice-line"><b>具体动作：</b>' + esc(a.what || "") + "</div>" +
           "</div>";
       }).join("") +
       "</div>";
@@ -360,7 +360,7 @@ function openMentionModal(roundId, competitorName, isSelf) {
     var titleName = isSelf ? "你（" + competitorName + "）" : competitorName;
     var bodyHtml = "";
     if (!items || !items.length) {
-      bodyHtml = '<div class="score-sub">这轮没有提到「' + esc(titleName) + "」的回答</div>";
+      bodyHtml = '<div class="score-sub">本轮没有提及「' + esc(titleName) + "」的回答</div>";
     } else {
       bodyHtml = items.map(function (it) {
         var full = it.answer_full ? String(it.answer_full).trim() : "";

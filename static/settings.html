@@ -20,7 +20,7 @@
       </div>
       <div style="text-align:right">
         <button class="btn btn-secondary" id="brand-new-btn">＋ 新建品牌</button>
-        <div class="small-note mt-8 hidden" id="brand-full-hint">最多 5 个品牌，已经到上限了。想加新的，可以先删掉一个不用的。</div>
+        <div class="small-note mt-8 hidden" id="brand-full-hint">最多 5 个品牌，已达上限；如需新增，请先删除一个不再使用的品牌。</div>
       </div>
     </div>
     <div id="brand-list"></div>
@@ -33,12 +33,12 @@
     <div class="card-title">各家 AI 的模型配置</div>
 
     <div class="hidden orange-banner" id="keys-no-key-banner">
-      先填一把钥匙，才能开始第一次监测。填钥匙只要 2 分钟
+      请先填写至少一把 API 钥匙，才能开始第一次监测（约需 2 分钟）
       <button class="btn-text" id="keys-jump-first" style="color:var(--alert-text)">跳到第一把钥匙</button>
     </div>
 
     <div id="keys-list"></div>
-    <div class="small-note mt-8">钥匙保存在你电脑的 config.yaml 里，不会上传；已填的钥匙页面只显示脱敏样式。</div>
+    <div class="small-note mt-8">钥匙保存在你电脑的 config.yaml 文件中，不会上传；已填写的钥匙在页面上仅显示脱敏样式。</div>
   </div>
 
   <!-- 卡片4：每天自动监测 -->
@@ -60,16 +60,16 @@
       <label class="switch"><input type="checkbox" id="schedule-web-mode"><span class="slider"></span></label>
       <span>定时监测使用联网提问</span>
     </div>
-    <div class="web-cost-note hidden" id="schedule-web-cost">每天多花约 0.5~2.5 元，一个月约多花 15~75 元（以平台账单为准）。</div>
+    <div class="web-cost-note hidden" id="schedule-web-cost">每天费用增加约 0.5~2.5 元，每月约增加 15~75 元（以平台账单为准）。</div>
     <div class="score-sub mt-8 hidden" id="schedule-brand-count"></div>
     <div class="score-sub mt-8" id="schedule-next">下次自动监测：--</div>
-    <div class="score-sub mt-8">保持程序开着，才能每天自动监测</div>
+    <div class="score-sub mt-8">请保持程序运行，定时监测才能按时执行</div>
   </div>
 
-  <!-- 卡片5：本月大概花了多少钱 -->
+  <!-- 卡片5：本月费用估算 -->
   <div class="card" id="cost">
-    <div class="card-title">本月大概花了多少钱</div>
-    <div class="card-sub">按各平台公开价格估算，实际以账单为准</div>
+    <div class="card-title">本月费用估算</div>
+    <div class="card-sub">按各平台公开价格估算，实际以平台账单为准</div>
     <div id="cost-area"></div>
   </div>
 

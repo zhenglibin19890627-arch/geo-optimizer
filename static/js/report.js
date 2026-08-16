@@ -63,20 +63,20 @@ function loadCompareRange30() {
     if (normal.length) nRate = nRate / normal.length;
     if (web.length) wRate = wRate / web.length;
     var conclusion = "近 30 轮内，联网提问" +
-      (web.length ? "平均提及率 " + repPct(wRate) : "还没有数据") +
-      "，" + (normal.length ? "常规提问平均提及率 " + repPct(nRate) : "常规还没有数据") +
+      (web.length ? "平均提及率 " + repPct(wRate) : "暂无数据") +
+      "，" + (normal.length ? "常规提问平均提及率 " + repPct(nRate) : "常规暂无数据") +
       "。" + ((wRate || 0) > (nRate || 0)
-        ? "联网下 AI 更容易提到你：新内容能被搜到，建议继续做内容积累。"
-        : "两者差不多：优化目前主要停留在「被记住」层面，建议多在官网、行业媒体发内容。");
+        ? "联网模式提及率更高：新内容可被检索到，建议持续积累内容。"
+        : "两种模式相当：当前优化主要停留在「被记忆」层面，建议在官网、行业媒体持续发布内容。");
 
     body.innerHTML =
       '<div class="compare-grid">' +
       '<div class="cmp-box"><div class="cmp-title">常规提问（近 30 轮平均）</div>' +
       '<div class="cmp-num" style="color:#2563EB">' + (normal.length ? repPct(nRate) : "—") + "</div>" +
-      '<div class="cmp-desc">共 ' + normal.length + " 轮 · AI 凭记忆回答时提到你的平均比例</div></div>" +
+      '<div class="cmp-desc">共 ' + normal.length + " 轮 · AI 基于已有知识回答时的平均提及率</div></div>" +
       '<div class="cmp-box"><div class="cmp-title">联网提问（近 30 轮平均）</div>' +
       '<div class="cmp-num" style="color:#16A34A">' + (web.length ? repPct(wRate) : "—") + "</div>" +
-      '<div class="cmp-desc">共 ' + web.length + " 轮 · AI 先上网搜再回答时提到你的平均比例</div></div>" +
+      '<div class="cmp-desc">共 ' + web.length + " 轮 · AI 联网检索后回答时的平均提及率</div></div>" +
       "</div>" +
       '<div class="cmp-conclusion">' + esc(conclusion) + "</div>";
   });
@@ -139,8 +139,8 @@ function loadRoundDetail(roundId) {
         '<div class="detail-item">' +
         '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">' +
         '<span style="font-weight:600">' + esc(e.name) + "</span>" +
-        '<span class="num">回答 ' + e.answered + " 条 · 提到你 " + e.mentioned + " 次" +
-        " · 首提位置 " + (e.firstPos ? "第 " + e.firstPos + " 位" : "—") +
+        '<span class="num">回答 ' + e.answered + " 条 · 提及 " + e.mentioned + " 次" +
+        " · 首次提及顺位 " + (e.firstPos ? "第 " + e.firstPos + " 位" : "—") +
         (modelCount > 1 ? " · " + modelCount + " 个模型" : "") + "</span>" +
         "</div>" +
         '<div class="mt-8">情感分布：' +
@@ -155,7 +155,7 @@ function loadRoundDetail(roundId) {
         (e.answers.length
           ? '<div class="mt-8">' + e.answers.map(function (r, i) {
               const mentionedTag = r.is_mentioned
-                ? '<span class="tag tag-green">提到你</span>'
+                ? '<span class="tag tag-green">提及</span>'
                 : '<span class="tag tag-gray">未提及</span>';
             const sentiTag = r.sentiment === "positive"
                 ? '<span class="tag tag-green">正面</span>'
@@ -188,7 +188,7 @@ function loadRoundDetail(roundId) {
                 '<div class="hit-head"><span class="tag tag-red">调用失败</span></div>' +
                 '<div class="hit-question">问：' + esc(r.question_text || "") + "</div>" +
                 '<div class="small-note" style="color:var(--alert-text);line-height:1.8">' +
-                esc(r.error_msg || "这家 AI 没回答") + "</div>" +
+                esc(r.error_msg || "该 AI 未返回回答") + "</div>" +
                 "</div>";
             }).join("") + "</div>"
           : "") +
@@ -199,7 +199,7 @@ function loadRoundDetail(roundId) {
       html += '<div class="small-note mt-8">' + esc(notes.join(" ")) + "</div>";
     }
     if (!results.length) {
-      html = '<div class="score-sub">这轮还没有可展示的明细</div>';
+      html = '<div class="score-sub">本轮暂无明细数据</div>';
     }
     body.innerHTML = html;
     bindFullToggles(body);

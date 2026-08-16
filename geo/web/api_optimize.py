@@ -53,7 +53,7 @@ def _run_optimize_inner(record_id: int):
 
             if not llm_client.is_configured():
                 raise llm_client.AnalysisError(
-                    "分析用的模型还没填钥匙（API Key），请先到设置页填写后再试")
+                    "分析模型尚未填写 API 钥匙，请先到设置页填写后重试")
 
             # 调用 AI 前先提交，释放本连接写事务（row.status="running" 经 autoflush
             # 已落锁），避免与 log_api_call 的独立连接写 api_call_log 发生

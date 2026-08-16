@@ -154,7 +154,7 @@ function openBrandEditModal(id) {
     '<div class="field" style="display:flex;align-items:center;gap:10px">' +
     '<label class="switch"><input type="checkbox" id="eb-auto" ' + (b.auto_monitor ? "checked" : "") + "><span class=\"slider\"></span></label>" +
     '<span style="font-weight:600">参加每日自动监测</span></div>' +
-    '<div class="small-note">打开：每天早上的自动监测会带上它；关闭：自动监测跳过它。</div>' +
+    '<div class="small-note">开启：纳入每天自动监测；关闭：自动监测跳过该品牌。</div>' +
     "</div>" +
     '<div class="modal-foot">' +
     '<button class="btn btn-secondary" data-act="cancel">取消</button>' +
@@ -489,8 +489,8 @@ function loadCost() {
 
     if (!Object.keys(byEngine).length) {
       area.appendChild(emptyState(
-        "还没有监测记录",
-        "跑一轮后这里会显示花费",
+        "暂无监测记录",
+        "完成一轮监测后，此处将显示费用估算",
         "",
         null
       ));

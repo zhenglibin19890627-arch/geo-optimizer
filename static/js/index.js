@@ -46,7 +46,7 @@ function renderScorePanel(area, score, breakdown) {
   area.innerHTML =
     '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
     '<span class="score-number" style="color:' + color + '">' + esc(score) + "</span>" +
-    '<span class="score-sub">满分 100 ' + conceptBubble("0-100 分，代表 AI 回答里“认识你、提到你、夸你”的整体程度。分越高，AI 越容易主动提到你的品牌。") + "</span>" +
+    '<span class="score-sub">满分 100 ' + conceptBubble("0-100 分，代表 AI 回答中「认识你、提及你、正面评价你」的整体程度。分数越高，AI 越可能主动提及你的品牌。") + "</span>" +
     '<span class="badge-score" style="color:' + color + ';background:' + color + "1A" + '">' + esc(band.text) + "</span>" +
     "</div>" +
     '<div class="score-sub mt-8">' + esc(scoreSentence(score)) + "</div>" +
@@ -67,8 +67,8 @@ function renderScorePanel(area, score, breakdown) {
 
 function renderScoreEmpty(area) {
   area.appendChild(emptyState(
-    "这个品牌还没有监测过",
-    "去监测中心跑第一轮吧，跑完这里会显示它的评分和趋势。",
+    "该品牌尚未进行过监测",
+    "请先在监测中心完成第一轮监测，完成后此处将显示评分与趋势。",
     "去监测中心",
     function () { location.href = "/static/monitor.html"; }
   ));
@@ -80,11 +80,11 @@ function renderAlerts(area, overview) {
   const alerts = overview.unread_alerts || [];
 
   if (roundCount < 3) {
-    area.innerHTML = '<div class="score-sub">数据还在积累中——再监测 ' + (3 - roundCount) + " 轮后，系统就能帮你盯着数据变化了</div>";
+    area.innerHTML = '<div class="score-sub">数据积累中：再完成 ' + (3 - roundCount) + " 轮监测后，系统将开始监测数据变化并预警</div>";
     return;
   }
   if (!alerts.length) {
-    area.innerHTML = '<div class="score-sub">一切正常，AI 提到你的情况没有明显变化</div>';
+    area.innerHTML = '<div class="score-sub">一切正常：AI 提及你的情况无明显变化</div>';
     return;
   }
   area.innerHTML = "";
@@ -101,7 +101,7 @@ function renderAlerts(area, overview) {
         if (dot) dot.classList.remove("show");
         const rest = area.querySelectorAll(".alert-banner");
         if (!rest.length) {
-          area.innerHTML = '<div class="score-sub">一切正常，AI 提到你的情况没有明显变化</div>';
+          area.innerHTML = '<div class="score-sub">一切正常：AI 提及你的情况无明显变化</div>';
         }
       }).catch(function () {});
     });
@@ -113,8 +113,8 @@ function renderAlerts(area, overview) {
 function renderLastRound(area, lastRound) {
   if (!lastRound) {
     area.appendChild(emptyState(
-      "还没有监测记录",
-      "系统会自动把每次监测存下来，方便你回看 AI 每次怎么评价你",
+      "暂无监测记录",
+      "系统会自动保存每次监测结果，便于回看 AI 每次的评价",
       "去发起监测",
       function () { location.href = "/static/monitor.html"; }
     ));
@@ -136,8 +136,8 @@ function renderLastRound(area, lastRound) {
   area.innerHTML =
     '<div class="row-time">' + esc(fmtClock(lastRound.created_at)) +
     (isAbnormal ? " " + statusTag(taskStatus) : "") +
-    " · 问了 " + totalAnswers + " 个问题 · 用了 " + engineCount + " 家 AI</div>" +
-    '<div class="mt-8">提及率 ' + conceptBubble("这一轮问了 100 个问题，AI 回答里提到你的占多少。比如 40% 就是 10 个回答里有 4 个提到你。") + ' <span class="num" style="font-weight:600">' + mentionRate + "%</span></div>" +
+    " · 提问 " + totalAnswers + " 条 · 使用 " + engineCount + " 家 AI</div>" +
+    '<div class="mt-8">提及率 ' + conceptBubble("这一轮提问 100 个问题，AI 回答中提及你的占多少。例如 40% 表示 10 个回答中有 4 个提及你。") + ' <span class="num" style="font-weight:600">' + mentionRate + "%</span></div>" +
     '<div class="mt-8">情感倾向：<span class="num" style="font-weight:600">' + esc(sentimentTextVal) + "</span></div>" +
     '<div class="mt-8 score-sub" id="competitor-line">竞品对比：正在对比…</div>' +
     '<div class="mt-8"><a class="btn-text" href="/static/report.html?round=' + lastRound.id + '">查看完整报告 →</a></div>' +
@@ -158,7 +158,7 @@ function renderLastRound(area, lastRound) {
       return n.length > 12 ? n.slice(0, 12) + "…" : n;
     };
     let text = "";
-    if (mine) text = "你被提到 " + (mine.mention_count || 0) + " 次";
+    if (mine) text = "你被提及 " + (mine.mention_count || 0) + " 次";
     const top = others.slice(0, 3);
     if (top.length) {
       text += (text ? "；竞品：" : "竞品：") +
@@ -179,12 +179,12 @@ function renderSchedule(area, schedule) {
   let main = "";
   if (enabled) {
     main = '<div class="mt-8" style="font-size:20px;font-weight:700;color:var(--primary)">⏰ ' + esc(fmtNextRun(nextRun)) + "</div>" +
-      '<div class="score-sub mt-8">定时监测已开启，每天自动帮你盯一次</div>';
+      '<div class="score-sub mt-8">定时监测已开启，将于每天指定时间自动执行</div>';
   } else {
-    main = '<div class="score-sub mt-8">还没设置定时监测，去设置页打开后，每天自动帮你盯一次</div>';
+    main = '<div class="score-sub mt-8">尚未设置定时监测；在设置页开启后，将于每天指定时间自动执行</div>';
   }
   area.innerHTML = main +
-    '<div class="score-sub mt-8">保持程序开着，才能每天自动监测</div>' +
+    '<div class="score-sub mt-8">请保持程序运行，定时监测才能按时执行</div>' +
     '<div class="mt-12"><a class="btn btn-secondary" href="/static/settings.html#schedule">去设置</a></div>';
 }
 

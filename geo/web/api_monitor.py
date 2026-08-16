@@ -45,7 +45,7 @@ def monitor_start():
     if mode != "web" and not engine_codes:
         engine_codes = monitor_task.enabled_auto_engines()
         if not engine_codes:
-            raise ApiError("还没有任何一家 AI 引擎填好钥匙（API Key），"
+            raise ApiError("尚未有任何一家 AI 引擎填写 API 钥匙，"
                            "请先到设置页填写至少一家的钥匙，再发起监测")
 
     # 同 key 多模型（常规/联网档均支持）：{engine: [model, ...]}
@@ -210,9 +210,9 @@ def round_detail(round_id):
     with database.session_scope() as s:
         round_row = s.get(database.MonitorRound, round_id)
         if not round_row:
-            raise ApiError("这轮监测不存在，可能已被清理")
+            raise ApiError("该轮监测不存在，可能已被清理")
         if (round_row.brand_id or 1) != brand_id:
-            raise ApiError("这轮数据属于其他品牌，切换品牌后再查看吧")
+            raise ApiError("该轮数据属于其他品牌，请切换品牌后查看")
         summary = round_row.to_dict()
 
         results = (s.query(database.MonitorResult)

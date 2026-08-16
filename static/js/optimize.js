@@ -58,7 +58,7 @@ function optStart() {
       return;
     }
     if (content.length < 20) {
-      showToast("内容太短了（至少 20 个字），分析出来没有意义", "error");
+      showToast("内容过短（至少 20 字），分析结果参考价值有限", "error");
       return;
     }
   }
@@ -69,7 +69,7 @@ function optStart() {
 
   btn.disabled = true;
   btn.textContent = "分析中…";
-  showOptProgress(optCurrentTab === "url" ? "正在读取网页内容…" : "正在请 AI 帮你找问题…");
+  showOptProgress(optCurrentTab === "url" ? "正在读取网页内容…" : "正在分析内容并查找可优化的问题…");
 
   apiPost("/api/optimize", body).then(function (data) {
     pollOptProgress(data.record_id);
@@ -106,12 +106,12 @@ function pollOptProgress(recordId) {
       }
       if (data.status === "failed") {
         bar.style.width = "100%";
-        text.textContent = "没成功";
-        failOpt(data.error_msg || "分析没成功，请稍后再试一次");
+        text.textContent = "分析失败";
+        failOpt(data.error_msg || "分析未成功，请稍后重试");
         return;
       }
       bar.style.width = Math.min(data.status === "pending" ? 10 : 45, 80) + "%";
-      text.textContent = "正在请 AI 帮你找问题…（预计 1-3 分钟）";
+      text.textContent = "正在分析内容并查找可优化的问题…（预计 1-3 分钟）";
     },
     function () {
       resetOptButton();
@@ -137,17 +137,17 @@ function failOpt(message) {
   resetOptButton();
   hideOptProgress();
   hideOptResult();
-  showToast("分析没成功：" + message, "error");
+  showToast("分析未成功：" + message, "error");
 }
 
 /* ---------------- 结果渲染 ---------------- */
 
 function geoScoreSentence(score) {
-  if (score >= 90) return "非常不错！内容很容易被 AI 引用";
-  if (score >= 70) return "还不错，再打磨一下更容易被 AI 引用";
-  if (score >= 50) return "一般般，按下面的建议调整后更容易被 AI 引用";
-  if (score >= 30) return "偏弱，建议按下面的建议重点修改";
-  return "还有很大提升空间，从下面的建议开始改吧";
+  if (score >= 90) return "优秀！内容很容易被 AI 引用";
+  if (score >= 70) return "良好，再打磨后更容易被 AI 引用";
+  if (score >= 50) return "一般，按下方建议调整后更容易被 AI 引用";
+  if (score >= 30) return "偏弱，建议按下方建议重点修改";
+  return "仍有较大提升空间，建议从下方建议开始修改";
 }
 
 function hideOptResult() {
@@ -283,7 +283,7 @@ function resumeRunningOpt() {
       const btn = document.getElementById("opt-start");
       btn.disabled = true;
       btn.textContent = "分析中…";
-      showOptProgress("正在请 AI 帮你找问题…（预计 1-3 分钟）");
+      showOptProgress("正在分析内容并查找可优化的问题…（预计 1-3 分钟）");
       pollOptProgress(running.id);
     }
   }).catch(function () {});

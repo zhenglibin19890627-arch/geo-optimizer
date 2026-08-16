@@ -20,7 +20,7 @@
       </div>
     </div>
 
-    <div class="hidden orange-banner" id="mon-no-key-banner">还没有任何钥匙，先去设置页填一把，才能开始监测</div>
+    <div class="hidden orange-banner" id="mon-no-key-banner">尚未填写任何 API 钥匙，请先在设置页填写后才能开始监测</div>
 
     <!-- 模式选择（03b 6.1：常规提问/联网提问） -->
     <div class="card-title mt-16">用哪种方式提问？</div>
@@ -41,7 +41,7 @@
     <div id="q-list" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px 12px"></div>
 
     <div class="card-title mt-16">引擎</div>
-    <div class="hidden orange-banner" id="mon-web-banner">部分引擎暂不支持联网提问，已在下方置灰。</div>
+    <div class="hidden orange-banner" id="mon-web-banner">部分引擎暂不支持联网提问，已在下方置灰显示。</div>
     <div class="score-sub mb-8"><span class="num" id="e-count-text">已选 0/0 家</span></div>
     <div style="display:flex;align-items:center;gap:8px" class="mb-8">
       <label class="checkbox-row" style="padding:0"><input type="checkbox" id="e-select-all"> 全选</label>
@@ -84,16 +84,16 @@
         <div class="field" style="margin-bottom:12px">
           <label class="field-label">引擎</label>
           <select class="select" id="paste-engine"></select>
-          <div class="field-hint">"手动"选项不需要钥匙（API Key）</div>
+          <div class="field-hint">「手动」选项无需 API Key</div>
         </div>
         <div class="field" style="margin-bottom:12px">
           <label class="field-label">问题文本</label>
-          <input class="input" id="paste-question" placeholder="填或选一个你问过 AI 的问题">
+          <input class="input" id="paste-question" placeholder="填写或选择一个你问过 AI 的问题">
         </div>
       </div>
       <div class="field">
         <label class="field-label">粘贴 AI 的回答</label>
-        <textarea class="textarea" id="paste-answer" placeholder="把 AI 的原话贴进来"></textarea>
+        <textarea class="textarea" id="paste-answer" placeholder="将 AI 的回答原文粘贴到这里"></textarea>
       </div>
       <button class="btn btn-primary" id="paste-submit">立即分析</button>
       <div class="mt-12" id="paste-result"></div>
@@ -105,7 +105,7 @@
     <div class="card-head">
       <div>
         <div class="card-title">监测轮次列表</div>
-        <div class="card-sub">提及率 <span class="concept"><span class="q-mark">?</span><span class="bubble">这一轮问了 100 个问题，AI 回答里提到你的占多少。比如 40% 就是 10 个回答里有 4 个提到你。</span></span></div>
+        <div class="card-sub">提及率 <span class="concept"><span class="q-mark">?</span><span class="bubble">这一轮提问 100 个问题，AI 回答中提及你的占多少。例如 40% 表示 10 个回答中有 4 个提及你。</span></span></div>
       </div>
     </div>
     <div id="round-list-area"></div>

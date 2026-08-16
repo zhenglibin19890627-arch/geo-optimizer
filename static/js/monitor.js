@@ -147,7 +147,7 @@ function renderEList() {
     if (!k.configured && !webDisabled) {
       left.addEventListener("click", function (e) {
         if (e.target.tagName !== "INPUT") {
-          showToast("这把钥匙（API Key）还没填，去设置页填写后就能用了", "error");
+          showToast("该引擎的 API 钥匙尚未填写，请先到设置页填写", "error");
         }
       });
     }
@@ -461,7 +461,7 @@ function onTaskStopped(data) {
   document.getElementById("mon-progress-title").textContent = "本轮监测已停止";
   document.getElementById("mon-progress-count").textContent =
     (data.error_msg || "本轮监测已停止") + "（已完成的部分已保存）";
-  document.getElementById("mon-progress-sub").textContent = "可以在上面重新发起一轮";
+  document.getElementById("mon-progress-sub").textContent = "可重新发起一轮监测";
   const card = document.getElementById("mon-progress-card");
   card.classList.add("failed-card");
   const keys = monTaskKeys();
@@ -474,10 +474,10 @@ function onTaskStopped(data) {
 }
 
 function onTaskFailed(data) {
-  document.getElementById("mon-progress-title").textContent = "本轮监测没成功";
+  document.getElementById("mon-progress-title").textContent = "本轮监测未成功";
   document.getElementById("mon-progress-count").textContent =
-    (data.error_msg || "监测中途出了点意外") + "（已完成的部分已保存）";
-  document.getElementById("mon-progress-sub").textContent = "可以在上面重新发起一轮";
+    (data.error_msg || "监测过程中出现异常") + "（已完成的部分已保存）";
+  document.getElementById("mon-progress-sub").textContent = "可重新发起一轮监测";
   const card = document.getElementById("mon-progress-card");
   card.classList.add("failed-card");
   const keys = monTaskKeys();
@@ -603,8 +603,8 @@ function loadRounds(page, fresh) {
 
     if (!items.length && fresh) {
       area.appendChild(emptyState(
-        "还没有监测记录",
-        "系统会自动把每次监测存下来，方便你回看 AI 每次怎么评价你",
+        "暂无监测记录",
+        "系统会自动保存每次监测结果，便于回看 AI 每次的评价",
         "发起第一次监测",
         function () {
           document.getElementById("mon-start").scrollIntoView({ behavior: "smooth", block: "center" });

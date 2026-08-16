@@ -85,7 +85,7 @@ def get_brand_detail(brand_id):
     with database.session_scope() as s:
         row = s.get(database.BrandProfile, brand_id)
         if not row:
-            raise ApiError("这个品牌不存在，可能已被删除")
+            raise ApiError("该品牌不存在，可能已被删除")
         return ok(row.to_dict(), "获取成功")
 
 
@@ -96,7 +96,7 @@ def update_brand(brand_id):
     with database.session_scope() as s:
         row = s.get(database.BrandProfile, brand_id)
         if not row:
-            raise ApiError("这个品牌不存在，可能已被删除")
+            raise ApiError("该品牌不存在，可能已被删除")
         if _brand_name_taken(s, fields["brand_name"], exclude_id=brand_id):
             raise ApiError(f"已经有一个叫「{fields['brand_name']}」的品牌了，换个名字吧")
         row.brand_name = fields["brand_name"]
@@ -117,15 +117,15 @@ def delete_brand(brand_id):
         raise ApiError("删品牌前需要二次确认，勾选确认后再删")
     with database.session_scope() as s:
         if not s.get(database.BrandProfile, brand_id):
-            raise ApiError("这个品牌不存在，可能已被删除")
+            raise ApiError("该品牌不存在，可能已被删除")
         running = (s.query(database.MonitorTask)
                    .filter(database.MonitorTask.brand_id == brand_id,
                            database.MonitorTask.status.in_(["pending", "running"]))
                    .count())
         if running:
-            raise ApiError("这轮监测还没跑完，等它结束再删吧")
+            raise ApiError("该品牌有监测正在进行，请等待结束后再删除")
     database.delete_brand_cascade(brand_id)
-    return ok({"deleted": True}, "品牌已删除，这个品牌的数据也一起清掉了")
+    return ok({"deleted": True}, "品牌已删除，该品牌的数据已一并清理")
 
 
 # ---------------- 关键词 ----------------
@@ -601,7 +601,7 @@ def test_key():
     code = str(data.get("engine_code") or "").strip()
     if code == "analysis":
         if not llm_client.is_configured():
-            return ok({"ok": False, "message": "钥匙还没填，请先到设置页填写"}, "测试完成")
+            return ok({"ok": False, "message": "钥匙尚未填写，请先到设置页填写"}, "测试完成")
         try:
             llm_client.chat("你好", temperature=0)
         except llm_client.AnalysisError as e:
@@ -609,11 +609,11 @@ def test_key():
         return ok({"ok": True, "message": "连接成功，钥匙可用"}, "测试完成")
 
     if code not in AUTO_CODES:
-        raise ApiError("没找到这家引擎，请刷新页面后再试")
+        raise ApiError("未找到该引擎，请刷新页面后重试")
     adapter = get_adapter(code)
     if not adapter.is_configured():
         return ok({"ok": False,
-                   "message": f"{adapter.display_name}的钥匙（API Key）还没填，请先到设置页填写"},
+                   "message": f"{adapter.display_name}的 API 钥匙尚未填写，请先到设置页填写"},
                   "测试完成")
     try:
         adapter.chat([{"role": "user", "content": "你好"}], temperature=0)
