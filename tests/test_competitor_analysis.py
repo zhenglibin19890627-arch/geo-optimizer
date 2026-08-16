@@ -353,6 +353,25 @@ def test_aggregate_regenerates_when_cap_shrunk(tmpdb, monkeypatch):
         assert row.data is None
 
 
+def test_extract_keeps_rule_brands_when_llm_fails(tmpdb, monkeypatch):
+    """LLM 提取失败不能吞掉规则法结果（定时联网轮竞品为空的根因，2026-08-16）。"""
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+
+    def boom(*a, **k):
+        raise llm_client.AnalysisError("网关错误")
+
+    monkeypatch.setattr(competitor_analysis, "_chat", boom)
+    rid = _seed(tmpdb, [], ["龙泉市海盾智能工程有限公司很好，推荐"])
+    competitor_analysis.extract_auto_brands(rid, 1)
+    with database.session_scope() as s:
+        r = s.get(database.MonitorRound, rid)
+        assert database.jloads(r.auto_competitors, []) == ["龙泉市海盾智能工程有限公司"]
+        res = (s.query(database.MonitorResult)
+               .filter(database.MonitorResult.round_id == rid).first())
+        comps = database.jloads(res.competitor_mentions, [])
+        assert comps and comps[0]["name"] == "龙泉市海盾智能工程有限公司"
+
+
 # ---------------- 深度分析聚焦前 5 家 ----------------
 
 def test_generate_inner_cap(tmpdb, monkeypatch):

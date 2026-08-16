@@ -151,24 +151,29 @@ def extract_auto_brands(round_id: int, brand_id: int):
 
         # LLM 语义提取（无钥匙时跳过，规则结果仍生效）
         if llm_client.is_configured():
-            pieces = []
-            for i, t in enumerate(texts[:AUTO_BRAND_MAX_ANSWERS], 1):
-                pieces.append(f"--- 第 {i} 条 ---\n{_truncate(t, AUTO_BRAND_CHARS)}")
-            exclude_text = "、".join(exclude) or "我方品牌"
-            prompt = (
-                "你是品牌监测助手。下面是一轮 AI 问答监测中，多个 AI 对用户问题的回答原文。\n"
-                f"请找出这些回答里【被提到的所有品牌或企业名称】（公司名、产品系列名、服务品牌名等），"
-                f"一条都不要漏，但排除我方品牌「{exclude_text}」。\n"
-                "要求：\n"
-                "1. 只输出品牌名组成的 JSON 数组，不要任何解释；\n"
-                "2. 使用回答里的原样名称，不要改写；\n"
-                "3. 没有提到任何其他品牌就输出 []。\n\n"
-                f"回答原文：\n{chr(10).join(pieces)}"
-            )
-            raw = _chat_with_retry(prompt, temperature=0)
-            brands = _extract_json(raw)
-            if isinstance(brands, list):
-                cleaned = _clean_brands(cleaned + brands, exclude)
+            # 2026-08-16：LLM 提取失败（网关错误/返回非 JSON）不能吞掉规则法结果——
+            # 此前异常会整体静默返回，导致规则法找到的竞品也不落库（定时联网轮竞品为空）
+            try:
+                pieces = []
+                for i, t in enumerate(texts[:AUTO_BRAND_MAX_ANSWERS], 1):
+                    pieces.append(f"--- 第 {i} 条 ---\n{_truncate(t, AUTO_BRAND_CHARS)}")
+                exclude_text = "、".join(exclude) or "我方品牌"
+                prompt = (
+                    "你是品牌监测助手。下面是一轮 AI 问答监测中，多个 AI 对用户问题的回答原文。\n"
+                    f"请找出这些回答里【被提到的所有品牌或企业名称】（公司名、产品系列名、服务品牌名等），"
+                    f"一条都不要漏，但排除我方品牌「{exclude_text}」。\n"
+                    "要求：\n"
+                    "1. 只输出品牌名组成的 JSON 数组，不要任何解释；\n"
+                    "2. 使用回答里的原样名称，不要改写；\n"
+                    "3. 没有提到任何其他品牌就输出 []。\n\n"
+                    f"回答原文：\n{chr(10).join(pieces)}"
+                )
+                raw = _chat_with_retry(prompt, temperature=0)
+                brands = _extract_json(raw)
+                if isinstance(brands, list):
+                    cleaned = _clean_brands(cleaned + brands, exclude)
+            except Exception:
+                pass  # 规则法结果照常落库
 
         if not cleaned:
             return
