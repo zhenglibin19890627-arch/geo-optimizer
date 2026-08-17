@@ -194,7 +194,22 @@ function renderEList() {
           '"' + (isDefault ? " checked" : "") +
           ((!k.configured || webDisabled) ? " disabled" : "") + ">" +
           '<span class="label-text" style="font-size:12px">' + esc(opt.desc || opt.name) + "</span>";
-        lb.querySelector("input").addEventListener("change", updateEstimate);
+        lb.querySelector("input").addEventListener("change", function () {
+          /* 全部取消 → 同步取消厂家勾选并禁用模型组（厂家单独勾选不算选中） */
+          const code = k.engine;
+          const any = Array.from(document.querySelectorAll(
+            '#e-list .model-check[data-ecode="' + code + '"]:checked')).length > 0;
+          const master = document.querySelector(
+            '#e-list input[type=checkbox]:not(.model-check)[data-ecode="' + code + '"]');
+          if (master) master.checked = any;
+          if (!any) {
+            document.querySelectorAll(
+              '#e-list .model-check[data-ecode="' + code + '"]').forEach(function (b) {
+              b.disabled = true;
+            });
+          }
+          updateEstimate();
+        });
         mg.appendChild(lb);
       });
       area.appendChild(mg);
@@ -203,14 +218,31 @@ function renderEList() {
   updateECount();
 }
 
-/* 引擎勾选联动：其模型组跟随启用/禁用 */
+/* 引擎勾选联动（2026-08-16 修订）：厂家勾选=组开关，选中口径以具体模型为准。
+   勾厂家 → 启用模型组并自动勾选默认档；取消厂家 → 清空并禁用全部模型。 */
 function syncModelGroup(code, engineChecked) {
-  document.querySelectorAll('#e-list .model-check[data-ecode="' + code + '"]').forEach(function (b) {
+  const boxes = document.querySelectorAll('#e-list .model-check[data-ecode="' + code + '"]');
+  boxes.forEach(function (b) {
     b.disabled = !engineChecked;
+    if (!engineChecked) b.checked = false;
   });
+  if (engineChecked) {
+    const anyChecked = Array.from(boxes).some(function (b) { return b.checked; });
+    if (!anyChecked) {
+      const def = Array.from(boxes).find(function (b) {
+        return b.getAttribute("data-default") === "1";
+      });
+      if (def) def.checked = true;
+    }
+  }
 }
 
-/* 已选模型：{engine: [model,...]}；未勾任何模型的引擎 → 空数组（后端用当前档） */
+/* 该引擎是否渲染了模型组（无模型组的引擎勾厂家即按当前档算 1 个） */
+function engineHasModelGroup(code) {
+  return !!document.querySelector('#e-list .model-check[data-ecode="' + code + '"]');
+}
+
+/* 已选模型：{engine: [model,...]}；未勾任何模型的引擎 → 空数组（不算选中） */
 function selectedModels() {
   const map = {};
   document.querySelectorAll("#e-list input[type=checkbox]:not(.model-check):checked").forEach(function (b) {
@@ -225,16 +257,23 @@ function selectedModels() {
 function selectedModelsTotal() {
   const map = selectedModels();
   let n = 0;
+  Object.keys(map).forEach(function (c) { n += (map[c] || []).length; });
+  /* 无模型组的引擎：勾厂家按当前档算 1 个 */
   document.querySelectorAll("#e-list input[type=checkbox]:not(.model-check):checked").forEach(function (b) {
     const code = b.getAttribute("data-ecode");
-    n += (map[code] || []).length || 1;  // 无模型组或未勾模型 → 按 1 个（当前档）
+    if (!engineHasModelGroup(code)) n += 1;
   });
   return n;
 }
 
+/* 选中厂家 = 有具体模型被勾选（无模型组的引擎勾厂家即算选中，按当前档） */
 function selectedEngines() {
-  return Array.from(document.querySelectorAll("#e-list input[type=checkbox]:checked"))
-    .map(function (b) { return b.getAttribute("data-ecode"); });
+  return Array.from(document.querySelectorAll("#e-list input[type=checkbox]:not(.model-check):checked"))
+    .map(function (b) { return b.getAttribute("data-ecode"); })
+    .filter(function (code) {
+      if (!engineHasModelGroup(code)) return true;
+      return (selectedModels()[code] || []).length > 0;
+    });
 }
 
 function updateECount() {
@@ -275,7 +314,7 @@ function monStart() {
     return;
   }
   if (!ecodes.length) {
-    errEl.textContent = "请至少勾选 1 家已填钥匙的 AI";
+    errEl.textContent = "请至少勾选 1 个具体模型";
     return;
   }
   errEl.textContent = "";
