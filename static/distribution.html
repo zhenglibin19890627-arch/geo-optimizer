@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>内容分发 - GEO 优化系统</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+</head>
+<body>
+
+<div class="page">
+  <div class="page-title">内容分发</div>
+
+  <div class="grid-2" style="grid-template-columns: 1.5fr 1fr">
+    <div>
+      <!-- 卡片1：创作简报 -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">第一步 · 创作简报（来自监测缺口）</div>
+          <button class="btn btn-primary" id="brief-btn">生成简报</button>
+        </div>
+        <div class="small-note" id="brief-note">根据最近 30 轮监测的信源缺口、弱势问题与竞品动向，规划最值得写的主题。无分析钥匙时自动降级为规则简报。</div>
+        <div id="brief-area"></div>
+      </div>
+
+      <!-- 卡片2：生成文章 -->
+      <div class="card hidden" id="gen-card">
+        <div class="card-title">第二步 · 生成文章草稿</div>
+        <div class="field">
+          <label class="field-label">用户指令（可选，500 字内）</label>
+          <textarea class="textarea" id="gen-instruction" style="min-height:60px" placeholder="例：面向采购决策者，突出售后与本地化服务；口吻客观，不要夸张"></textarea>
+        </div>
+        <button class="btn btn-primary" id="gen-btn">按简报生成文章</button>
+        <span class="saved-hint hidden" id="gen-hint">生成约需 30~120 秒，请勿关闭页面…</span>
+        <div id="gen-editor-area" class="mt-8"></div>
+      </div>
+    </div>
+
+    <div>
+      <!-- 卡片3：官网发布配置 -->
+      <div class="card">
+        <div class="card-title">官网发布配置</div>
+        <div class="small-note">发布接口与「威启内容发布系统」扩展一致；发布走官网 API，无需打开扩展。</div>
+        <div class="field">
+          <label class="field-label">接口地址</label>
+          <input class="input" id="cfg-base" placeholder="https://www.celadonhorizon.com/hszq-api">
+        </div>
+        <div class="field">
+          <label class="field-label">Token（留空 = 不修改）</label>
+          <input class="input" id="cfg-token" type="password" placeholder="">
+          <div class="field-hint" id="cfg-token-masked"></div>
+        </div>
+        <button class="btn" id="cfg-save">保存配置</button>
+        <span class="saved-hint hidden" id="cfg-saved"></span>
+      </div>
+
+      <!-- 卡片4：稿件库 -->
+      <div class="card">
+        <div class="card-head">
+          <div class="card-title">稿件库</div>
+          <div class="small-note" id="draft-stats"></div>
+        </div>
+        <div id="draft-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/common.js"></script>
+<script src="/static/js/distribution.js"></script>
+</body>
+</html>

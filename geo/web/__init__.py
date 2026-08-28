@@ -67,9 +67,10 @@ def current_brand_id() -> int:
 def register_blueprints(app):
     # api_report_competitor 的路由挂在与 api_report 同一个 bp 上：
     # import 即完成装饰器挂载，须在 register_blueprint 之前 import。
-    from geo.web import (api_alert, api_config, api_monitor, api_optimize,
-                         api_report, api_report_competitor)
-    for bp in (api_config.bp, api_monitor.bp, api_optimize.bp, api_report.bp, api_alert.bp):
+    from geo.web import (api_alert, api_config, api_distribution, api_monitor,
+                         api_optimize, api_report, api_report_competitor)
+    for bp in (api_config.bp, api_monitor.bp, api_optimize.bp, api_report.bp,
+               api_alert.bp, api_distribution.bp):
         app.register_blueprint(bp, url_prefix="/api")
 
 

@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { key: "optimize", label: "内容优化", href: "/static/optimize.html" },
   { key: "monitor", label: "监测中心", href: "/static/monitor.html" },
   { key: "report", label: "报告", href: "/static/report.html" },
+  { key: "distribution", label: "内容分发", href: "/static/distribution.html" },
   { key: "questions", label: "问题库", href: "/static/questions.html" },
   { key: "settings", label: "设置", href: "/static/settings.html" },
 ];

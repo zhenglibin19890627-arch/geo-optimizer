@@ -301,6 +301,9 @@ def report_sources():
                                                           "is_self": bname == self_name})
                     b["count"] += 1
         from geo.engines import get_adapter as _get_adapter
+        # 「已布点」标注（内容分发闭环）：我方已发布稿件覆盖的域名 + 官网域名
+        from geo.core import distribution as distribution_mod
+        deployed = distribution_mod.deployed_domains(brand_id)
         items = []
         for domain, item in sorted(agg.items(), key=lambda kv: -kv[1]["count"]):
             eng_list = []
@@ -317,6 +320,7 @@ def report_sources():
                 "domain": item["domain"], "url": item["url"],
                 "site_name": sources_mod.site_name(item["domain"]),
                 "category": sources_mod.classify_domain(item["domain"]),
+                "deployed": distribution_mod.domain_covered(item["domain"], deployed),
                 "count": item["count"],
                 "engines": eng_list,
                 "brands": brands,

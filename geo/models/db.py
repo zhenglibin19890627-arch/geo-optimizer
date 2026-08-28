@@ -459,6 +459,46 @@ class ApiCallLog(Base):
 
 
 # ============================================================
+# 13. 内容分发稿件（监测缺口 → 创作简报 → AI 生成 → 人工审阅 → 官网直发）
+# ============================================================
+class DistributionDraft(Base):
+    __tablename__ = "distribution_draft"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    brand_id = Column(Integer, default=1)
+    title = Column(Text)
+    body_md = Column(Text)  # Markdown 正文
+    summary = Column(Text)  # 摘要（官网发布用，≤500 字）
+    tags = Column(Text)  # 逗号分隔
+    brief_json = Column(Text)  # 生成时的创作简报 JSON（留档溯源）
+    source_round_id = Column(Integer)  # 基于哪轮监测的缺口生成（可空）
+    status = Column(String(20), default="draft")  # draft / published / failed
+    published_url = Column(Text)
+    error_msg = Column(Text)
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime)
+    published_at = Column(DateTime)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "brand_id": self.brand_id,
+            "title": self.title or "",
+            "body_md": self.body_md or "",
+            "summary": self.summary or "",
+            "tags": self.tags or "",
+            "brief": jloads(self.brief_json, None),
+            "source_round_id": self.source_round_id,
+            "status": self.status or "draft",
+            "published_url": self.published_url or "",
+            "error_msg": self.error_msg or "",
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+            "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else None,
+            "published_at": self.published_at.strftime("%Y-%m-%d %H:%M:%S") if self.published_at else None,
+        }
+
+
+# ============================================================
 # 品牌档案便捷读写（多行：按 id；缺省品牌 1 兼容旧调用）
 # ============================================================
 EMPTY_BRAND = {
@@ -516,7 +556,7 @@ def delete_brand_cascade(brand_id: int):
     with session_scope() as s:
         for model in (QuestionBank, Keyword, MonitorTask, MonitorRound,
                       MonitorResult, ScoreSnapshot, Alert, OptimizationRecord,
-                      CompetitorAnalysis):
+                      CompetitorAnalysis, DistributionDraft):
             s.query(model).filter(model.brand_id == brand_id).delete(synchronize_session=False)
         # B1 遗留 2（07k 任务 4）：清掉该品牌的组登记 settings 键，避免残留无引用键
         s.query(Setting).filter(Setting.key == f"question_group_names_{brand_id}").delete(
