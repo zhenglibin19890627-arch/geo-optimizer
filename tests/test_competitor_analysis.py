@@ -106,6 +106,46 @@ def test_clean_brands_dedup_and_wrap():
 
 # ---------------- 触发条件：规则法现算提及 ----------------
 
+def test_规则法为空时LLM提取兜底(tmpdb, monkeypatch):
+    """2026-08-22 修复：回答里只有产品名/平台名（无「XX有限公司」后缀）时，
+    规则法为空——此前直接早退，LLM 语义提取根本不跑，竞品名单永远为空。"""
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+    monkeypatch.setattr(competitor_analysis, "_chat_with_retry",
+                        lambda *a, **k: '["Midjourney", "通义万相", "龙泉青瓷AIGC平台"]')
+    rid = _seed(tmpdb, [], ["推荐用 Midjourney 和通义万相，龙泉青瓷AIGC平台也可以"])
+    competitor_analysis.extract_auto_brands(rid, 1, with_llm=True)
+    with database.session_scope() as s:
+        row = s.get(database.MonitorRound, rid)
+        names = database.jloads(row.auto_competitors, []) or []
+        assert "Midjourney" in names and "通义万相" in names
+
+
+def test_LLM补出名单后触发深度分析(tmpdb, monkeypatch):
+    """2026-08-22 修复：名单从空变为非空（只有 LLM 抓到的场景）时补触发分析。"""
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+    monkeypatch.setattr(competitor_analysis, "_chat_with_retry",
+                        lambda *a, **k: '["Midjourney"]')
+    calls = []
+    monkeypatch.setattr(competitor_analysis, "trigger_if_due",
+                        lambda round_id, brand_id: calls.append(round_id))
+    rid = _seed(tmpdb, [], ["推荐用 Midjourney 出图"])
+    competitor_analysis.extract_auto_brands(rid, 1, with_llm=True)
+    assert calls == [rid]
+
+
+def test_规则法有结果时不重复触发(tmpdb, monkeypatch):
+    """规则法已落名单、LLM 只是合并补充 → 名单非空变非空，不补触发。"""
+    monkeypatch.setattr(llm_client, "is_configured", lambda: True)
+    monkeypatch.setattr(competitor_analysis, "_chat_with_retry",
+                        lambda *a, **k: '["某某有限公司"]')
+    calls = []
+    monkeypatch.setattr(competitor_analysis, "trigger_if_due",
+                        lambda round_id, brand_id: calls.append(round_id))
+    rid = _seed(tmpdb, [], ["隔壁某某有限公司不错"])
+    competitor_analysis.extract_auto_brands(rid, 1, with_llm=True)
+    assert calls == []
+
+
 def test_trigger_rule_based_mention(tmpdb, monkeypatch):
     """旧轮次 competitor_mentions 为空，但回答文本提到竞品 → 仍能触发。"""
     monkeypatch.setattr(llm_client, "is_configured", lambda: False)

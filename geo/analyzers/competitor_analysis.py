@@ -152,9 +152,12 @@ def extract_auto_brands(round_id: int, brand_id: int, with_llm: bool = True):
         rule_brands = _rule_extract_companies(texts, exclude)
         cleaned = _clean_brands(rule_brands, exclude)
 
-        if not cleaned:
-            return
-        _save_and_recompute(round_id, self_name, aliases, cleaned)
+        # 2026-08-22 修复：规则法为空不能就此返回——回答里可能是产品名/平台名
+        # （如 Midjourney、龙泉青瓷AIGC平台），没有「XX有限公司」后缀，只有
+        # LLM 语义提取能抓到。此前这里早退导致这些轮次竞品名单永远为空、
+        # 深度分析从不触发（品牌2/3 全中招）。
+        if cleaned:
+            _save_and_recompute(round_id, self_name, aliases, cleaned)
 
         # LLM 语义提取（with_llm=False 或无钥匙时跳过，规则结果仍生效）
         if with_llm and llm_client.is_configured():
@@ -184,7 +187,12 @@ def extract_auto_brands(round_id: int, brand_id: int, with_llm: bool = True):
                          (database.jloads(_current_auto(round_id), []) or [])] + brands,
                         exclude)
                     if merged:
+                        was_empty = not (database.jloads(_current_auto(round_id), []) or [])
                         _save_and_recompute(round_id, self_name, aliases, merged)
+                        # 2026-08-22 修复：名单从空变为非空（规则法抓不到、只有 LLM
+                        # 抓到的场景）时，深度分析此前从不触发——这里补触发一次
+                        if was_empty:
+                            trigger_if_due(round_id, brand_id)
             except Exception:
                 pass  # 规则法结果已落库
     except Exception:
