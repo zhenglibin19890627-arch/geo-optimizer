@@ -181,3 +181,21 @@ def test_删除稿件级联清理平台任务(tmpdb, client):
         left = (s.query(database.DistributionChannelTask)
                 .filter(database.DistributionChannelTask.draft_id == draft_id).count())
     assert left == 0
+
+
+def test_宿主中断僵尸任务回收(tmpdb):
+    from datetime import datetime, timedelta
+    with database.session_scope() as s:
+        s.add(database.DistributionChannelTask(
+            brand_id=31, draft_id=1, platform="zhihu", status="dispatching",
+            updated_at=datetime.now() - timedelta(minutes=60)))  # 过期 → 应回收
+        s.add(database.DistributionChannelTask(
+            brand_id=31, draft_id=1, platform="sohu", status="dispatching",
+            updated_at=datetime.now()))  # 新鲜 → 保留
+    reaped = distribution.reap_stale_channel_tasks(max_age_minutes=30)
+    assert reaped == 1
+    with database.session_scope() as s:
+        rows = {r.platform: r for r in s.query(database.DistributionChannelTask).all()}
+        assert rows["zhihu"].status == "failed"
+        assert "中断" in rows["zhihu"].error_msg
+        assert rows["sohu"].status == "dispatching"

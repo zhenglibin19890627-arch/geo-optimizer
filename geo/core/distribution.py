@@ -123,6 +123,30 @@ def agent_online() -> bool:
     return datetime.now() - dt <= timedelta(seconds=AGENT_HEARTBEAT_TTL)
 
 
+# 宿主领取后超过这么久仍无下文，视为分发桥中断（宿主被杀/断电等）
+CHANNEL_DISPATCH_STALE_MINUTES = 30
+
+
+def reap_stale_channel_tasks(max_age_minutes: int = CHANNEL_DISPATCH_STALE_MINUTES) -> int:
+    """回收卡在 dispatching 的僵尸任务（宿主中断时来不及回写）。
+
+    不自动重新排队：宿主断连前扩展可能已把文章发出去，盲目重发会在
+    平台上产生重复内容。落为 failed 并写明原因，由人在分发页决定重试。
+    返回回收条数。GEO 启动时自动调用一次。
+    """
+    from datetime import datetime, timedelta
+    cutoff = datetime.now() - timedelta(minutes=max_age_minutes)
+    with database.session_scope() as s:
+        rows = (s.query(database.DistributionChannelTask)
+                .filter(database.DistributionChannelTask.status == "dispatching",
+                        database.DistributionChannelTask.updated_at < cutoff).all())
+        for r in rows:
+            r.status = "failed"
+            r.error_msg = "分发桥中断，发布结果未知；请到平台确认后再决定是否重试"
+            r.updated_at = datetime.now()
+        return len(rows)
+
+
 def _url_domain(url: str) -> str:
     url = (url or "").strip()
     if not url:

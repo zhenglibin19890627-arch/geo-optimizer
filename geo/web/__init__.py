@@ -124,6 +124,12 @@ def create_app() -> Flask:
         monitor_task_mod.reap_stale_tasks()
     except Exception:
         traceback.print_exc()
+    # 同理回收分发桥中断的多平台任务（dispatching 超时无下文 → failed）
+    try:
+        from geo.core.distribution import reap_stale_channel_tasks
+        reap_stale_channel_tasks()
+    except Exception:
+        traceback.print_exc()
 
     register_blueprints(app)
 
