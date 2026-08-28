@@ -46,7 +46,7 @@ def get_json():
 
 
 def current_brand_id() -> int:
-    """当前品牌 id：GET 取查询参数，其他取请求体；缺省 1（威启，旧调用兼容）。"""
+    """当前品牌 id：GET 取查询参数，其他取请求体；缺省 1（存量品牌，旧调用兼容）。"""
     raw = None
     try:
         raw = request.args.get("brand_id")

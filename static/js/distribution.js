@@ -21,6 +21,9 @@ function loadOverview() {
 function loadConfig() {
   geoApi("/api/distribution/config").then(function (d) {
     document.getElementById("cfg-base").value = d.base_url || "";
+    document.getElementById("cfg-path").value = d.publish_path || "";
+    document.getElementById("cfg-category").value = d.category || "";
+    document.getElementById("cfg-author").value = d.author || "";
     document.getElementById("cfg-token-masked").textContent =
       d.configured ? ("当前 Token：" + d.token_masked) : "尚未配置 Token，发布前请先填写";
   }).catch(function () {});
@@ -234,6 +237,9 @@ document.getElementById("cfg-save").addEventListener("click", function () {
     method: "POST",
     body: {
       base_url: document.getElementById("cfg-base").value,
+      publish_path: document.getElementById("cfg-path").value,
+      category: document.getElementById("cfg-category").value,
+      author: document.getElementById("cfg-author").value,
       token: document.getElementById("cfg-token").value,
     },
   }).then(function (d) {

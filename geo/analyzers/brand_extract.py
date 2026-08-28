@@ -70,7 +70,7 @@ def _clean_brands(names: list, self_related: list) -> list:
         b = _strip_name_wraps(b)
         if len(b) < 2 or len(b) > 40:
             continue
-        if any(e and e in b for e in self_related):  # 子串匹配：全称“浙江威启…有限公司”也排除
+        if any(e and e in b for e in self_related):  # 子串匹配：品牌全称“XX市某某…有限公司”也排除
             continue
         if any(p in b for p in _PLATFORM_NOISE):
             continue

@@ -7,36 +7,36 @@ from geo.analyzers.mention import (brand_position, build_brand_names,
 
 def test_build_brand_names_去空去重长名在前():
     names = build_brand_names({
-        "brand_name": "威启",
-        "brand_aliases": ["威启科技", "", "威启", "  "],
+        "brand_name": "云澜",
+        "brand_aliases": ["云澜科技", "", "云澜", "  "],
     })
-    assert names == ["威启科技", "威启"]
+    assert names == ["云澜科技", "云澜"]
 
 
 def test_first_occurrences():
-    r = first_occurrences("今天威启和好孩子都提到了", ["威启", "好孩子"])
-    assert r["威启"] == 2
+    r = first_occurrences("今天云澜和好孩子都提到了", ["云澜", "好孩子"])
+    assert r["云澜"] == 2
     assert r["好孩子"] == 5
     assert "不存在" not in first_occurrences("文本", ["不存在"])
 
 
 def test_mention_count_别名与忽略大小写():
-    assert mention_count("威启很好，威启科技也不错", ["威启", "威启科技"]) == 2
+    assert mention_count("云澜很好，云澜科技也不错", ["云澜", "云澜科技"]) == 2
     assert mention_count("Apple 和 apple", ["apple"]) == 2
-    assert mention_count("", ["威启"]) == 0
+    assert mention_count("", ["云澜"]) == 0
     assert mention_count("没有提及", []) == 0
 
 
 def test_brand_position_自己第一():
-    assert brand_position("威启做得不错，其他家一般", ["威启"], ["好孩子"]) == 1
+    assert brand_position("云澜做得不错，其他家一般", ["云澜"], ["好孩子"]) == 1
 
 
 def test_brand_position_被竞品压到第二():
-    assert brand_position("好孩子先提到，然后才是威启", ["威启"], ["好孩子"]) == 2
+    assert brand_position("好孩子先提到，然后才是云澜", ["云澜"], ["好孩子"]) == 2
 
 
 def test_brand_position_未提及返回None():
-    assert brand_position("完全没提", ["威启"], []) is None
+    assert brand_position("完全没提", ["云澜"], []) is None
 
 
 def test_sentiment_正负中():
@@ -80,8 +80,8 @@ def test_sentiment_词典无重复词条():
 
 
 def test_competitor_mentions():
-    text = "好孩子很好，然后威启也不错，好孩子又出现一次"
-    r = competitor_mentions(text, ["好孩子"], ["威启"])
+    text = "好孩子很好，然后云澜也不错，好孩子又出现一次"
+    r = competitor_mentions(text, ["好孩子"], ["云澜"])
     assert len(r) == 1
     assert r[0]["name"] == "好孩子"
     assert r[0]["count"] == 2

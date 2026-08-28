@@ -59,13 +59,13 @@ def client(app):
 
 
 def _seed(tmpdb, auto_names, answers, comps_by_answer=None, brand_id=1,
-          brand_name="威启"):
+          brand_name="云澜"):
     """建品牌 + 轮次 + 回答（competitor_mentions 默认空，模拟旧轮次未回算）；返回轮次 id。"""
     with database.session_scope() as s:
         if not s.get(database.BrandProfile, brand_id):
             s.add(database.BrandProfile(
                 id=brand_id, brand_name=brand_name, product_name="实验室改造",
-                brand_aliases=database.jdumps(["威启科技"]),
+                brand_aliases=database.jdumps(["云澜科技"]),
                 brand_description="", competitors="[]", auto_monitor=True))
         rnd = database.MonitorRound(
             brand_id=brand_id, mode="normal", mention_rate=0.5,
@@ -90,7 +90,7 @@ def _seed(tmpdb, auto_names, answers, comps_by_answer=None, brand_id=1,
 def test_strip_name_wraps():
     f = competitor_analysis._strip_name_wraps
     assert f("如“龙泉市XX网络科技有限公司”") == "龙泉市XX网络科技有限公司"
-    assert f("例如「浙江威启」") == "浙江威启"
+    assert f("例如「浙江云澜」") == "浙江云澜"
     assert f("比如《某某品牌》）") == "某某品牌"
     # 不带引号的品牌名不受影响（如家酒店不能丢掉“如”）
     assert f("如家酒店") == "如家酒店"
@@ -100,7 +100,7 @@ def test_strip_name_wraps():
 
 def test_clean_brands_dedup_and_wrap():
     out = competitor_analysis._clean_brands(
-        ["如“XX网络科技有限公司”", "XX网络科技有限公司", "好孩子", "威启科技"], ["威启"])
+        ["如“XX网络科技有限公司”", "XX网络科技有限公司", "好孩子", "云澜科技"], ["云澜"])
     assert out == ["XX网络科技有限公司", "好孩子"]
 
 

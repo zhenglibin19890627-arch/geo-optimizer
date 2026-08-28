@@ -67,5 +67,5 @@ def test_文案含品牌名(alert_db):
         alerts = alerting.evaluate_round(
             s, _baseline_normal(),
             _current(mention_rate=0.1, mentioned_count=1), 6,
-            brand_id=1, brand_name="威启")
-        assert any("威启" in (a.message or "") for a in alerts)
+            brand_id=1, brand_name="云澜")
+        assert any("云澜" in (a.message or "") for a in alerts)

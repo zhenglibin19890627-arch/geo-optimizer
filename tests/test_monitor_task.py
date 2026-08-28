@@ -26,7 +26,7 @@ def test_不注入品牌档案信息():
     # （连续 9 轮 100%）。提问里绝不允许出现品牌线索。
     msgs = build_messages("实验室改造找哪家公司靠谱？")
     joined = msgs[0]["content"] + "\n" + msgs[1]["content"]
-    assert "威启" not in joined
+    assert "云澜" not in joined
     assert "背景参考" not in joined
     assert "提及该品牌" not in joined
     assert "简介" not in joined
@@ -39,21 +39,21 @@ def test_中性提示词不含任何品牌占位():
 
 def test_未提及品牌的回答情感计中性():
     # 防回归：夸竞品/夸行业的好评不得算作我方正面（会虚高净情感率）
-    brand = {"brand_name": "威启"}
+    brand = {"brand_name": "云澜"}
     analysis = _analysis_for(
         _Adapter(), _Question(),
         ChatResult(text="好孩子很好，值得推荐，参考 https://example.com/b", model="m"),
-        brand, competitors=["好孩子"], brand_names=["威启"])
+        brand, competitors=["好孩子"], brand_names=["云澜"])
     assert analysis["is_mentioned"] is False
     assert analysis["sentiment"] == "neutral"
 
 
 def test_提及品牌的好评计正面():
-    brand = {"brand_name": "威启"}
+    brand = {"brand_name": "云澜"}
     analysis = _analysis_for(
         _Adapter(), _Question(),
-        ChatResult(text="威启很好，值得推荐", model="m"),
-        brand, competitors=["好孩子"], brand_names=["威启"])
+        ChatResult(text="云澜很好，值得推荐", model="m"),
+        brand, competitors=["好孩子"], brand_names=["云澜"])
     assert analysis["is_mentioned"] is True
     assert analysis["sentiment"] == "positive"
 

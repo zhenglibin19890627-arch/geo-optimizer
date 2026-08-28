@@ -41,15 +41,29 @@
       <!-- 卡片3：官网发布配置 -->
       <div class="card">
         <div class="card-title">官网发布配置</div>
-        <div class="small-note">发布接口与「威启内容发布系统」扩展一致；发布走官网 API，无需打开扩展。</div>
+        <div class="small-note">站点接口完全自定义：任何提供「POST 发布文章 + X-Api-Token 鉴权」约定的自有站点都能接入，系统不预置任何站点。</div>
         <div class="field">
           <label class="field-label">接口地址</label>
-          <input class="input" id="cfg-base" placeholder="https://www.celadonhorizon.com/hszq-api">
+          <input class="input" id="cfg-base" placeholder="https://你的站点域名">
+        </div>
+        <div class="field">
+          <label class="field-label">接口路径</label>
+          <input class="input" id="cfg-path" placeholder="/api/articles/publish">
         </div>
         <div class="field">
           <label class="field-label">Token（留空 = 不修改）</label>
           <input class="input" id="cfg-token" type="password" placeholder="">
           <div class="field-hint" id="cfg-token-masked"></div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label class="field-label">默认分类</label>
+            <input class="input" id="cfg-category" placeholder="公司动态">
+          </div>
+          <div class="field">
+            <label class="field-label">默认作者（留空 = 品牌名）</label>
+            <input class="input" id="cfg-author" placeholder="">
+          </div>
         </div>
         <button class="btn" id="cfg-save">保存配置</button>
         <span class="saved-hint hidden" id="cfg-saved"></span>

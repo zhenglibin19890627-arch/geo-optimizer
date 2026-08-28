@@ -72,8 +72,8 @@ def test_overview_空库给品牌引导(client):
 
 def test_品牌创建与重名空名校验(client):
     r = client.post("/api/brands", json={
-        "brand_name": "威启", "product_name": "实验室改造",
-        "brand_aliases": "威启科技", "competitors": "好孩子",
+        "brand_name": "云澜", "product_name": "实验室改造",
+        "brand_aliases": "云澜科技", "competitors": "好孩子",
         "brand_description": "做理化生实验室改造", "auto_monitor": True,
     })
     body = r.get_json()
@@ -81,7 +81,7 @@ def test_品牌创建与重名空名校验(client):
     assert body["data"]["id"] == 1
 
     # 重名拦截
-    r = client.post("/api/brands", json={"brand_name": "威启"})
+    r = client.post("/api/brands", json={"brand_name": "云澜"})
     assert r.get_json()["code"] == 1
     # 空品牌名拦截
     r = client.post("/api/brands", json={"brand_name": "  "})
@@ -124,7 +124,7 @@ def test_手动粘贴分析提及情感信源(client):
     r = client.post("/api/monitor/paste", json={
         "brand_id": 1, "engine_code": "manual",
         "question_text": "实验室改造找谁？",
-        "answer_text": "威启很好，值得推荐，威启科技也不错。参考 https://example.com/a",
+        "answer_text": "云澜很好，值得推荐，云澜科技也不错。参考 https://example.com/a",
     })
     body = r.get_json()
     assert body["code"] == 0, body
@@ -438,7 +438,7 @@ def test_各引擎厂商对比接口(client):
                                     mention_rate=0.5, net_sentiment=0.0, overall_score=50))
         s.add(database.MonitorResult(round_id=501, brand_id=7, engine_code="doubao",
                                      model="doubao-mini", question_id=1, question_text="q",
-                                     answer_text="威启不错", is_mentioned=True, mention_count=1,
+                                     answer_text="云澜不错", is_mentioned=True, mention_count=1,
                                      mention_position=1, sentiment="positive", sources="[]"))
         s.add(database.MonitorResult(round_id=501, brand_id=7, engine_code="qwen",
                                      model="qwen-max", question_id=1, question_text="q",
@@ -446,7 +446,7 @@ def test_各引擎厂商对比接口(client):
                                      sentiment="neutral", sources="[]"))
         s.add(database.MonitorResult(round_id=501, brand_id=7, engine_code="opencode",
                                      model="qwen3.7-max", question_id=1, question_text="q",
-                                     answer_text="威启很好", is_mentioned=True, mention_count=1,
+                                     answer_text="云澜很好", is_mentioned=True, mention_count=1,
                                      mention_position=1, sentiment="positive", sources="[]"))
 
     r = client.get("/api/report/engines?rounds=30&brand_id=7")
@@ -507,7 +507,7 @@ def test_报告接口趋势信源竞品(client):
         # 用例自包含：不依赖前序用例创建品牌（单独运行 -k 也能过）
         if not s.get(database.BrandProfile, 1):
             s.add(database.BrandProfile(
-                id=1, brand_name="威启", product_name="实验室改造",
+                id=1, brand_name="云澜", product_name="实验室改造",
                 brand_aliases="[]", brand_description="",
                 competitors=database.jdumps(["好孩子"])))
         task = database.MonitorTask(
@@ -528,7 +528,7 @@ def test_报告接口趋势信源竞品(client):
             round_id=rid, brand_id=1, engine_code="deepseek",
             model="deepseek-v4-flash", question_id=1,
             question_text="监测用问题",
-            answer_text="好孩子很好，威启也不错，参考 https://example.com/a",
+            answer_text="好孩子很好，云澜也不错，参考 https://example.com/a",
             is_mentioned=True, mention_count=1, mention_position=2,
             sentiment="positive",
             sources=database.jdumps(
@@ -573,8 +573,8 @@ def test_报告接口趋势信源竞品(client):
     r = client.get(f"/api/report/competitor?brand_id=1&round_id={rid}")
     items = r.get_json()["data"]["items"]
     by_name = {it["name"]: it for it in items}
-    assert by_name["威启"]["is_self"] is True
-    assert by_name["威启"]["mention_count"] == 1
+    assert by_name["云澜"]["is_self"] is True
+    assert by_name["云澜"]["mention_count"] == 1
     assert by_name["好孩子"]["is_self"] is False
     assert by_name["好孩子"]["mention_count"] == 1
 

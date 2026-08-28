@@ -7,8 +7,9 @@
   蒸馏词 + 目标信源域）；无钥匙或调用失败自动降级为规则简报（零费用可用）；
 - 生成稿件（generate_draft）：按简报 + 品牌档案生成 Markdown 文章，落库为
   draft 状态，人工审阅/编辑后才允许发布（一期人工审阅制）；
-- 官网直发（publish_official）：POST {base}/api/weiqi/articles/publish，
-  X-Api-Token 鉴权（与威启内容发布系统扩展同一接口，token 在分发页配置）。
+- 官网直发（publish_official）：POST {base_url}{publish_path}，X-Api-Token 鉴权；
+  站点接口完全可配置（地址/路径/Token/分类/作者），可指向任意提供该约定的
+  自有站点，系统本身不预置任何具体站点（token 等在分发页配置）。
 """
 
 import re
@@ -21,8 +22,9 @@ from geo.analyzers import llm_client, sources as sources_mod
 from geo.engines.base import EngineError
 from geo.models import db as database
 
-OFFICIAL_DEFAULT_BASE = "https://www.celadonhorizon.com/hszq-api"
-OFFICIAL_PUBLISH_PATH = "/api/weiqi/articles/publish"
+# 站点发布配置的通用缺省：地址/路径留空 = 未配置（不预置任何具体站点）
+OFFICIAL_DEFAULT_PATH = "/api/articles/publish"
+OFFICIAL_DEFAULT_CATEGORY = "公司动态"
 BRIEF_MAX_ROUNDS = 30
 WEAK_QUESTION_MIN_ANSWERS = 3
 WEAK_QUESTION_TOP = 8
@@ -34,16 +36,37 @@ SUMMARY_MAX_CHARS = 500
 # ---------------- 官网配置（settings 表存储，分发页可改） ----------------
 
 def get_official_config() -> dict:
-    base_url = str(database.get_setting("official_api_base", OFFICIAL_DEFAULT_BASE)
-                   or OFFICIAL_DEFAULT_BASE).strip().rstrip("/")
-    token = str(database.get_setting("official_api_token", "") or "").strip()
-    return {"base_url": base_url, "token": token, "configured": bool(token)}
+    """站点发布配置（settings 表存储，分发页可改；不预置任何具体站点）。
+
+    兼容回退：早期版本用过 official_api_base/official_api_token 两个键，
+    新键缺失时回落旧键（仅回退用户保存过的值，不带任何默认站点）。
+    """
+    base_url = (database.get_setting("site_base_url", None)
+                or database.get_setting("official_api_base", None) or "")
+    base_url = str(base_url).strip().rstrip("/")
+    token = str(database.get_setting("site_api_token", None)
+                or database.get_setting("official_api_token", None) or "").strip()
+    path = str(database.get_setting("site_publish_path", None)
+               or OFFICIAL_DEFAULT_PATH).strip()
+    if not path.startswith("/"):
+        path = "/" + path
+    category = str(database.get_setting("site_category", None)
+                   or OFFICIAL_DEFAULT_CATEGORY).strip()
+    author = str(database.get_setting("site_author", None) or "").strip()
+    return {
+        "base_url": base_url,
+        "publish_path": path,
+        "category": category,
+        "author": author,
+        "token": token,
+        "configured": bool(base_url and token),
+    }
 
 
 def official_domain() -> str:
     base_url = get_official_config()["base_url"]
     try:
-        return sources_mod.normalize_domain(urlparse(base_url).hostname or "")
+        return sources_mod.normalize_domain(urlparse(base_url).hostname or "") if base_url else ""
     except Exception:
         return ""
 
@@ -404,9 +427,11 @@ def generate_draft(brand_id: int, brief: dict = None, user_instruction: str = ""
 # ---------------- 官网直发 ----------------
 
 def publish_official(draft_id: int, brand_id: int) -> dict:
-    """把稿件发布到威启官网（同步调用，与威启内容发布系统扩展同一接口）。"""
+    """把稿件发布到自有官网（同步调用；站点接口在分发页配置，无预置站点）。"""
     cfg = get_official_config()
-    if not cfg["configured"]:
+    if not cfg["base_url"]:
+        raise EngineError("还没配置官网接口地址，请在本页「官网发布配置」里填写")
+    if not cfg["token"]:
         raise EngineError("还没配置官网接口 Token，请在本页「官网发布配置」里填写")
     with database.session_scope() as s:
         row = s.get(database.DistributionDraft, draft_id)
@@ -420,14 +445,14 @@ def publish_official(draft_id: int, brand_id: int) -> dict:
         payload = {
             "title": row.title.strip(),
             "content": row.body_md,
-            "category": "公司动态",
-            "author": (brand.get("brand_name") or "威启信息"),
+            "category": cfg["category"],
+            "author": cfg["author"] or (brand.get("brand_name") or ""),
             "summary": (row.summary or "")[:SUMMARY_MAX_CHARS],
             "tags": (row.tags or "").strip(),
         }
         row.status = "publishing"
         row.updated_at = datetime.now()
-    url = cfg["base_url"] + OFFICIAL_PUBLISH_PATH
+    url = cfg["base_url"] + cfg["publish_path"]
     try:
         resp = requests_lib.post(url, json=payload, timeout=30,
                                  headers={"X-Api-Token": cfg["token"],

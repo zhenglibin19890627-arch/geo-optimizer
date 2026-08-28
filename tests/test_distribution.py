@@ -60,6 +60,7 @@ def client(app):
 
 def _seed_monitor_data(brand_id=21):
     """造 2 轮正常监测：zhihu.com 高频信源、一个提及率 0% 的短板问题。"""
+    database.set_setting("site_base_url", "https://www.example-brand.com")
     with database.session_scope() as s:
         if not s.get(database.BrandProfile, brand_id):
             s.add(database.BrandProfile(id=brand_id, brand_name="闭环测试牌",
@@ -139,6 +140,30 @@ def test_LLM返回坏JSON时降级规则简报(tmpdb, monkeypatch):
     assert brief["mode"] == "rule"
 
 
+# ---------------- 站点发布配置（通用，无预置站点） ----------------
+
+def test_站点配置保存与回显(tmpdb, client):
+    r = client.post("/api/distribution/config", json={
+        "brand_id": 21, "base_url": "https://cfg.example.com",
+        "publish_path": "api/posts/publish",  # 故意不带前导斜杠
+        "category": "技术动态", "author": "内容组", "token": "cfg-tok"})
+    body = r.get_json()
+    assert body["code"] == 0, body
+    assert body["data"]["publish_path"] == "/api/posts/publish"  # 自动补斜杠
+    assert body["data"]["configured"] is True
+    assert body["data"]["token_masked"]  # 掩码非空
+    cfg = distribution.get_official_config()
+    assert cfg["base_url"] == "https://cfg.example.com"
+    assert cfg["category"] == "技术动态"
+    assert cfg["author"] == "内容组"
+    assert cfg["token"] == "cfg-tok"
+
+    # 分类超长 → 大白话报错
+    r = client.post("/api/distribution/config", json={
+        "brand_id": 21, "category": "超" * 51})
+    assert r.get_json()["code"] == 1
+
+
 # ---------------- 生成 / 审阅 / 发布 ----------------
 
 def test_生成稿件并审阅编辑(tmpdb, client, monkeypatch):
@@ -173,37 +198,41 @@ def test_发布官网成功与失败路径(tmpdb, client, monkeypatch):
         def json(self):
             return self._payload
 
-    # 未配 Token → 大白话报错
-    monkeypatch.setattr(database, "get_setting",
-                        lambda key, default=None: "" if key == "official_api_token" else default)
+    # 什么都没配 → 先提示接口地址（通用配置：无预置站点）
+    monkeypatch.setattr(database, "get_setting", lambda key, default=None: default)
     with database.session_scope() as s:
         s.add(database.DistributionDraft(id=610, brand_id=21, title="t", body_md="b"))
     r = client.post("/api/distribution/drafts/610/publish", json={"brand_id": 21})
     assert r.get_json()["code"] == 1
-    assert "Token" in r.get_json()["message"]
+    assert "地址" in r.get_json()["message"]
 
-    # 配好 Token + 打桩 requests.post：成功路径
-    monkeypatch.setattr(database, "get_setting",
-                        lambda key, default=None:
-                        "tok123" if key == "official_api_token" else default)
+    # 配好站点 + 打桩 requests.post：成功路径
+    def _fake_setting(key, default=None):
+        if key in ("site_base_url", "official_api_base"):
+            return "https://publish.example.com"
+        if key in ("site_api_token", "official_api_token"):
+            return "tok123"
+        return default
+
+    monkeypatch.setattr(database, "get_setting", _fake_setting)
     posted = {}
 
     def _fake_post(url, json=None, timeout=0, headers=None, **kw):
         posted["url"] = url
         posted["payload"] = json
-        return _Resp(payload={"code": 0, "url": "https://www.celadonhorizon.com/art/1"})
+        return _Resp(payload={"code": 0, "url": "https://www.publish-example.com/art/1"})
 
     monkeypatch.setattr("geo.core.distribution.requests_lib.post", _fake_post)
     r = client.post("/api/distribution/drafts/610/publish", json={"brand_id": 21})
     body = r.get_json()
     assert body["code"] == 0, body
-    assert body["data"]["url"] == "https://www.celadonhorizon.com/art/1"
-    assert "celadonhorizon.com" in posted["url"]
-    assert posted["payload"]["author"] == "闭环测试牌"
+    assert body["data"]["url"] == "https://www.publish-example.com/art/1"
+    assert "publish.example.com" in posted["url"]
+    assert posted["payload"]["author"] == "闭环测试牌"  # 未配作者 → 回落品牌名
     with database.session_scope() as s:
         row = s.get(database.DistributionDraft, 610)
         assert row.status == "published"
-        assert row.published_url == "https://www.celadonhorizon.com/art/1"
+        assert row.published_url == "https://www.publish-example.com/art/1"
 
     # 失败路径：官网返回业务错误码 → 稿件 failed + error_msg 可重试
     monkeypatch.setattr("geo.core.distribution.requests_lib.post",
@@ -215,8 +244,10 @@ def test_发布官网成功与失败路径(tmpdb, client, monkeypatch):
         assert row.status == "failed"
         assert "token 无效" in row.error_msg
 
-    # 已布点域名随之更新
-    assert "celadonhorizon.com" in distribution.deployed_domains(21)
+    # 已布点域名随之更新：官网主域（来自站点配置）天然算已布点；
+    # 此刻稿件已被上面的失败子流程标回 failed，其落地页域名不再计入
+    assert "publish.example.com" in distribution.deployed_domains(21)
+    assert "publish-example.com" not in distribution.deployed_domains(21)
 
 
 def test_信源排行已布点标注(tmpdb, client):

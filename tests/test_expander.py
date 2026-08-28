@@ -11,11 +11,11 @@ from geo.core.question_expander import _extract_questions
 
 
 def test_extract_新JSON格式():
-    text = ('{"brand": "威启", "questions": [{"id": 1, "type": "求推荐",'
+    text = ('{"brand": "云澜", "questions": [{"id": 1, "type": "求推荐",'
             ' "question": "A问？", "expected_trigger": "t"}]}')
     qs, meta = _extract_questions(text)
     assert qs == ["A问？"]
-    assert meta["brand"] == "威启"
+    assert meta["brand"] == "云澜"
 
 
 def test_extract_旧数组格式():

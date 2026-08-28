@@ -145,7 +145,7 @@ def delete_draft(draft_id: int):
 
 @bp.route("/distribution/drafts/<int:draft_id>/publish", methods=["POST"])
 def publish(draft_id: int):
-    """发布到威启官网（同步调用；失败会落 error_msg，可修稿后重试）。"""
+    """发布到自有官网（同步调用；失败会落 error_msg，可修稿后重试）。"""
     brand_id = current_brand_id()
     try:
         result = distribution.publish_official(draft_id, brand_id)
@@ -156,34 +156,56 @@ def publish(draft_id: int):
 
 @bp.route("/distribution/config", methods=["GET"])
 def get_official_config():
-    """官网发布配置（Token 掩码）。"""
+    """官网发布配置（Token 掩码；站点完全由用户配置，无预置站点）。"""
     brand_id = current_brand_id()
     cfg = distribution.get_official_config()
     from geo.web.api_config import _mask_key
-    return ok({"base_url": cfg["base_url"], "configured": cfg["configured"],
+    return ok({"base_url": cfg["base_url"], "publish_path": cfg["publish_path"],
+               "category": cfg["category"], "author": cfg["author"],
+               "configured": cfg["configured"],
                "token_masked": _mask_key(cfg["token"]),
                "official_domain": distribution.official_domain()}, "获取成功")
 
 
 @bp.route("/distribution/config", methods=["POST"])
 def save_official_config():
-    """保存官网接口地址 / Token（Token 留空 = 不修改，与引擎钥匙口径一致）。"""
+    """保存官网接口配置（地址/路径/分类/作者；Token 留空 = 不修改）。"""
     data = get_json()
     from geo.web.api_config import _mask_key
     base_url = str(data.get("base_url") or "").strip().rstrip("/")
+    publish_path = str(data.get("publish_path") or "").strip()
+    category = str(data.get("category") or "").strip()
+    author = str(data.get("author") or "").strip()
     token = str(data.get("token") or "").strip()
     if base_url:
         if not base_url.startswith(("http://", "https://")):
             raise ApiError("接口地址必须以 http:// 或 https:// 开头")
         if len(base_url) > 300:
             raise ApiError("接口地址太长了")
+    if publish_path:
+        if not publish_path.startswith("/"):
+            publish_path = "/" + publish_path
+        if len(publish_path) > 200:
+            raise ApiError("接口路径太长了")
+    if len(category) > 50:
+        raise ApiError("分类太长了（最多 50 字）")
+    if len(author) > 100:
+        raise ApiError("作者太长了（最多 100 字）")
     if token:
         if len(token) > 200:
             raise ApiError("Token 太长了，请检查是否复制完整")
-        database.set_setting("official_api_token", token)
+        database.set_setting("site_api_token", token)
     if base_url:
-        database.set_setting("official_api_base", base_url)
+        database.set_setting("site_base_url", base_url)
+    if publish_path:
+        database.set_setting("site_publish_path", publish_path)
+    if data.get("category") is not None and category:
+        database.set_setting("site_category", category)
+    if data.get("author") is not None:
+        database.set_setting("site_author", author)
     cfg = distribution.get_official_config()
-    return ok({"base_url": cfg["base_url"], "configured": cfg["configured"],
+    return ok({"base_url": cfg["base_url"], "publish_path": cfg["publish_path"],
+               "category": cfg["category"], "author": cfg["author"],
+               "configured": cfg["configured"],
                "token_masked": _mask_key(cfg["token"])},
               "官网发布配置已保存，立即生效")
