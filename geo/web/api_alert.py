@@ -4,13 +4,73 @@ import re
 
 from flask import Blueprint, request
 
-from geo.core import scheduler
+from geo.core import monitor_task, scheduler
+from geo.engines import AUTO_CODES, get_adapter
 from geo.models import db as database
 from geo.web import ApiError, current_brand_id, get_json, ok
 
 bp = Blueprint("api_alert", __name__)
 
 PLAIN_HINT = "定时监测需要保持本程序运行（可以最小化窗口，但不要关闭程序）"
+
+
+def _stored_schedule_models() -> dict:
+    """读回定时模型选择，恒为 {"normal": {...}, "web": {...}} 形状。"""
+    raw = database.jloads(database.get_setting("schedule_models", None), {}) or {}
+    result = {"normal": {}, "web": {}}
+    if isinstance(raw, dict):
+        for mode in ("normal", "web"):
+            per = raw.get(mode) or {}
+            if not isinstance(per, dict):
+                continue
+            clean = {}
+            for code, picked in per.items():
+                if isinstance(picked, str):
+                    picked = [picked]
+                if not isinstance(picked, list):
+                    continue
+                names = [str(m).strip() for m in picked if str(m).strip()]
+                if names:
+                    clean[str(code)] = list(dict.fromkeys(names))
+            result[mode] = clean
+    return result
+
+
+def _validate_schedule_models(raw) -> dict:
+    """校验定时模型选择：{"normal": {engine: [model,...]}, "web": {...}}。
+
+    引擎必须存在；联网档引擎必须支持联网；模型名必须在当前档位
+    白名单里（与监测中心同一口径）。全空 = 各引擎跟随当前档。
+    """
+    result = {"normal": {}, "web": {}}
+    if raw is None:
+        return result
+    if not isinstance(raw, dict):
+        raise ApiError("模型选择格式不对，请刷新页面后再试")
+    for mode in ("normal", "web"):
+        per = raw.get(mode) or {}
+        if not isinstance(per, dict):
+            raise ApiError("模型选择格式不对，请刷新页面后再试")
+        for code, picked in per.items():
+            code = str(code).strip()
+            if code not in AUTO_CODES:
+                raise ApiError("没找到这家引擎，请刷新页面后再重新选择")
+            adapter = get_adapter(code)
+            if mode == "web" and not adapter.supports_web_search:
+                raise ApiError(f"{adapter.display_name}不支持联网提问，不能给它选联网模型")
+            if isinstance(picked, str):
+                picked = [picked]
+            if not isinstance(picked, list):
+                raise ApiError("模型选择格式不对，请刷新页面后再试")
+            picked = [str(m).strip() for m in picked if str(m).strip()]
+            allowed = monitor_task.allowed_models(code, web=(mode == "web"))
+            for m in picked:
+                if m not in allowed:
+                    raise ApiError(
+                        f"{adapter.display_name}没有「{m}」这个档位，请从档位列表里重新选择")
+            if picked:
+                result[mode][code] = list(dict.fromkeys(picked))
+    return result
 
 
 # ---------------- #22 预警列表 ----------------
@@ -58,6 +118,7 @@ def schedule_get():
         "modes": modes,
         "interval_days": scheduler.effective_interval_days(),
         "web_mode": "web" in modes,  # 兼容旧前端
+        "models": _stored_schedule_models(),  # 定时模型档位选择（空=跟随当前档）
         "next_run_time": scheduler.next_run_time(),
         "plain_hint": PLAIN_HINT,
     }, "获取成功")
@@ -90,6 +151,10 @@ def schedule_put():
         if not (1 <= interval <= 30):
             raise ApiError("监测周期需在 1~30 天之间")
         database.set_setting("schedule_interval_days", interval)
+    if "models" in data:
+        # 2026-08-18：定时监测可选模型档位（与监测中心同口径校验）
+        database.set_setting("schedule_models",
+                             database.jdumps(_validate_schedule_models(data["models"])))
     if data.get("time"):
         time_str = str(data["time"]).strip()
         if not re.match(r"^\d{1,2}:\d{2}$", time_str):

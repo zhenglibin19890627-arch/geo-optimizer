@@ -93,6 +93,19 @@ def create_app() -> Flask:
             return None
         return fail("这个操作只能从本机页面发起，请刷新页面后再试"), 403
 
+    @app.after_request
+    def revalidate_static(resp):
+        """静态资源一律 no-cache（=缓存但用前必须向服务端校验）。
+
+        2026-08-19 事故：升级监测中心后，浏览器对同名 monitor.js 走了
+        启发式缓存、未回源校验，导致新版页面配旧版脚本——用户勾了
+        常规+联网，旧脚本只发起常规。加 no-cache 后，文件没变时命中
+        304（几乎零开销），变了就自动拿新版，刷新页面即生效。
+        """
+        if request.path.startswith("/static/"):
+            resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
     # 配置与数据库
     config.ensure_config_file()
     config.load_config()

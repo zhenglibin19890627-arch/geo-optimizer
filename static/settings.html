@@ -71,6 +71,11 @@
       <label class="checkbox-row" style="padding:0"><input type="checkbox" id="schedule-mode-web"> 联网提问</label>
     </div>
     <div class="web-cost-note hidden" id="schedule-web-cost">联网模式每轮增加费用约 0.5~2.5 元（以平台账单为准）。</div>
+    <div class="mt-8" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <span style="font-weight:600">定时用哪些模型档位</span>
+      <span class="small-note">不勾 = 跟随各引擎当前档位；勾多个档位 = 一轮把多个模型的回答都测了（费用相应增加）</span>
+    </div>
+    <div id="schedule-models" class="mt-8"></div>
     <div class="score-sub mt-8 hidden" id="schedule-brand-count"></div>
     <div class="score-sub mt-8" id="schedule-next">下次自动监测：--</div>
     <div class="score-sub mt-8">请保持程序运行，定时监测才能按时执行</div>

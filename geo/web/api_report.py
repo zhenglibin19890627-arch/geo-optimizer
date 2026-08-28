@@ -122,6 +122,90 @@ def report_trend():
         return ok({"labels": labels, "values": values}, "获取成功")
 
 
+# ---------------- 各引擎厂商对比（2026-08-22） ----------------
+@bp.route("/report/engines", methods=["GET"])
+def report_engines():
+    """近 N 个正常轮次里，每家引擎/每个模型的回答数、提及率、净情感、
+    平均顺位与带信源数（常规/联网分开列），供报告页「引擎厂商对比」卡使用。"""
+    brand_id = current_brand_id()
+    rounds = max(int(request.args.get("rounds") or 30), 1)
+    with database.session_scope() as s:
+        status_map = monitor_task.task_status_map(s)
+        all_rows = [r for r in (s.query(database.MonitorRound)
+                                .filter(database.MonitorRound.brand_id == brand_id)
+                                .order_by(database.MonitorRound.id.desc()).all())
+                    if monitor_task.round_is_normal(status_map, r)]
+        recent = list(reversed(all_rows[:rounds]))  # 旧→新，与趋势图口径一致
+        rids = [r.id for r in recent]
+        if not rids:
+            return ok({"engines": [], "rounds_used": 0}, "获取成功")
+        mode_of = {r.id: (r.mode or "normal") for r in recent}
+
+        results = (s.query(database.MonitorResult)
+                   .filter(database.MonitorResult.round_id.in_(rids)).all())
+
+        def _blank():
+            return {"answered": 0, "mentioned": 0, "pos": 0, "neg": 0,
+                    "pos_sum": [], "with_sources": 0}
+
+        agg = {}  # engine -> {"_": _blank(), "modes": {mode: _blank()}, "models": {model: _blank()}}
+        for r in results:
+            if not r.answer_text:
+                continue
+            mode = mode_of.get(r.round_id, "normal")
+            eng = agg.setdefault(r.engine_code, {
+                "_": _blank(), "modes": {"normal": _blank(), "web": _blank()},
+                "models": {}})
+            model_key = r.model or "(当前档)"
+            slots = (eng["_"], eng["modes"][mode], eng["models"].setdefault(model_key, _blank()))
+            has_src = bool(database.jloads(r.sources, []) or [])
+            for slot in slots:
+                slot["answered"] += 1
+                if r.is_mentioned:
+                    slot["mentioned"] += 1
+                    if r.mention_position:
+                        slot["pos_sum"].append(r.mention_position)
+                if r.sentiment == "positive":
+                    slot["pos"] += 1
+                elif r.sentiment == "negative":
+                    slot["neg"] += 1
+                if mode == "web" and has_src:
+                    slot["with_sources"] += 1
+
+        def _fill(slot):
+            answered = slot["answered"]
+            pos_sum = slot["pos_sum"]
+            return {
+                "answered": answered,
+                "mentioned": slot["mentioned"],
+                "mention_rate": round(slot["mentioned"] / answered, 3) if answered else None,
+                "net_sentiment": round((slot["pos"] - slot["neg"]) / answered, 3) if answered else None,
+                "avg_position": round(sum(pos_sum) / len(pos_sum), 1) if pos_sum else None,
+                "with_sources": slot["with_sources"],
+            }
+
+        from geo.engines import get_adapter
+        engines = []
+        for code, eng in agg.items():
+            try:
+                display_name = get_adapter(code).display_name
+            except Exception:
+                display_name = code
+            models = [{"model": m, **_fill(slot)}
+                      for m, slot in sorted(eng["models"].items(),
+                                            key=lambda kv: -kv[1]["answered"])]
+            engines.append({
+                "engine": code,
+                "display_name": display_name,
+                **_fill(eng["_"]),
+                "modes": {m: _fill(slot) for m, slot in eng["modes"].items()},
+                "models": models,
+            })
+        # 总提及率降序：表现好的厂商排前面
+        engines.sort(key=lambda e: (-(e["mention_rate"] or 0), -e["answered"]))
+        return ok({"engines": engines, "rounds_used": len(recent)}, "获取成功")
+
+
 # ---------------- #20 竞品提及对比 ----------------
 @bp.route("/report/competitor", methods=["GET"])
 def report_competitor():
@@ -177,6 +261,11 @@ def report_sources():
     brand_id = current_brand_id()
     round_id = request.args.get("round_id", type=int)
     with database.session_scope() as s:
+        brand = database.get_brand(brand_id)
+        from geo.analyzers import mention as mention_mod
+        brand_names = mention_mod.build_brand_names(brand)
+        self_name = str(brand.get("brand_name") or "").strip()
+
         if round_id:
             round_row = s.get(database.MonitorRound, round_id)
             if not round_row:
@@ -185,19 +274,40 @@ def report_sources():
                 raise ApiError("该轮数据属于其他品牌，请切换品牌后查看")
             results = (s.query(database.MonitorResult)
                        .filter(database.MonitorResult.round_id == round_id).all())
+            # 该轮自动提取的竞品名单（信源背书的品牌从这里面找）
+            competitors = [str(c).strip() for c in
+                           (database.jloads(round_row.auto_competitors, []) or []) if c]
         else:
-            # 最近 30 轮汇总：聚合这些轮次的所有结果
+            # 最近 30 轮汇总：聚合这些轮次的所有结果；竞品取各轮并集
             rounds = _recent_normal_rounds(s, brand_id, limit=30)
             if not rounds:
                 return ok([], "获取成功")
             rids = [r.id for r in rounds]
             results = (s.query(database.MonitorResult)
                        .filter(database.MonitorResult.round_id.in_(rids)).all())
-        # 统一信源按规范化域名合并（m./www. 前缀归一同站），累计次数并记录各引擎引用
+            competitors = []
+            for rr in rounds:
+                competitors.extend(str(c).strip() for c in
+                                   (database.jloads(rr.auto_competitors, []) or []) if c)
+            competitors = list(dict.fromkeys(competitors))
+
+        # 统一信源按规范化域名合并（m./www. 前缀归一同站），累计次数、各引擎引用、
+        # 以及「引用该信源的回答提到了哪些品牌」（2026-08-27：我方 + 自动竞品名单）
         from geo.analyzers import sources as sources_mod
         agg = {}
         for r in results:
+            if not r.answer_text:
+                continue
             code = r.engine_code or ""
+            # 该条回答提到的品牌（我方/竞品），按提及次数计
+            brand_hits = {}
+            if mention_mod.mention_count(r.answer_text, brand_names) > 0:
+                brand_hits[self_name or "我方品牌"] = True
+            for c in mention_mod.competitor_mentions(r.answer_text, competitors,
+                                                     brand_names):
+                name = str(c.get("name") or "").strip()
+                if name:
+                    brand_hits[name] = True
             for src in database.jloads(r.sources, []) or []:
                 url = src.get("url", "")
                 if not url:
@@ -207,10 +317,15 @@ def report_sources():
                 if not domain:
                     continue
                 item = agg.setdefault(domain, {"domain": domain, "url": url,
-                                               "count": 0, "engines": {}})
+                                               "count": 0, "engines": {},
+                                               "brands": {}})
                 item["count"] += 1
                 eng = item["engines"].setdefault(code, {"engine_code": code, "count": 0})
                 eng["count"] += 1
+                for bname in brand_hits:
+                    b = item["brands"].setdefault(bname, {"name": bname, "count": 0,
+                                                          "is_self": bname == self_name})
+                    b["count"] += 1
         from geo.engines import get_adapter as _get_adapter
         items = []
         for domain, item in sorted(agg.items(), key=lambda kv: -kv[1]["count"]):
@@ -221,12 +336,16 @@ def report_sources():
                 except Exception:
                     name = code or ""
                 eng_list.append({"engine_code": code, "display_name": name, "count": e["count"]})
+            # 品牌列表按被背书次数降序，最多显示前 5 个（避免行太长）
+            brands = sorted(item["brands"].values(),
+                            key=lambda b: (-b["count"], b["name"]))[:5]
             items.append({
                 "domain": item["domain"], "url": item["url"],
                 "site_name": sources_mod.site_name(item["domain"]),
                 "category": sources_mod.classify_domain(item["domain"]),
                 "count": item["count"],
                 "engines": eng_list,
+                "brands": brands,
             })
         return ok(items, "获取成功")
 

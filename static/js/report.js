@@ -33,9 +33,72 @@ function repInit() {
     repRoundCount = data.round_count || 0;
     loadTrend();
     loadRoundsSelect(initRound);
+    loadEngineCompare();
   }).catch(function () {
     loadTrend();
     loadRoundsSelect(initRound);
+    loadEngineCompare();
+  });
+}
+
+/* ---------------- 各引擎厂商对比（2026-08-22，近 30 轮固定口径，表格） ---------------- */
+
+function engineCmpPct(v) {
+  return v === null || v === undefined ? "—" : Math.round(v * 100) + "%";
+}
+
+function engineCmpSenti(v) {
+  if (v === null || v === undefined) return "—";
+  return (v > 0 ? "+" : "") + Math.round(v * 100) + "%";
+}
+
+function loadEngineCompare() {
+  const card = document.getElementById("engine-compare-card");
+  const body = document.getElementById("engine-compare-body");
+  if (!card || !body) return;
+  geoApi("/api/report/engines?rounds=30").then(function (data) {
+    const engines = data.engines || [];
+    if (!engines.length) {
+      card.classList.add("hidden");
+      return;
+    }
+    card.classList.remove("hidden");
+    let html = '<div class="small-note mb-8">统计范围：近 ' + (data.rounds_used || 0) +
+      " 个正常完成的轮次（已排除已停止/未成功）。提及率 = 提及你的回答数 ÷ 该厂商总回答数。</div>";
+    html += '<div class="table-wrap"><table class="ec-grid">' +
+      "<thead><tr>" +
+      "<th>厂商</th>" +
+      "<th>综合提及率</th>" +
+      "<th>提及/回答</th>" +
+      "<th>常规提及率</th>" +
+      "<th>常规回答</th>" +
+      "<th>联网提及率</th>" +
+      "<th>联网回答</th>" +
+      "<th>联网带信源</th>" +
+      "<th>净情感</th>" +
+      "<th>平均顺位</th>" +
+      "</tr></thead><tbody>";
+    engines.forEach(function (e) {
+      const n = e.modes.normal || {};
+      const w = e.modes.web || {};
+      html +=
+        "<tr>" +
+        '<td style="font-weight:600">' + esc(e.display_name) + "</td>" +
+        '<td class="num ec-hi">' + engineCmpPct(e.mention_rate) + "</td>" +
+        "<td>" + e.mentioned + "/" + e.answered + "</td>" +
+        "<td>" + engineCmpPct(n.mention_rate) + "</td>" +
+        "<td>" + (n.answered || 0) + "</td>" +
+        "<td>" + engineCmpPct(w.mention_rate) + "</td>" +
+        "<td>" + (w.answered || 0) + "</td>" +
+        "<td>" + (w.answered ? (w.with_sources || 0) : "—") + "</td>" +
+        "<td>" + esc(engineCmpSenti(e.net_sentiment)) + "</td>" +
+        "<td>" + (e.avg_position ? "第 " + e.avg_position + " 位" : "—") + "</td>" +
+        "</tr>";
+    });
+    html += "</tbody></table></div>";
+    body.innerHTML = html;
+  }).catch(function () {
+    card.classList.add("hidden");
   });
 }
 
@@ -94,6 +157,7 @@ function loadRoundDetail(roundId) {
   geoApi("/api/monitor/rounds/" + roundId).then(function (data) {
     const results = data.results || [];
     const notes = data.notes || [];
+    const isWebRound = data.summary && data.summary.mode === "web";
 
     const byEngine = {};
     results.forEach(function (r) {
@@ -107,14 +171,15 @@ function loadRoundDetail(roundId) {
           firstPos: null,
           hasYuanbao: key === "yuanbao",
           models: {},
-          answers: [],
-          fails: [],
+          rows: [],
+          withSources: 0,
         };
       }
       const e = byEngine[key];
       if (r.model) e.models[r.model] = true;
       if (r.answer_text) {
         e.answered += 1;
+        if ((r.sources || []).length) e.withSources += 1;
         if (r.is_mentioned) {
           e.mentioned += 1;
           if (r.mention_position && (e.firstPos === null || r.mention_position < e.firstPos)) {
@@ -124,17 +189,26 @@ function loadRoundDetail(roundId) {
         if (r.sentiment === "positive") e.pos += 1;
         else if (r.sentiment === "negative") e.neg += 1;
         else e.neu += 1;
-        e.answers.push(r);
-      } else if (r.error_msg) {
-        /* 调用失败（如模型不存在/钥匙失效）：记录原因，报告页明示 */
-        e.fails.push(r);
       }
+      /* 成功与失败统一进时间线（按落库顺序），失败条目含模型与原因 */
+      e.rows.push(r);
     });
 
     let html = "";
     Object.keys(byEngine).forEach(function (key) {
       const e = byEngine[key];
       const modelCount = Object.keys(e.models).length;
+      /* 联网轮信源核查（2026-08-21）：回答成功但一条引用信源都没有 → 明示。
+         元宝是已知口径（TokenHub 接口不返回来源，需配腾讯云联网搜索凭据），
+         其余按「平台本轮未附带搜索引用」提示 */
+      let srcWarn = "";
+      if (isWebRound && e.answered > 0 && e.withSources === 0) {
+        srcWarn = e.hasYuanbao
+          ? "联网回答成功，但未获取到引用信源：腾讯元宝走 TokenHub 接口不返回搜索来源，" +
+            "需要在 config/config.yaml 的 yuanbao 节填上腾讯云「联网搜索API」凭据" +
+            "（wsa_secret_id / wsa_secret_key）后，联网档才会附带信源"
+          : "联网回答成功，但本轮未返回引用信源（平台未附带搜索引用），信源统计不含这家";
+      }
       html +=
         '<div class="detail-item">' +
         '<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">' +
@@ -146,14 +220,36 @@ function loadRoundDetail(roundId) {
         '<div class="mt-8">情感分布：' +
         '<span class="tag tag-green">正面 ' + e.pos + "</span> " +
         '<span class="tag tag-gray">中性 ' + e.neu + "</span> " +
-        '<span class="tag tag-red">负面 ' + e.neg + "</span>" +
+        '<span class="tag tag-red">负面 ' + e.neg + "</span> " +
+        (isWebRound
+          ? '<span class="tag ' + (e.withSources > 0 ? "tag-green" : "tag-orange") + '">' +
+            "信源 " + e.withSources + "/" + e.answered + "</span>"
+          : "") +
         "</div>" +
+        (srcWarn
+          ? '<div class="small-note mt-8" style="color:var(--alert-text)">' +
+            "⚠ " + esc(srcWarn) + "</div>"
+          : "") +
         (e.hasYuanbao
           ? '<div class="small-note mt-8">' + esc(YUANBAO_NOTE) + "</div>"
           : "") +
-        /* 逐题回答原文（含未提及的回答，便于排查"为什么没提到你"） */
-        (e.answers.length
-          ? '<div class="mt-8">' + e.answers.map(function (r, i) {
+        /* 逐条时间线（成功+失败统一，2026-08-22）：失败的与成功的同格式——
+           第 N 问 · 状态标签 · 模型标签，失败原因紧跟其后 */
+        (e.rows.length
+          ? '<div class="mt-8">' + e.rows.map(function (r, i) {
+              const no = "第 " + (i + 1) + " 问 · ";
+              const modelTag = r.model
+                ? '<span class="tag tag-blue">' + esc(r.model) + "</span>"
+                : "";
+              if (!r.answer_text) {
+                return '<div class="hit-item">' +
+                  '<div class="hit-head">' + no +
+                  '<span class="tag tag-red">调用失败</span> ' + modelTag + "</div>" +
+                  '<div class="hit-question">问：' + esc(r.question_text || "") + "</div>" +
+                  '<div class="small-note" style="color:var(--alert-text);line-height:1.8">' +
+                  "失败原因：" + esc(r.error_msg || "该 AI 未返回回答") + "</div>" +
+                  "</div>";
+              }
               const mentionedTag = r.is_mentioned
                 ? '<span class="tag tag-green">提及</span>'
                 : '<span class="tag tag-gray">未提及</span>';
@@ -162,9 +258,6 @@ function loadRoundDetail(roundId) {
                 : r.sentiment === "negative"
                   ? '<span class="tag tag-red">负面</span>'
                   : '<span class="tag tag-gray">中性</span>';
-              const modelTag = r.model
-                ? '<span class="tag tag-blue">' + esc(r.model) + "</span>"
-                : "";
               const text = String(r.answer_text || "").trim();
               const excerpt = text.length > 100 ? text.slice(0, 100) + "…" : text;
               const fullHtml = text.length > 100
@@ -172,23 +265,12 @@ function loadRoundDetail(roundId) {
                   '<div class="hit-full hidden md-body">' + mdToHtml(text) + "</div>"
                 : '<div class="hit-full md-body">' + mdToHtml(text) + "</div>";
               return '<div class="hit-item">' +
-                '<div class="hit-head">第 ' + (i + 1) + " 问 · " + mentionedTag + " " + sentiTag + " " + modelTag + "</div>" +
+                '<div class="hit-head">' + no + mentionedTag + " " + sentiTag + " " + modelTag + "</div>" +
                 '<div class="hit-question">问：' + esc(r.question_text || "") + "</div>" +
                 (text.length > 100
                   ? '<div class="hit-excerpt">' + esc(excerpt) + "</div>"
                   : "") +
                 fullHtml +
-                "</div>";
-            }).join("") + "</div>"
-          : "") +
-        /* 调用失败记录（模型不存在/钥匙失效等）：报告页明示原因，不再静默 */
-        (e.fails.length
-          ? '<div class="mt-8">' + e.fails.map(function (r) {
-              return '<div class="hit-item">' +
-                '<div class="hit-head"><span class="tag tag-red">调用失败</span></div>' +
-                '<div class="hit-question">问：' + esc(r.question_text || "") + "</div>" +
-                '<div class="small-note" style="color:var(--alert-text);line-height:1.8">' +
-                esc(r.error_msg || "该 AI 未返回回答") + "</div>" +
                 "</div>";
             }).join("") + "</div>"
           : "") +

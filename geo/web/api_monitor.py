@@ -18,23 +18,40 @@ def monitor_start():
     brand_id = current_brand_id()
     question_ids = data.get("question_ids")
     engine_codes = data.get("engine_codes")
-    mode = str(data.get("mode") or "normal").strip() or "normal"
-    if mode not in ("normal", "web"):
-        raise ApiError("这个模式不认，请选择「常规提问」或「联网提问」")
+    if engine_codes is not None and not isinstance(engine_codes, list):
+        raise ApiError("引擎选择格式不对，请刷新页面后重试")
 
-    if mode == "web":
-        # 联网档：只留支持联网的引擎（opencode 订阅 API 无联网工具，自动排除）
-        web_codes = [c for c in AUTO_CODES if _supports_web(c)]
-        if engine_codes:
-            engine_codes = [c for c in engine_codes if c in web_codes]
-            if not engine_codes:
-                raise ApiError("联网提问只有 DeepSeek、豆包、通义千问和腾讯元宝能参加"
-                               "（OpenCode 订阅 API 暂不支持联网），请重新勾选")
-        else:
-            engine_codes = [c for c in web_codes if _configured_enabled(c)]
-        if not engine_codes:
-            raise ApiError("联网提问需要 DeepSeek、豆包、通义千问、腾讯元宝里至少一家"
-                           "填好钥匙（API Key），请先到设置页填写")
+    # 模式（2026-08-19 起支持一轮多模式）：优先读 modes 数组（可同时勾
+    # 常规+联网）；旧前端单 mode 字符串继续兼容
+    raw_modes = data.get("modes")
+    if raw_modes is not None and not isinstance(raw_modes, list):
+        raise ApiError("监测模式格式不对，请刷新页面后重试")
+    if raw_modes is not None and not [m for m in raw_modes
+                                      if str(m).strip() in ("normal", "web")]:
+        raise ApiError("请至少选择一种监测模式（常规提问或联网提问）")
+    if raw_modes:
+        modes = list(dict.fromkeys(
+            str(m).strip() for m in raw_modes if str(m).strip() in ("normal", "web")))
+    else:
+        mode = str(data.get("mode") or "normal").strip() or "normal"
+        if mode not in ("normal", "web"):
+            raise ApiError("这个模式不认，请选择「常规提问」或「联网提问」")
+        modes = [mode]
+    if not modes:
+        raise ApiError("请至少选择一种监测模式（常规提问或联网提问）")
+
+    # 模型选择：新版嵌套 {normal: {engine: [...]}, web: {...}}；
+    # 旧版扁平 {engine: [...]}（跟随单一 mode）。两者都没有 = 各引擎用当前档
+    models = data.get("models")
+    if models is not None and not isinstance(models, dict):
+        raise ApiError("模型选择格式不对，请刷新页面后重试")
+    nested = None
+    flat = None
+    if isinstance(models, dict) and any(
+            isinstance(models.get(k), dict) for k in ("normal", "web")):
+        nested = models
+    elif models is not None:
+        flat = models
 
     with database.session_scope() as s:
         if not question_ids:
@@ -42,30 +59,51 @@ def monitor_start():
                             .filter(database.QuestionBank.brand_id == brand_id)
                             .filter(database.QuestionBank.enabled == True).all()]
 
-    if mode != "web" and not engine_codes:
-        engine_codes = monitor_task.enabled_auto_engines()
-        if not engine_codes:
-            raise ApiError("尚未有任何一家 AI 引擎填写 API 钥匙，"
-                           "请先到设置页填写至少一家的钥匙，再发起监测")
-
-    # 同 key 多模型（常规/联网档均支持）：{engine: [model, ...]}
-    models = data.get("models")
-    if models is not None and not isinstance(models, dict):
-        raise ApiError("模型选择格式不对，请刷新页面后重试")
+    web_codes = [c for c in AUTO_CODES if _supports_web(c)]
+    specs = []
+    for m in modes:
+        per = (nested or {}).get(m) if nested is not None else flat
+        if per is not None and not isinstance(per, dict):
+            raise ApiError("模型选择格式不对，请刷新页面后重试")
+        per = per or {}
+        if m == "web":
+            cand = [c for c in (engine_codes or web_codes) if c in web_codes]
+            mode_label = "联网提问"
+        else:
+            cand = list(engine_codes or AUTO_CODES)
+            mode_label = "常规提问"
+        if per:
+            # 有模型选择时：选中口径以具体模型为准（没勾模型的引擎不参加该模式）
+            engines = [c for c in cand if per.get(c)]
+            models_m = {c: per[c] for c in engines}
+        elif nested is not None or flat is not None:
+            # 传了模型选择但该模式一个都没勾（如嵌套里 web: {}）→ 明确拦截，
+            # 不能静默回落全队默认档（那会意外发起一轮真实计费监测）
+            raise ApiError(f"{mode_label}还没有勾选任何模型，请至少勾选一个")
+        else:
+            # 完全没传模型选择（旧调用）：候选引擎整队参加，各用当前档
+            engines = list(cand)
+            models_m = None
+        if not engines:
+            if m == "web":
+                raise ApiError("联网提问需要 DeepSeek、豆包、通义千问、腾讯元宝里"
+                               "至少一家勾选了模型（OpenCode 订阅 API 暂不支持联网）")
+            raise ApiError(f"{mode_label}还没有勾选任何模型，请至少勾选一个")
+        specs.append((m, engines, models_m))
 
     try:
-        task_id = monitor_task.start_monitor_task(
-            question_ids, engine_codes, task_type="manual", brand_id=brand_id,
-            mode=mode, models=models)
+        task_ids = monitor_task.start_serial_monitor_task(
+            question_ids, specs, task_type="manual", brand_id=brand_id)
     except engine_base.EngineError as e:
         raise ApiError(e.message)
     with database.session_scope() as s:
-        task = s.get(database.MonitorTask, task_id)
+        tasks = [s.get(database.MonitorTask, tid) for tid in task_ids]
         return ok({
-            "task_id": task_id,
-            "estimated_seconds": task.estimated_seconds,
-            "total_calls": task.total_calls,
-            "mode": mode,
+            "task_ids": task_ids,
+            "task_id": task_ids[0],  # 旧前端兼容
+            "modes": [t.mode for t in tasks],
+            "total_calls": sum(t.total_calls or 0 for t in tasks),
+            "estimated_seconds": sum(t.estimated_seconds or 0 for t in tasks),
         }, "监测已开始，正在挨家 AI 提问，请稍等")
 
 

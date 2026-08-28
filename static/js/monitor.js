@@ -5,9 +5,9 @@
 let monQuestions = [];
 let monEngines = [];
 let monPolling = null;
-let monTaskId = null;
-let monTaskMeta = null; /* {questionTexts, engineCodes, startTotal} 用于明细展示 */
-let monMode = "base"; /* base=常规提问 / web=联网提问（03b 6.1） */
+let monTaskIds = null; /* 一轮可含多任务（常规+联网串行，2026-08-19） */
+let monTaskMeta = null; /* {questionTexts, modes:[{mode,label,engineCodes}], engineNames, startTotal} */
+const MODE_LABELS = { normal: "常规提问", web: "联网提问" };
 
 /* 任务恢复 localStorage 按品牌隔离（B2）：geo_task_id_{brandId} / geo_task_meta_{brandId}，
    切换品牌互不干扰，切回原品牌时恢复（03b 3.3） */
@@ -34,14 +34,16 @@ function monInit() {
     initPasteEngine();
   }).catch(function () {});
 
-  document.querySelectorAll("#mode-select .mode-card").forEach(function (card) {
-    card.addEventListener("click", function () {
-      document.querySelectorAll("#mode-select .mode-card").forEach(function (c) {
-        c.classList.remove("active");
-      });
-      card.classList.add("active");
-      monMode = card.getAttribute("data-mode");
-      renderEList();
+  /* 模式多选（2026-08-19）：勾/取消只影响对应模型线可用性与预估 */
+  ["normal", "web"].forEach(function (mode) {
+    document.getElementById("mode-check-" + mode).addEventListener("change", function () {
+      if (!document.getElementById("mode-check-normal").checked &&
+          !document.getElementById("mode-check-web").checked) {
+        this.checked = true;
+        showToast("请至少选择一种提问方式", "error");
+        return;
+      }
+      applyModeLineStates();
       updateEstimate();
     });
   });
@@ -53,11 +55,9 @@ function monInit() {
   });
   document.getElementById("e-select-all").addEventListener("change", function () {
     const on = this.checked;
-    document.querySelectorAll("#e-list input[type=checkbox]:not(.model-check)")
-      .forEach(function (b) { b.checked = on; });
-    document.querySelectorAll("#e-list .model-check").forEach(function (b) {
-      b.checked = on ? b.getAttribute("data-default") === "1" : false;
-      b.disabled = !on;
+    document.querySelectorAll("#e-list input.eng-check").forEach(function (b) {
+      b.checked = on;
+      syncModelGroup(b.getAttribute("data-ecode"), on);
     });
     updateEstimate();
   });
@@ -114,172 +114,173 @@ function updateQCount() {
   document.getElementById("q-count-text").textContent = "已选 " + sel + "/" + total + " 个问题";
 }
 
-/* ---------------- 引擎勾选 ---------------- */
+/* ---------------- 引擎与模型选择（定时任务同款样式：每家引擎一行，常规/联网两条模型线） ---------------- */
+
+function monModesSelected() {
+  const out = [];
+  if (document.getElementById("mode-check-normal").checked) out.push("normal");
+  if (document.getElementById("mode-check-web").checked) out.push("web");
+  return out;
+}
+
+function engineModelOptions(k, mode) {
+  if (mode === "web") {
+    if (!k.supports_web_search) return [];
+    const webOpts = k.web_model_options || [];
+    return webOpts.length ? webOpts : (k.model_options || []);
+  }
+  return k.model_options || [];
+}
 
 function renderEList() {
   const area = document.getElementById("e-list");
   area.innerHTML = "";
-  const webMode = monMode === "web";
   const anyConfigured = monEngines.some(function (k) { return k.configured; });
   document.getElementById("mon-no-key-banner").classList.toggle("hidden", anyConfigured);
-  /* 联网模式下：不支持联网的引擎（如 opencode）行置灰「暂不支持联网」+ 横幅明示（03b 6.2） */
   const webUnsupported = monEngines.some(function (k) { return !k.supports_web_search; });
   const banner = document.getElementById("mon-web-banner");
-  if (banner) banner.classList.toggle("hidden", !(webMode && webUnsupported));
+  if (banner) banner.classList.toggle("hidden", !webUnsupported);
 
   monEngines.forEach(function (k) {
-    const webDisabled = webMode && !k.supports_web_search;
     const row = document.createElement("div");
-    row.className = "checkbox-row" + ((!k.configured || webDisabled) ? " disabled" : "");
-    row.style.justifyContent = "space-between";
-    if (!k.configured || webDisabled) row.classList.add("disabled");
+    row.className = "engine-row";
+    row.style.cssText = "flex-direction:column;align-items:stretch;gap:4px;padding:10px 12px";
 
-    const left = document.createElement("label");
-    left.className = "checkbox-row";
-    left.style.padding = "0";
-    left.innerHTML =
-      '<input type="checkbox" data-ecode="' + esc(k.engine) + '" ' + ((k.configured && !webDisabled) ? "checked" : "") + ((!k.configured || webDisabled) ? " disabled" : "") + ">" +
-      '<span class="label-text">' + esc(k.display_name) + "</span>";
-    left.querySelector("input").addEventListener("change", function () {
+    const head = document.createElement("div");
+    head.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap";
+    const master = document.createElement("label");
+    master.className = "checkbox-row";
+    master.style.padding = "0";
+    master.innerHTML =
+      '<input type="checkbox" class="eng-check" data-ecode="' + esc(k.engine) + '"' +
+      (k.configured ? " checked" : " disabled") + ">" +
+      '<span class="label-text" style="font-weight:600">' + esc(k.display_name) + "</span>";
+    master.querySelector("input").addEventListener("change", function () {
       syncModelGroup(k.engine, this.checked);
       updateEstimate();
     });
-    if (!k.configured && !webDisabled) {
-      left.addEventListener("click", function (e) {
+    if (!k.configured) {
+      master.addEventListener("click", function (e) {
         if (e.target.tagName !== "INPUT") {
           showToast("该引擎的 API 钥匙尚未填写，请先到设置页填写", "error");
         }
       });
     }
+    head.appendChild(master);
+    const tags = [];
+    if (!k.supports_web_search) tags.push('<span class="tag tag-gray">不支持联网</span>');
+    tags.push(k.configured
+      ? '<span class="tag tag-green">✔ 钥匙已填</span>'
+      : '<span class="tag tag-orange">⚠ 钥匙未填</span> <a class="btn-text" href="/static/settings.html#keys">去设置页填</a>');
+    head.insertAdjacentHTML("beforeend", tags.join(" "));
+    row.appendChild(head);
 
-    const right = document.createElement("span");
-    right.style.fontSize = "13px";
-    if (webDisabled) {
-      right.innerHTML = '<span class="tag tag-gray">暂不支持联网</span>';
-    } else if (k.configured) {
-      right.innerHTML = '<span class="tag tag-green">✔ 钥匙已填</span>';
-    } else {
-      right.innerHTML = '<span class="tag tag-orange">⚠ 钥匙未填</span> ' +
-        '<a class="btn-text" href="/static/settings.html#keys">去设置页填</a>';
-    }
-
-    row.appendChild(left);
-    row.appendChild(right);
-    area.appendChild(row);
-
-    /* 同 key 多模型（常规/联网档均支持）：型号一律列出（哪怕只有一档），
-       多档位可勾选多个；联网档优先用 web_model_options（平台联网白名单） */
-    const groupOpts = (webMode && k.web_model_options && k.web_model_options.length)
-      ? k.web_model_options
-      : k.model_options;
-    if (groupOpts && groupOpts.length >= 1) {
-      const mg = document.createElement("div");
-      mg.className = "model-group";
-      mg.style.cssText = "margin:0 0 10px 28px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center";
+    ["normal", "web"].forEach(function (mode) {
+      const opts = engineModelOptions(k, mode);
+      if (!opts.length) return;
+      const line = document.createElement("div");
+      line.className = "model-line";
+      line.setAttribute("data-mode", mode);
+      line.setAttribute("data-ecode", esc(k.engine));
+      line.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:6px";
       const label = document.createElement("span");
       label.className = "small-note";
       label.style.cssText = "font-size:12px;flex:none";
-      label.textContent = "模型：";
-      mg.appendChild(label);
-      groupOpts.forEach(function (opt) {
-        /* 默认勾选：常规档=当前档；联网档=联网档模型（接口下发 web_model） */
-        const defaultModel = webMode ? (k.web_model || k.model) : k.model;
-        const isDefault = opt.name === defaultModel;
+      label.textContent = mode === "normal" ? "常规：" : "联网：";
+      line.appendChild(label);
+      const def = mode === "web" ? (k.web_model || k.model) : k.model;
+      opts.forEach(function (opt) {
+        const isDefault = opt.name === def;
         const lb = document.createElement("label");
         lb.className = "checkbox-row";
         lb.style.padding = "2px 4px";
         lb.innerHTML =
-          '<input type="checkbox" class="model-check" data-ecode="' + esc(k.engine) +
-          '" data-model="' + esc(opt.name) + '" data-default="' + (isDefault ? "1" : "0") +
-          '"' + (isDefault ? " checked" : "") +
-          ((!k.configured || webDisabled) ? " disabled" : "") + ">" +
+          '<input type="checkbox" class="model-check" data-mode="' + mode +
+          '" data-ecode="' + esc(k.engine) + '" data-model="' + esc(opt.name) +
+          '" data-default="' + (isDefault ? "1" : "0") + '"' + (isDefault ? " checked" : "") + ">" +
           '<span class="label-text" style="font-size:12px">' + esc(opt.desc || opt.name) + "</span>";
         lb.querySelector("input").addEventListener("change", function () {
-          /* 全部取消 → 同步取消厂家勾选并禁用模型组（厂家单独勾选不算选中） */
-          const code = k.engine;
-          const any = Array.from(document.querySelectorAll(
-            '#e-list .model-check[data-ecode="' + code + '"]:checked')).length > 0;
-          const master = document.querySelector(
-            '#e-list input[type=checkbox]:not(.model-check)[data-ecode="' + code + '"]');
-          if (master) master.checked = any;
-          if (!any) {
-            document.querySelectorAll(
-              '#e-list .model-check[data-ecode="' + code + '"]').forEach(function (b) {
-              b.disabled = true;
-            });
-          }
+          onModelToggle(k.engine);
           updateEstimate();
         });
-        mg.appendChild(lb);
+        line.appendChild(lb);
       });
-      area.appendChild(mg);
-    }
+      row.appendChild(line);
+    });
+    area.appendChild(row);
   });
+  applyModeLineStates();
   updateECount();
 }
 
-/* 引擎勾选联动（2026-08-16 修订）：厂家勾选=组开关，选中口径以具体模型为准。
-   勾厂家 → 启用模型组并自动勾选默认档；取消厂家 → 清空并禁用全部模型。 */
+/* 模型线可用性：模式勾选 + 引擎主勾选 都满足才可用（不可用的置灰） */
+function applyModeLineStates() {
+  const modes = monModesSelected();
+  document.querySelectorAll("#e-list .model-line").forEach(function (line) {
+    const mode = line.getAttribute("data-mode");
+    const code = line.getAttribute("data-ecode");
+    const master = document.querySelector('#e-list input.eng-check[data-ecode="' + code + '"]');
+    const usable = modes.indexOf(mode) >= 0 && master && master.checked;
+    line.querySelectorAll("input.model-check").forEach(function (b) { b.disabled = !usable; });
+    line.style.opacity = usable ? "" : "0.45";
+  });
+}
+
+/* 引擎主勾选切换：选中时给每条可用线补勾默认档；取消时清空全部 */
 function syncModelGroup(code, engineChecked) {
-  const boxes = document.querySelectorAll('#e-list .model-check[data-ecode="' + code + '"]');
-  boxes.forEach(function (b) {
-    b.disabled = !engineChecked;
-    if (!engineChecked) b.checked = false;
+  document.querySelectorAll('#e-list .model-check[data-ecode="' + code + '"]').forEach(function (b) {
+    if (!engineChecked) { b.checked = false; return; }
+    const lineMode = b.getAttribute("data-mode");
+    const anyChecked = Array.from(document.querySelectorAll(
+      '#e-list .model-check[data-ecode="' + code + '"][data-mode="' + lineMode + '"]:checked')).length > 0;
+    if (!anyChecked && b.getAttribute("data-default") === "1") b.checked = true;
   });
-  if (engineChecked) {
-    const anyChecked = Array.from(boxes).some(function (b) { return b.checked; });
-    if (!anyChecked) {
-      const def = Array.from(boxes).find(function (b) {
-        return b.getAttribute("data-default") === "1";
-      });
-      if (def) def.checked = true;
-    }
-  }
+  applyModeLineStates();
 }
 
-/* 该引擎是否渲染了模型组（无模型组的引擎勾厂家即按当前档算 1 个） */
-function engineHasModelGroup(code) {
-  return !!document.querySelector('#e-list .model-check[data-ecode="' + code + '"]');
+/* 某引擎的单个模型手动勾/取消：主勾选跟随两条线上是否还有模型被选中 */
+function onModelToggle(code) {
+  const any = Array.from(document.querySelectorAll(
+    '#e-list .model-check[data-ecode="' + code + '"]:checked')).length > 0;
+  const master = document.querySelector('#e-list input.eng-check[data-ecode="' + code + '"]');
+  if (master && !master.disabled) master.checked = any;
 }
 
-/* 已选模型：{engine: [model,...]}；未勾任何模型的引擎 → 空数组（不算选中） */
-function selectedModels() {
-  const map = {};
-  document.querySelectorAll("#e-list input[type=checkbox]:not(.model-check):checked").forEach(function (b) {
+/* 已选模型（只统计勾选了的模式）：{normal: {engine: [...]}, web: {...}} */
+function selectedModelsPerMode() {
+  const out = { normal: {}, web: {} };
+  const modes = monModesSelected();
+  document.querySelectorAll("#e-list .model-check:checked").forEach(function (b) {
+    const mode = b.getAttribute("data-mode");
+    if (modes.indexOf(mode) < 0) return;
     const code = b.getAttribute("data-ecode");
-    map[code] = Array.from(document.querySelectorAll(
-      '#e-list .model-check[data-ecode="' + code + '"]:checked'))
-      .map(function (m) { return m.getAttribute("data-model"); });
+    if (!out[mode][code]) out[mode][code] = [];
+    out[mode][code].push(b.getAttribute("data-model"));
   });
-  return map;
+  return out;
 }
 
 function selectedModelsTotal() {
-  const map = selectedModels();
+  const map = selectedModelsPerMode();
   let n = 0;
-  Object.keys(map).forEach(function (c) { n += (map[c] || []).length; });
-  /* 无模型组的引擎：勾厂家按当前档算 1 个 */
-  document.querySelectorAll("#e-list input[type=checkbox]:not(.model-check):checked").forEach(function (b) {
-    const code = b.getAttribute("data-ecode");
-    if (!engineHasModelGroup(code)) n += 1;
+  Object.keys(map).forEach(function (m) {
+    Object.keys(map[m]).forEach(function (c) { n += map[m][c].length; });
   });
   return n;
 }
 
-/* 选中厂家 = 有具体模型被勾选（无模型组的引擎勾厂家即算选中，按当前档） */
+/* 选中厂家 = 任一模式的线上有具体模型被勾选 */
 function selectedEngines() {
-  return Array.from(document.querySelectorAll("#e-list input[type=checkbox]:not(.model-check):checked"))
-    .map(function (b) { return b.getAttribute("data-ecode"); })
-    .filter(function (code) {
-      if (!engineHasModelGroup(code)) return true;
-      return (selectedModels()[code] || []).length > 0;
-    });
+  const map = selectedModelsPerMode();
+  const set = {};
+  Object.keys(map).forEach(function (m) {
+    Object.keys(map[m]).forEach(function (c) { set[c] = true; });
+  });
+  return Object.keys(set);
 }
 
 function updateECount() {
-  const total = monEngines.filter(function (k) {
-    return k.configured && !(monMode === "web" && !k.supports_web_search);
-  }).length;
+  const total = monEngines.filter(function (k) { return k.configured; }).length;
   const sel = selectedEngines().length;
   const selModels = selectedModelsTotal();
   document.getElementById("e-count-text").textContent =
@@ -296,7 +297,8 @@ function updateEstimate() {
   const calls = qs * es;
   const minutesLow = Math.max(Math.round(calls / 50 * 10), 1);
   const minutesHigh = Math.max(Math.round(calls / 50 * 15), minutesLow + 1);
-  const totalHigh = monMode === "web" ? minutesHigh + 5 : minutesHigh;
+  const webSel = document.getElementById("mode-check-web").checked;
+  const totalHigh = webSel ? minutesHigh + 5 : minutesHigh;
   const extra = calls > 50 ? "（勾选越多，耗时越长）" : "";
   document.getElementById("mon-estimate").innerHTML =
     "预估：本轮约 " + minutesLow + "-" + totalHigh + " 分钟" + extra;
@@ -306,16 +308,27 @@ function updateEstimate() {
 
 function monStart() {
   const qids = selectedQuestions();
-  const ecodes = selectedEngines();
+  const modes = monModesSelected();
+  const models = selectedModelsPerMode();
   const errEl = document.getElementById("mon-start-error");
 
   if (!qids.length) {
     errEl.textContent = "请至少勾选 1 个问题";
     return;
   }
-  if (!ecodes.length) {
-    errEl.textContent = "请至少勾选 1 个具体模型";
+  if (!modes.length) {
+    errEl.textContent = "请至少选择一种提问方式（常规提问或联网提问）";
     return;
+  }
+  for (let i = 0; i < modes.length; i++) {
+    const m = modes[i];
+    const names = Object.keys(models[m] || {});
+    let any = false;
+    names.forEach(function (c) { if ((models[m][c] || []).length) any = true; });
+    if (!any) {
+      errEl.textContent = MODE_LABELS[m] + "还没有勾选任何模型，请在下方至少勾选一个";
+      return;
+    }
   }
   errEl.textContent = "";
 
@@ -323,26 +336,26 @@ function monStart() {
   btn.disabled = true;
   btn.textContent = "监测中…";
 
-  const body = { question_ids: qids, engine_codes: ecodes };
-  if (monMode === "web") body.mode = "web";
-  body.models = selectedModels();
+  const body = { question_ids: qids, modes: modes, models: models };
 
   apiPost("/api/monitor/start", body)
     .then(function (data) {
-      monTaskId = data.task_id;
+      monTaskIds = data.task_ids || [data.task_id];
       monTaskMeta = {
         questionTexts: monQuestions.filter(function (q) { return qids.indexOf(q.id) >= 0; }).map(function (q) { return q.text; }),
-        engineCodes: ecodes,
+        modes: (data.modes && data.modes.length ? data.modes : modes).map(function (m) {
+          return { mode: m, label: MODE_LABELS[m] || m, engineCodes: Object.keys(models[m] || {}) };
+        }),
         engineNames: {},
         startTotal: data.total_calls,
       };
       monEngines.forEach(function (k) { monTaskMeta.engineNames[k.engine] = k.display_name; });
       const keys = monTaskKeys();
-      localStorage.setItem(keys.idKey, String(monTaskId));
+      localStorage.setItem(keys.idKey, JSON.stringify(monTaskIds));
       localStorage.setItem(keys.metaKey, JSON.stringify(monTaskMeta));
 
       showProgressCard(data.total_calls);
-      pollTask(monTaskId);
+      pollTasks(monTaskIds);
     })
     .catch(function () {
       btn.disabled = false;
@@ -354,17 +367,17 @@ function monStop() {
   confirmDialog(
     "停止后本轮已做的部分会保存，未做的不会再做。确定停止吗？",
     function () {
-      if (monTaskId === null) return;
+      const ids = monTaskIds || [];
+      if (!ids.length) return;
       const btn = document.getElementById("mon-stop");
       btn.disabled = true;
-      apiPost("/api/monitor/tasks/" + monTaskId + "/cancel", {})
-        .then(function () {
-          btn.disabled = false;
-          showToast("已停止本轮监测，已问到的回答已保存", "success");
-        })
-        .catch(function () {
-          btn.disabled = false;
-        });
+      /* 一轮可能含多个串行任务（常规+联网）：全部停止 */
+      Promise.all(ids.map(function (id) {
+        return apiPost("/api/monitor/tasks/" + id + "/cancel", {}).catch(function () { return null; });
+      })).then(function () {
+        btn.disabled = false;
+        showToast("已停止本轮监测，已问到的回答已保存", "success");
+      });
     },
     { title: "停止本轮监测", okText: "确定停止", danger: true }
   );
@@ -383,97 +396,130 @@ function showProgressCard(totalCalls) {
   card.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-function renderTaskDetail(done, total, currentDesc) {
+/* 明细：按模式分段（常规段、联网段）逐条展示 引擎 · 问题 · 状态；
+   兼容旧 meta（无 modes 字段）退回单段 */
+function taskMetaSections() {
+  const meta = monTaskMeta;
+  if (!meta) return [];
+  if (meta.modes && meta.modes.length) return meta.modes;
+  return [{ mode: "normal", label: "常规提问", engineCodes: meta.engineCodes || [] }];
+}
+
+function renderTaskDetail(doneAll, totalAll) {
   const area = document.getElementById("mon-question-detail");
   const meta = monTaskMeta;
-  if (!meta || !meta.questionTexts || !meta.engineCodes) {
+  if (!meta || !meta.questionTexts) {
     area.innerHTML = "";
     return;
   }
   const qs = meta.questionTexts;
-  const es = meta.engineCodes;
   const names = meta.engineNames || {};
   const rows = [];
   let idx = 0;
-  for (let ei = 0; ei < es.length; ei++) {
-    for (let qi = 0; qi < qs.length; qi++) {
-      const label = es[ei] === "manual" ? "手动" : (names[es[ei]] || es[ei]);
-      let text;
-      if (idx < done) {
-        text = '<span class="tag tag-green">✔ 回答已收到</span>';
-      } else if (idx === done && done < total) {
-        text = '<span class="tag tag-primary">正在问…</span>';
-      } else {
-        text = '<span class="tag tag-gray">等待中…</span>';
-      }
-      rows.push(
-        '<div class="detail-item"><span style="color:var(--text-sub)">' + esc(label) + " · </span>" +
-        esc(qs[qi]) + " " + text + "</div>"
-      );
-      idx++;
-    }
-  }
+  taskMetaSections().forEach(function (sec) {
+    rows.push('<div class="small-note" style="margin:6px 0 2px;font-weight:600">【' +
+      esc(sec.label) + "】</div>");
+    (sec.engineCodes || []).forEach(function (code) {
+      qs.forEach(function (q) {
+        const label = code === "manual" ? "手动" : (names[code] || code);
+        let text;
+        if (idx < doneAll) {
+          text = '<span class="tag tag-green">✔ 回答已收到</span>';
+        } else if (idx === doneAll && doneAll < totalAll) {
+          text = '<span class="tag tag-primary">正在问…</span>';
+        } else {
+          text = '<span class="tag tag-gray">等待中…</span>';
+        }
+        rows.push(
+          '<div class="detail-item"><span style="color:var(--text-sub)">' + esc(label) + " · </span>" +
+          esc(q) + " " + text + "</div>"
+        );
+        idx++;
+      });
+    });
+  });
   area.innerHTML = rows.join("");
 }
 
-function pollTask(taskId) {
+/* 一轮多任务聚合轮询：全部任务进度求和，取正在跑的任务展示当前问句 */
+function pollTasks(ids) {
   monPolling = startPolling(
-    function () { return geoApi("/api/monitor/tasks/" + taskId + "/progress"); },
-    function (data) {
-      if (data.status === "done") {
-        if (monPolling) monPolling.stop();  // 结束轮询，完成提醒只弹一次
-        onTaskDone(taskId, data);
-        return;
-      }
-      if (data.status === "failed") {
-        if (monPolling) monPolling.stop();
-        onTaskFailed(data);
-        return;
-      }
-      if (data.status === "cancelled") {
-        if (monPolling) monPolling.stop();
-        onTaskStopped({ error_msg: "本轮监测已停止" });
-        return;
-      }
-      const card = document.getElementById("mon-progress-card");
-      card.classList.remove("done-card");
-      card.classList.remove("failed-card");
-      document.getElementById("mon-progress-title").textContent = data.current_desc || "正在问…";
-      document.getElementById("mon-progress").querySelector(".bar").style.width =
-        (data.progress || 0) + "%";
-      const remain = data.remain_seconds !== null && data.remain_seconds !== undefined
-        ? "，预计还需 " + fmtDuration(data.remain_seconds) : "";
-      document.getElementById("mon-progress-count").textContent =
-        "已完成 " + data.done_calls + "/" + data.total_calls + "（" + (data.progress || 0) + "%）" + remain;
-      renderTaskDetail(data.done_calls, data.total_calls, data.current_desc);
-    },
     function () {
-      monTaskId = null;
+      return Promise.all(ids.map(function (id) {
+        return geoApi("/api/monitor/tasks/" + id + "/progress");
+      })).then(function (list) { return { ids: ids, tasks: list }; });
+    },
+    function (agg) { handleAggProgress(agg); },
+    function () {
+      monTaskIds = null;
     }
   );
 }
 
-function onTaskDone(taskId, data) {
+function handleAggProgress(agg) {
+  const tasks = agg.tasks || [];
+  const active = tasks.filter(function (t) { return t.status === "pending" || t.status === "running"; });
+  if (active.length) {
+    const card = document.getElementById("mon-progress-card");
+    card.classList.remove("done-card");
+    card.classList.remove("failed-card");
+    const running = tasks.find(function (t) { return t.status === "running"; }) || active[0];
+    const runIdx = tasks.indexOf(running);
+    const sections = taskMetaSections();
+    const stage = sections[runIdx] ? "【" + sections[runIdx].label + "】" : "";
+    const done = tasks.reduce(function (a, t) { return a + (t.done_calls || 0); }, 0);
+    const total = tasks.reduce(function (a, t) { return a + (t.total_calls || 0); }, 0);
+    const pct = total > 0 ? Math.round(done / total * 100) : 0;
+    document.getElementById("mon-progress-title").textContent =
+      stage + (running.current_desc || "正在问…");
+    document.getElementById("mon-progress").querySelector(".bar").style.width = pct + "%";
+    const remain = running.remain_seconds !== null && running.remain_seconds !== undefined
+      ? "，预计还需 " + fmtDuration(running.remain_seconds) : "";
+    document.getElementById("mon-progress-count").textContent =
+      "已完成 " + done + "/" + total + "（" + pct + "%）" + remain;
+    renderTaskDetail(done, total);
+    return;
+  }
+  const cancelled = tasks.find(function (t) { return t.status === "cancelled"; });
+  if (cancelled) {
+    if (monPolling) monPolling.stop();
+    onTaskStopped(cancelled);
+    return;
+  }
+  const failed = tasks.find(function (t) { return t.status === "failed"; });
+  if (failed) {
+    if (monPolling) monPolling.stop();
+    onTaskFailed(failed);
+    return;
+  }
+  if (monPolling) monPolling.stop();
+  onTasksDone(agg.ids, tasks);
+}
+
+function onTasksDone(taskIds, tasks) {
+  const total = tasks.reduce(function (a, t) { return a + (t.total_calls || 0); }, 0);
   document.getElementById("mon-progress-title").textContent = "本轮监测完成 ✓";
   document.getElementById("mon-progress").querySelector(".bar").style.width = "100%";
   document.getElementById("mon-progress-count").textContent =
-    "共问 " + data.total_calls + " 个问题";
+    "共问 " + total + " 个问题";
   document.getElementById("mon-progress-sub").textContent = "";
   const card = document.getElementById("mon-progress-card");
   card.classList.add("done-card");
-  renderTaskDetail(data.total_calls, data.total_calls, "");
+  renderTaskDetail(total, total);
 
   const keys = monTaskKeys();
   localStorage.removeItem(keys.idKey);
   localStorage.removeItem(keys.metaKey);
-  monTaskId = null;
+  monTaskIds = null;
   const btn = document.getElementById("mon-start");
   btn.disabled = false;
   btn.textContent = "开始监测";
 
   geoApi("/api/monitor/rounds?page=1").then(function (list) {
     const rounds = list.items || [];
-    const r = rounds.find(function (x) { return String(x.task_id) === String(taskId); }) || rounds[0];
+    const r = rounds.find(function (x) {
+      return taskIds.some(function (id) { return String(x.task_id) === String(id); });
+    }) || rounds[0];
     if (r) {
       /* U3：完成态进度卡加"去看报告"直达入口 */
       document.getElementById("mon-progress-sub").innerHTML =
@@ -506,7 +552,7 @@ function onTaskStopped(data) {
   const keys = monTaskKeys();
   localStorage.removeItem(keys.idKey);
   localStorage.removeItem(keys.metaKey);
-  monTaskId = null;
+  monTaskIds = null;
   const btn = document.getElementById("mon-start");
   btn.disabled = false;
   btn.textContent = "开始监测";
@@ -522,53 +568,51 @@ function onTaskFailed(data) {
   const keys = monTaskKeys();
   localStorage.removeItem(keys.idKey);
   localStorage.removeItem(keys.metaKey);
-  monTaskId = null;
+  monTaskIds = null;
   const btn = document.getElementById("mon-start");
   btn.disabled = false;
   btn.textContent = "开始监测";
 }
 
-/* 离开页面再回来：恢复进行中的监测（仅当前品牌，B2 品牌维度隔离） */
+/* 离开页面再回来：恢复进行中的监测（仅当前品牌，B2 品牌维度隔离）。
+   idKey 存 JSON 数组（一轮多任务）；旧版存的纯数字也兼容 */
 function resumeRunningTask() {
   const keys = monTaskKeys();
-  const taskId = localStorage.getItem(keys.idKey);
-  if (!taskId) return;
-  monTaskId = parseInt(taskId, 10);
+  const raw = localStorage.getItem(keys.idKey);
+  if (!raw) return;
+  let ids;
+  try {
+    ids = JSON.parse(raw);
+  } catch (e) {
+    ids = [parseInt(raw, 10)];
+  }
+  if (!Array.isArray(ids)) ids = [parseInt(raw, 10)];
+  ids = (ids || []).filter(function (x) { return !!x; });
+  if (!ids.length) return;
   const metaRaw = localStorage.getItem(keys.metaKey);
   if (metaRaw) {
     try { monTaskMeta = JSON.parse(metaRaw); } catch (e) { monTaskMeta = null; }
   }
-  geoApi("/api/monitor/tasks/" + monTaskId + "/progress").then(function (data) {
-    if (data.status === "done") {
-      showProgressCard(data.total_calls);
-      onTaskDone(monTaskId, data);
-      return;
+  Promise.all(ids.map(function (id) {
+    return geoApi("/api/monitor/tasks/" + id + "/progress");
+  })).then(function (tasks) {
+    monTaskIds = ids;
+    handleAggProgress({ ids: ids, tasks: tasks });
+    const anyActive = tasks.some(function (t) {
+      return t.status === "pending" || t.status === "running";
+    });
+    if (anyActive) {
+      const btn = document.getElementById("mon-start");
+      btn.disabled = true;
+      btn.textContent = "监测中…";
+      const total = tasks.reduce(function (a, t) { return a + (t.total_calls || 0); }, 0);
+      showProgressCard(total);
+      pollTasks(ids);
     }
-    if (data.status === "failed") {
-      showProgressCard(data.total_calls);
-      onTaskFailed(data);
-      return;
-    }
-    if (data.status === "cancelled") {
-      showProgressCard(data.total_calls);
-      onTaskStopped(data);
-      return;
-    }
-    const btn = document.getElementById("mon-start");
-    btn.disabled = true;
-    btn.textContent = "监测中…";
-    showProgressCard(data.total_calls);
-    document.getElementById("mon-progress-title").textContent = data.current_desc || "正在问…";
-    document.getElementById("mon-progress").querySelector(".bar").style.width =
-      (data.progress || 0) + "%";
-    document.getElementById("mon-progress-count").textContent =
-      "已完成 " + data.done_calls + "/" + data.total_calls + "（" + (data.progress || 0) + "%）";
-    renderTaskDetail(data.done_calls, data.total_calls, data.current_desc);
-    pollTask(monTaskId);
   }).catch(function () {
     localStorage.removeItem(keys.idKey);
     localStorage.removeItem(keys.metaKey);
-    monTaskId = null;
+    monTaskIds = null;
   });
 }
 

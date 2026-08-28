@@ -198,6 +198,68 @@ def test_发起监测联网档模型选择校验(client):
     assert "档位" in body["message"]
 
 
+def test_发起监测一轮多模式串行(client, monkeypatch):
+    """2026-08-19：modes 数组 + 嵌套模型选择 → 一轮预创建常规+联网两个任务，
+    单线程按序执行（不真正跑 AI：线程改同步 + run_monitor_task 打桩）。"""
+    from geo.core import monitor_task as mt
+
+    r = client.post("/api/questions", json={"brand_id": 1, "text": "多模式问题"})
+    qid = r.get_json()["data"]["id"]
+
+    executed = []
+
+    class _SyncThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            self._target = target
+            self._args = args
+
+        def start(self):
+            self._target(*self._args)
+
+    monkeypatch.setattr(mt.threading, "Thread", _SyncThread)
+    monkeypatch.setattr(mt, "run_monitor_task", lambda tid: executed.append(tid))
+
+    r = client.post("/api/monitor/start", json={
+        "brand_id": 1, "question_ids": [qid],
+        "modes": ["normal", "web"],
+        "models": {
+            "normal": {"deepseek": ["deepseek-v4-flash"]},
+            "web": {"qwen": ["qwen3.7-max-2026-05-20"]},
+        }})
+    body = r.get_json()
+    assert body["code"] == 0, body
+    d = body["data"]
+    assert d["modes"] == ["normal", "web"]
+    assert len(d["task_ids"]) == 2
+    assert d["total_calls"] == 2  # 1 问题 × (1 常规模型 + 1 联网模型)
+    assert executed == d["task_ids"]  # 串行按序执行
+
+    from geo.models import db as database
+    with database.session_scope() as s:
+        t1 = s.get(database.MonitorTask, d["task_ids"][0])
+        t2 = s.get(database.MonitorTask, d["task_ids"][1])
+        assert (t1.mode, t1.status) == ("normal", "pending")
+        assert (t2.mode, t2.status) == ("web", "pending")
+        assert database.jloads(t1.models) == {"deepseek": ["deepseek-v4-flash"]}
+        assert database.jloads(t2.models) == {"qwen": ["qwen3.7-max-2026-05-20"]}
+
+    # 联网模式一个模型都没勾 → 大白话拦截（不能静默回落全队默认档）
+    r = client.post("/api/monitor/start", json={
+        "brand_id": 1, "question_ids": [qid],
+        "modes": ["normal", "web"],
+        "models": {"normal": {"deepseek": ["deepseek-v4-flash"]}, "web": {}}})
+    body = r.get_json()
+    assert body["code"] == 1
+    assert "联网提问" in body["message"] and "模型" in body["message"]
+    # modes 空数组 / 全非法 → 拦截
+    r = client.post("/api/monitor/start", json={
+        "brand_id": 1, "question_ids": [qid], "modes": []})
+    assert r.get_json()["code"] == 1
+    r = client.post("/api/monitor/start", json={
+        "brand_id": 1, "question_ids": [qid], "modes": ["nope"]})
+    assert r.get_json()["code"] == 1
+
+
 # ---------------- 轮次列表/详情 ----------------
 
 def test_轮次列表为空与详情不存在(client):
@@ -275,6 +337,46 @@ def test_定时设置读写与非法时间拦截(client):
     assert r.get_json()["code"] == 1
 
 
+def test_定时模型档位读写与校验(client):
+    # 2026-08-18：定时监测可选模型档位；初始为空 = 跟随各引擎当前档
+    d = client.get("/api/schedule").get_json()["data"]
+    assert d["models"] == {"normal": {}, "web": {}}
+
+    # 从钥匙列表拿真实档位名，避免硬编码型号
+    keys = client.get("/api/settings/keys").get_json()["data"]
+    ds = [k for k in keys if k["engine"] == "deepseek"][0]
+    names = list(dict.fromkeys(o["name"] for o in ds["model_options"]))
+    picked = names[:2]
+
+    r = client.put("/api/schedule", json={
+        "models": {"normal": {"deepseek": picked}}})
+    assert r.get_json()["code"] == 0
+    d = client.get("/api/schedule").get_json()["data"]
+    assert d["models"]["normal"]["deepseek"] == picked
+    assert d["models"]["web"] == {}
+
+    # 非法档位拦截（大白话报错）
+    r = client.put("/api/schedule", json={
+        "models": {"normal": {"deepseek": ["not-a-model"]}}})
+    assert r.get_json()["code"] == 1
+
+    # 不支持联网的引擎（opencode 订阅 API 无联网工具）选联网模型拦截
+    r = client.put("/api/schedule", json={
+        "models": {"web": {"opencode": ["grok-4.5"]}}})
+    assert r.get_json()["code"] == 1
+
+    # 未知引擎拦截
+    r = client.put("/api/schedule", json={
+        "models": {"normal": {"no-such-engine": ["x"]}}})
+    assert r.get_json()["code"] == 1
+
+    # 清空恢复默认（跟随当前档）
+    r = client.put("/api/schedule", json={"models": None})
+    assert r.get_json()["code"] == 0
+    d = client.get("/api/schedule").get_json()["data"]
+    assert d["models"] == {"normal": {}, "web": {}}
+
+
 # ---------------- 钥匙脱敏与费用接口 ----------------
 
 def test_钥匙列表永不含明文(client):
@@ -317,6 +419,53 @@ def test_费用接口空库为0(client):
     body = r.get_json()
     assert body["code"] == 0
     assert body["data"]["month_cost_yuan"] == 0
+
+
+def test_各引擎厂商对比接口(client):
+    """2026-08-22：/api/report/engines 聚合近30轮每引擎/每模型提及数据。"""
+    from geo.models import db as database
+
+    # 独立品牌（id=7），避免污染同库其他用例对品牌 1 的统计
+    with database.session_scope() as s:
+        if not s.get(database.BrandProfile, 7):
+            s.add(database.BrandProfile(id=7, brand_name="对比测试牌", auto_monitor=True))
+    # 造一轮正常完成的数据：豆包提及、千问未提及
+    with database.session_scope() as s:
+        s.add(database.MonitorTask(id=501, type="manual", status="done",
+                                   mode="normal", brand_id=7, done_calls=2, total_calls=2))
+        s.flush()
+        s.add(database.MonitorRound(id=501, task_id=501, brand_id=7, mode="normal",
+                                    mention_rate=0.5, net_sentiment=0.0, overall_score=50))
+        s.add(database.MonitorResult(round_id=501, brand_id=7, engine_code="doubao",
+                                     model="doubao-mini", question_id=1, question_text="q",
+                                     answer_text="威启不错", is_mentioned=True, mention_count=1,
+                                     mention_position=1, sentiment="positive", sources="[]"))
+        s.add(database.MonitorResult(round_id=501, brand_id=7, engine_code="qwen",
+                                     model="qwen-max", question_id=1, question_text="q",
+                                     answer_text="没有品牌", is_mentioned=False, mention_count=0,
+                                     sentiment="neutral", sources="[]"))
+
+    r = client.get("/api/report/engines?rounds=30&brand_id=7")
+    body = r.get_json()
+    assert body["code"] == 0
+    d = body["data"]
+    assert d["rounds_used"] == 1
+    by_engine = {e["engine"]: e for e in d["engines"]}
+    assert set(by_engine) == {"doubao", "qwen"}
+    ds = by_engine["doubao"]
+    assert ds["answered"] == 1 and ds["mentioned"] == 1
+    assert ds["mention_rate"] == 1.0
+    assert ds["net_sentiment"] == 1.0
+    assert ds["avg_position"] == 1
+    assert ds["modes"]["normal"]["answered"] == 1
+    assert ds["models"][0]["model"] == "doubao-mini"
+    # 提及率降序：豆包在前
+    assert d["engines"][0]["engine"] == "doubao"
+
+    # 空库（其他品牌）→ 空列表不报错
+    r = client.get("/api/report/engines?rounds=30&brand_id=9")
+    d = r.get_json()["data"]
+    assert d["engines"] == [] and d["rounds_used"] == 0
 
 
 # ---------------- 内容优化入口校验 + 无钥匙失败落库（异步轮询） ----------------

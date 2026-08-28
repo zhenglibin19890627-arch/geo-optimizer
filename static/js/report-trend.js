@@ -25,6 +25,19 @@ const DEEP_SPEC_NOTE = "（系统推测，仅供参考，不是查到的真实�
 const YUANBAO_NOTE =
   "说明：元宝的数据来自它的同门底座「混元」官方服务，与元宝 App 上的实际回答可能有差异。";
 
+/* 轮次切换后刷新引擎明细（2026-08-21 修复）：
+   明细此前只在展开那一刻加载，切换常规/联网轮次时不刷新，一直显示旧轮数据 */
+function repRefreshRoundDetail() {
+  const body = document.getElementById("round-detail-body");
+  if (!body || !body.classList.contains("show")) return;
+  if (repRoundId) {
+    loadRoundDetail(repRoundId);
+  } else {
+    body.innerHTML = '<div class="score-sub">当前查看的是「最近 30 轮」总览，'
+      + "请先在上方下拉框选择一个具体轮次，再看本轮引擎明细</div>";
+  }
+}
+
 function loadRoundsSelect(selectId) {
   geoApi("/api/monitor/rounds?page=1").then(function (data) {
     const sel = document.getElementById("report-round-select");
@@ -61,6 +74,7 @@ function loadRoundsSelect(selectId) {
       loadSources();
       loadCompareCard();
       loadDeepCard();
+      repRefreshRoundDetail();
     });
 
     if (selectId) {
@@ -70,6 +84,7 @@ function loadRoundsSelect(selectId) {
       loadSources();
       loadCompareCard();
       loadDeepCard();
+      repRefreshRoundDetail();
     } else if (items.length) {
       /* 默认选最新一轮：下拉框回填该轮（此前只设 repRoundId 不设 sel.value，
          导致 repSelectedRound() 读不到选中轮、常规轮的信源卡不隐藏） */
@@ -79,6 +94,7 @@ function loadRoundsSelect(selectId) {
       loadSources();
       loadCompareCard();
       loadDeepCard();
+      repRefreshRoundDetail();
     } else {
       loadCompareCard();
       loadDeepCard();
@@ -448,10 +464,16 @@ function loadSources() {
       const row = document.createElement("div");
       row.className = "list-row";
       const siteName = s.site_name || s.domain || s.url || "未知网站";
-      const domain = s.domain ? s.url || "" : "";
       const engTags = (s.engines || []).map(function (e) {
         return '<span class="tag tag-gray" style="flex:none">' +
           esc(e.display_name || e.engine_code || "") + " ×" + (e.count || 0) + "</span>";
+      }).join("");
+      /* 2026-08-27：该信源给哪些品牌背书（引用它的回答提到了谁）；
+         我方绿色高亮，竞品灰色，最多显示前 3 个 */
+      const brandTags = (s.brands || []).slice(0, 3).map(function (b) {
+        const cls = b.is_self ? "tag-green" : "tag-gray";
+        return '<span class="tag ' + cls + '" style="flex:none" title="引用该信源的回答里提到了这个品牌">' +
+          (b.is_self ? "★ " : "") + esc(b.name) + " ×" + (b.count || 0) + "</span>";
       }).join("");
       row.innerHTML =
         '<span class="num" style="color:var(--text-placeholder);width:24px;flex:none">' + (i + 1) + ".</span>" +
@@ -462,6 +484,7 @@ function loadSources() {
           : "") +
         "</div>" +
         '<span class="num" style="color:var(--text-sub);flex:none">' + (s.count || 0) + " 次引用</span>" +
+        brandTags +
         engTags;
       list.appendChild(row);
     });

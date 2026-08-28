@@ -1,6 +1,14 @@
-"""APScheduler 定时自动监测：默认每日 08:30、可修改、错过 26 小时自动补跑。"""
+"""APScheduler 定时自动监测：默认每日 08:30、可修改、错过 26 小时自动补跑。
+
+2026-08-18：新增「睡眠唤醒看门狗」——APScheduler 后台线程在 Windows 整机
+睡眠唤醒后可能不再补发错过的任务（实测当天定时点睡眠，唤醒后 misfire
+未触发、当天监测静默丢失），故由独立看门狗线程兜底：只要已过定时点
++10 分钟、且今天该跑还没跑，就自动补跑一轮。
+"""
 
 import threading
+import time
+import traceback
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -44,6 +52,23 @@ def effective_interval_days() -> int:
     except (TypeError, ValueError):
         n = 1
     return max(1, min(n, 30))
+
+
+def effective_schedule_models(mode: str) -> dict:
+    """定时监测的模型档位选择（设置页保存）：{engine: [model, ...]}。
+
+    存在 settings 表 schedule_models 键（JSON：{"normal": {...}, "web": {...}}）。
+    读取时按当前配置宽松过滤——之后改档/删档的模型自动剔除，
+    某家引擎为空则不出现（执行时回落该引擎当前档）。
+    """
+    from geo.core import monitor_task
+    raw = database.jloads(database.get_setting("schedule_models", None), {}) or {}
+    if not isinstance(raw, dict):
+        return {}
+    per = raw.get(mode) or {}
+    if not isinstance(per, dict):
+        return {}
+    return monitor_task.filter_models(list(per.keys()), per, web=(mode == "web"))
 
 
 def _last_run_date():
@@ -138,10 +163,27 @@ def run_scheduled_monitor(background: bool = True):
                         print(f"【定时监测】「{brand_name}」的引擎钥匙还没填，"
                               "跳过该模式。请到设置页填写钥匙。")
                     continue
+                # 2026-08-22 修复：设置页勾了定时模型档位时，没勾的引擎不能参加——
+                # 此前全量引擎传入 start_monitor_task，normalize_models 会给没勾的
+                # 引擎回落当前档，导致「明明只勾了豆包/千问/元宝，deepseek、
+                # opencode 也被拉去跑」（钥匙失效的 deepseek 还整轮报错）。
+                # 区分两种「空」：没做过选择 → 全部启用引擎 + 当前档（原语义）；
+                # 做过选择但档位后来全部失效 → 跳过该模式（不能悄悄扩到全量引擎）。
+                sched_models = effective_schedule_models(mode)
+                raw_models = database.jloads(
+                    database.get_setting("schedule_models", None), {}) or {}
+                made_choice = bool(isinstance(raw_models, dict)
+                                   and (raw_models.get(mode) or {}))
+                if sched_models or made_choice:
+                    engines = [c for c in engines if sched_models.get(c)]
+                    if not engines:
+                        print(f"【定时监测】「{brand_name}」{mode_labels[mode]}"
+                              "在设置页勾选的模型档位当前都不可用，跳过该模式。")
+                        continue
                 try:
                     task_id = monitor_task.start_monitor_task(
                         qids, engines, task_type="scheduled", brand_id=brand_id,
-                        mode=mode)
+                        mode=mode, models=sched_models or None)
                 except engine_base.EngineError as e:
                     print(f"【定时监测】「{brand_name}」{mode_labels[mode]}发起失败："
                           f"{e.message}，跳过该模式，继续。")
@@ -196,6 +238,56 @@ def _task_status(task_id: int):
         return t.status
 
 
+# ---------------- 睡眠唤醒/错过补跑看门狗（2026-08-18） ----------------
+
+_WAKE_CHECK_SECONDS = 30   # 看门狗巡检间隔
+_WAKE_GRACE_MINUTES = 10   # 定时点过后多少分钟仍没跑才视为错过（给正点 cron 留时间）
+_catchup_fired_date = None  # 看门狗当天已补跑过的日期（防与手动监测撞车时反复触发）
+
+
+def _start_wake_watchdog():
+    def _loop():
+        while True:
+            time.sleep(_WAKE_CHECK_SECONDS)
+            try:
+                _catchup_if_missed()
+            except Exception:
+                traceback.print_exc()
+
+    threading.Thread(target=_loop, daemon=True, name="geo-schedule-watchdog").start()
+
+
+def _catchup_if_missed():
+    """错过定时点的兜底：电脑睡眠/调度器漏发时，醒来后自动补跑当天该跑的一轮。
+
+    判定条件（全部满足才补跑）：
+    - 定时开关开着，且按周期今天该跑（_interval_due）；
+    - 今天还没跑过定时监测（schedule_last_run_date < 今天）；
+    - 已过「定时点 + 10 分钟」——正常情况正点 cron 早就把它置为今天；
+    - 看门狗今天没补跑过（一天最多兜底一次，避免与手动监测撞车时反复起线程）。
+    """
+    global _catchup_fired_date
+    if not _effective_enabled():
+        return
+    if not _interval_due():
+        return
+    today = datetime.now().date()
+    last = _last_run_date()
+    if last is not None and last >= today:
+        return  # 今天已经跑过定时监测
+    if _catchup_fired_date == today:
+        return  # 看门狗今天已兜底过一次
+    hour, minute = _parse_time(_effective_time(), fallback=(8, 30))
+    scheduled_today = datetime.now().replace(
+        hour=hour, minute=minute, second=0, microsecond=0)
+    if datetime.now() < scheduled_today + timedelta(minutes=_WAKE_GRACE_MINUTES):
+        return  # 还没到「定时点+10分钟」，先让正点 cron 去跑
+    _catchup_fired_date = today
+    print("【定时监测】发现今天到点的定时监测还没跑（可能是电脑睡眠或调度器错过），"
+          "现在自动补跑一轮……")
+    run_scheduled_monitor(background=True)
+
+
 def ensure_scheduler_started():
     global _scheduler
     with _lock:
@@ -205,6 +297,7 @@ def ensure_scheduler_started():
         _schedule_job()
         _scheduler.start()
         _recover_and_catchup()
+        _start_wake_watchdog()
 
 
 def _schedule_job():

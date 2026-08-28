@@ -23,6 +23,14 @@ app = create_app()
 
 
 def main():
+    # pythonw 后台运行时 stdout 重定向到文件是块缓冲，定时监测等诊断
+    # print 会积压在缓冲区里迟迟不落日志；改成行缓冲，写一条见一条。
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(line_buffering=True)
+    except Exception:
+        pass
+
     args = sys.argv[1:]
     no_browser = "--no-browser" in args
     port = None

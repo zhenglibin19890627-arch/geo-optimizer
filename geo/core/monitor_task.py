@@ -116,6 +116,63 @@ def build_messages(question_text: str) -> list:
     ]
 
 
+def allowed_models(code: str, web: bool = False) -> set:
+    """某引擎在当前配置下允许的模型档位集合（含当前档；联网档含联网白名单）。
+
+    从 normalize_models 的校验逻辑抽出，供 API 校验（严格抛错）与
+    定时任务读取（宽松过滤）两处复用，口径永远一致。
+    """
+    try:
+        adapter = get_adapter(code)
+    except Exception:
+        return set()
+    from geo.engines import adapter_meta
+    try:
+        meta = adapter_meta(code)
+    except Exception:
+        meta = {}
+    allowed = {o.get("name") for o in (meta.get("model_options") or [])
+               if isinstance(o, dict) and o.get("name")}
+    current = adapter.get_model()
+    if current:
+        allowed.add(current)
+    if web:
+        # 联网档白名单：配置了 web_model_options 则只允许该子集
+        # （如通义千问实时翻译模型不支持联网协议），否则回落全量档位
+        web_opts = {o.get("name") for o in (meta.get("web_model_options") or [])
+                    if isinstance(o, dict) and o.get("name")}
+        if web_opts:
+            allowed = web_opts
+        try:
+            wm = get_web_adapter(code).get_web_model()
+        except Exception:
+            wm = None
+        if wm:
+            allowed.add(wm)
+    return allowed
+
+
+def filter_models(engine_codes: list, models: dict, web: bool = False) -> dict:
+    """宽松过滤：把 {engine: [model,...]} 里当前配置不允许的项剔除（不抛错）。
+
+    用于定时监测：设置页保存的模型选择可能在之后被改档/删档，定时执行时
+    按当前配置过滤；某家引擎过滤后为空则不出现在结果里（执行时回落当前档）。
+    """
+    result = {}
+    for code in engine_codes or []:
+        raw = (models or {}).get(code) or []
+        if isinstance(raw, str):
+            raw = [raw]
+        if not isinstance(raw, list):
+            continue
+        allowed = allowed_models(code, web)
+        picked = [str(m).strip() for m in raw if str(m).strip() in allowed]
+        picked = list(dict.fromkeys(picked))
+        if picked:
+            result[code] = picked
+    return result
+
+
 def normalize_models(engine_codes: list, models: dict, web: bool = False) -> dict:
     """把前端传来的 {engine: [model,...]} 校验归一为任务模型清单。
 
@@ -144,29 +201,7 @@ def normalize_models(engine_codes: list, models: dict, web: bool = False) -> dic
             else:
                 picked = [adapter.get_model()]
         # 校验：只允许设置页档位列表里的模型（含当前档；联网档含联网档模型）
-        from geo.engines import adapter_meta
-        try:
-            meta = adapter_meta(code)
-        except Exception:
-            meta = {}
-        allowed = {o.get("name") for o in (meta.get("model_options") or [])
-                   if isinstance(o, dict) and o.get("name")}
-        current = adapter.get_model()
-        if current:
-            allowed.add(current)
-        if web:
-            # 联网档白名单：配置了 web_model_options 则只允许该子集
-            # （如通义千问实时翻译模型不支持联网协议），否则回落全量档位
-            web_opts = {o.get("name") for o in (meta.get("web_model_options") or [])
-                        if isinstance(o, dict) and o.get("name")}
-            if web_opts:
-                allowed = web_opts
-            try:
-                wm = get_web_adapter(code).get_web_model()
-            except Exception:
-                wm = None
-            if wm:
-                allowed.add(wm)
+        allowed = allowed_models(code, web)
         for m in picked:
             if m not in allowed:
                 raise engine_base.EngineError(
@@ -229,6 +264,84 @@ def start_monitor_task(question_ids: list, engine_codes: list,
         task_id = task.id
     threading.Thread(target=run_monitor_task, args=(task_id,), daemon=True).start()
     return task_id
+
+
+def start_serial_monitor_task(question_ids: list, mode_specs: list,
+                              task_type: str = "manual", brand_id: int = 1) -> list:
+    """一轮多模式串行监测（2026-08-19 手动版）：预创建全部任务，单线程逐个执行。
+
+    mode_specs: [(mode, engine_codes, models), ...]，按给定顺序串行
+    （如先 normal 后 web）；mode 重复以首次为准。返回全部 task_id，
+    前端一次拿到所有 id 即可整体展示进度/整体停止。
+    全局互斥语义不变：创建时校验 any_task_running，执行线程逐个跑，
+    同一时刻仍只有一个任务在跑（与定时多品牌串行同一口径）。
+    """
+    specs = []
+    seen = set()
+    for mode, engines, models in mode_specs or []:
+        mode = str(mode or "normal").strip() or "normal"
+        if mode not in ("normal", "web"):
+            raise engine_base.EngineError("这个模式不认，请选择「常规提问」或「联网提问」")
+        if mode in seen:
+            continue
+        seen.add(mode)
+        specs.append((mode, list(engines or []), models))
+    if not specs:
+        raise engine_base.EngineError("请至少选择一种监测模式（常规提问或联网提问）")
+
+    per = int(_monitor_section().get("estimated_seconds_per_call", 10) or 10)
+    with database.session_scope() as s:
+        if any_task_running(s):
+            raise engine_base.EngineError("已经有一轮监测在跑了，请等它完成后再发起新一轮")
+        if not database.brand_exists(brand_id):
+            raise engine_base.EngineError("这个品牌不存在，可能已被删除")
+        qs = (s.query(database.QuestionBank)
+              .filter(database.QuestionBank.brand_id == brand_id)
+              .filter(database.QuestionBank.id.in_(question_ids or []))
+              .filter(database.QuestionBank.enabled == True).all())
+        if not qs:
+            raise engine_base.EngineError("问题库是空的（或选中的问题已停用），请先到「问题库」页添加问题")
+
+        all_engines = []
+        for _, engines, _ in specs:
+            for c in engines:
+                if c not in all_engines:
+                    all_engines.append(c)
+        missing = []
+        for code in all_engines:
+            try:
+                adapter = get_adapter(code)
+            except Exception:
+                continue
+            if not adapter.is_configured():
+                missing.append(adapter.display_name)
+        if missing:
+            names = "、".join(dict.fromkeys(missing))
+            raise engine_base.EngineError(f"{names}的钥匙（API Key）还没填，请先到设置页填写")
+
+        task_ids = []
+        for mode, engines, models in specs:
+            model_map = normalize_models(engines, models, web=(mode == "web"))
+            total = len(qs) * sum(len(model_map.get(code, [1])) for code in engines)
+            task = database.MonitorTask(
+                type=task_type, status="pending", progress=0,
+                brand_id=brand_id, mode=mode,
+                total_calls=total, done_calls=0,
+                estimated_seconds=total * per,
+                question_ids=database.jdumps([q.id for q in qs]),
+                engine_codes=database.jdumps(engines),
+                models=database.jdumps(model_map),
+            )
+            s.add(task)
+            s.flush()
+            task_ids.append(task.id)
+
+    def _run_all():
+        for tid in task_ids:
+            run_monitor_task(tid)
+
+    threading.Thread(target=_run_all, daemon=True).start()
+    return task_ids
 
 
 def _analysis_for(adapter, question, result, brand: dict,
