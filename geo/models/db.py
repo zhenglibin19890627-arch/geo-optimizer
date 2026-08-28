@@ -499,6 +499,43 @@ class DistributionDraft(Base):
 
 
 # ============================================================
+# 14. 多平台分发任务（二期：审阅后勾选平台，宿主经扩展逐平台发布）
+# ============================================================
+class DistributionChannelTask(Base):
+    __tablename__ = "distribution_channel_task"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    brand_id = Column(Integer, default=1)
+    draft_id = Column(Integer)  # 关联 distribution_draft.id
+    platform = Column(String(30))  # zhihu / sohu / toutiao …
+    account_id = Column(Text)  # 扩展侧账号 id（缺省用扩展默认账号）
+    status = Column(String(20), default="pending")
+    # pending（待宿主领取）→ dispatching（已领取，驱动扩展中）→ published / failed
+    job_id = Column(Text)  # 扩展返回的发布任务 id
+    platform_url = Column(Text)
+    error_msg = Column(Text)
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime)
+    published_at = Column(DateTime)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "brand_id": self.brand_id,
+            "draft_id": self.draft_id,
+            "platform": self.platform or "",
+            "account_id": self.account_id or "",
+            "status": self.status or "pending",
+            "job_id": self.job_id or "",
+            "platform_url": self.platform_url or "",
+            "error_msg": self.error_msg or "",
+            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+            "updated_at": self.updated_at.strftime("%Y-%m-%d %H:%M:%S") if self.updated_at else None,
+            "published_at": self.published_at.strftime("%Y-%m-%d %H:%M:%S") if self.published_at else None,
+        }
+
+
+# ============================================================
 # 品牌档案便捷读写（多行：按 id；缺省品牌 1 兼容旧调用）
 # ============================================================
 EMPTY_BRAND = {
@@ -556,7 +593,8 @@ def delete_brand_cascade(brand_id: int):
     with session_scope() as s:
         for model in (QuestionBank, Keyword, MonitorTask, MonitorRound,
                       MonitorResult, ScoreSnapshot, Alert, OptimizationRecord,
-                      CompetitorAnalysis, DistributionDraft):
+                      CompetitorAnalysis, DistributionDraft,
+                      DistributionChannelTask):
             s.query(model).filter(model.brand_id == brand_id).delete(synchronize_session=False)
         # B1 遗留 2（07k 任务 4）：清掉该品牌的组登记 settings 键，避免残留无引用键
         s.query(Setting).filter(Setting.key == f"question_group_names_{brand_id}").delete(

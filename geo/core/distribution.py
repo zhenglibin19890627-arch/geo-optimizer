@@ -32,6 +32,15 @@ TOP_DOMAINS = 15
 # 生成正文的安全长度：与官网摘要上限一致，tags 截断防超长
 SUMMARY_MAX_CHARS = 500
 
+# ---------------- 多平台分发（二期） ----------------
+# 首批平台：key 与发布扩展平台注册表的 id 一致，value 为展示名；
+# 扩展自身支持更多平台（约 19 个），后续按需扩充此清单即可。
+SUPPORTED_PLATFORMS = {"zhihu": "知乎", "sohu": "搜狐号", "toutiao": "今日头条"}
+# 平台主域：发布成功后并入「已布点」，信源排行按主域后缀匹配生效
+PLATFORM_DOMAINS = {"zhihu": "zhihu.com", "sohu": "sohu.com", "toutiao": "toutiao.com"}
+# 宿主心跳新鲜度（秒）：超过则分发页显示「扩展离线」
+AGENT_HEARTBEAT_TTL = 70
+
 
 # ---------------- 官网配置（settings 表存储，分发页可改） ----------------
 
@@ -74,7 +83,7 @@ def official_domain() -> str:
 # ---------------- 已布点域名（供信源卡「已布点」标注） ----------------
 
 def deployed_domains(brand_id: int) -> set:
-    """我方内容已覆盖的域名：已发布稿件的落地页域名 + 官网域名。"""
+    """我方内容已覆盖的域名：已发布稿件的落地页域名 + 官网域名 + 已发布平台主域。"""
     domains = set()
     official = official_domain()
     if official:
@@ -87,7 +96,31 @@ def deployed_domains(brand_id: int) -> set:
             d = _url_domain(r.published_url)
             if d:
                 domains.add(d)
+        # 多平台任务：发布成功的平台主域直接计入（platform_url 子域由后缀匹配覆盖）
+        rows = (s.query(database.DistributionChannelTask)
+                .filter(database.DistributionChannelTask.brand_id == brand_id,
+                        database.DistributionChannelTask.status == "published").all())
+        for r in rows:
+            d = PLATFORM_DOMAINS.get(r.platform)
+            if d:
+                domains.add(d)
+            d = _url_domain(r.platform_url)
+            if d:
+                domains.add(d)
     return domains
+
+
+def agent_online() -> bool:
+    """宿主心跳是否新鲜（分发页「扩展在线」状态灯）。"""
+    from datetime import datetime, timedelta
+    last = str(database.get_setting("agent_last_seen", "") or "")
+    if not last:
+        return False
+    try:
+        dt = datetime.strptime(last, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return False
+    return datetime.now() - dt <= timedelta(seconds=AGENT_HEARTBEAT_TTL)
 
 
 def _url_domain(url: str) -> str:
