@@ -21,11 +21,17 @@ def test_扩展ID校验():
 
 
 def test_manifest结构():
-    m = build_manifest("a" * 32)
+    m = build_manifest(["a" * 32])
     assert m["name"] == HOST_NAME == "org.synccaster.bridge"
     assert m["type"] == "stdio"
     assert m["allowed_origins"] == ["chrome-extension://" + "a" * 32 + "/"]
     assert m["path"].endswith("geo_bridge_host.bat")
+
+
+def test_manifest支持多扩展ID():
+    ids = ["a" * 32, "b" * 32]
+    m = build_manifest(ids)
+    assert m["allowed_origins"] == [f"chrome-extension://{x}/" for x in ids]
 
 
 def test_bat用绝对路径并带引号():

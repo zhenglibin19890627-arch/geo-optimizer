@@ -37,13 +37,13 @@ def validate_ext_id(ext_id: str) -> str:
     return ext_id
 
 
-def build_manifest(ext_id: str) -> dict:
+def build_manifest(ext_ids: list) -> dict:
     return {
         "name": HOST_NAME,
         "description": "GEO 多平台分发桥：把审阅后的稿件经发布扩展发到知乎/搜狐/头条",
         "path": os.path.join(MANIFEST_DIR, "geo_bridge_host.bat"),
         "type": "stdio",
-        "allowed_origins": [f"chrome-extension://{ext_id}/"],
+        "allowed_origins": [f"chrome-extension://{x}/" for x in ext_ids],
     }
 
 
@@ -69,9 +69,9 @@ def _reg_op(browser: str, exe_args: list) -> bool:
         return False
 
 
-def register(ext_id: str, browsers: list, dry_run: bool = False) -> bool:
-    validate_ext_id(ext_id)
-    manifest = build_manifest(ext_id)
+def register(ext_ids: list, browsers: list, dry_run: bool = False) -> bool:
+    ext_ids = [validate_ext_id(x) for x in ext_ids]
+    manifest = build_manifest(ext_ids)
     bat = build_bat()
     print("将写入：")
     print(f"  manifest → {os.path.join(MANIFEST_DIR, HOST_NAME + '.json')}")
@@ -86,12 +86,14 @@ def register(ext_id: str, browsers: list, dry_run: bool = False) -> bool:
     manifest_path = os.path.join(MANIFEST_DIR, HOST_NAME + ".json")
     with open(manifest_path, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
-    with open(manifest["path"], "w", encoding="ascii") as f:
+    # .bat 含中文路径（仓库名"优化系统"），按系统 ANSI 代码页写，cmd.exe 才认
+    with open(manifest["path"], "w", encoding="mbcs") as f:
         f.write(bat)
     ok_all = True
     for b in browsers:
         written = _reg_op(b, ["add", "/ve", "/t", "REG_SZ", "/d", manifest_path, "/f"])
-        print(f"  {'✓' if written else '✗'} {b} 注册" + ("完成" if written else "失败"))
+        # GBK 控制台打不出 ✓/✗，用 ASCII 标记
+        print(f"  [{'OK' if written else 'FAILED'}] {b} 注册" + ("完成" if written else "失败"))
         ok_all = ok_all and written
     print("注册完成。重启浏览器后，扩展启动时会自动连上本桥。")
     return ok_all
@@ -114,7 +116,8 @@ def unregister(browsers: list) -> bool:
 
 def main():
     ap = argparse.ArgumentParser(description="注册 GEO 分发桥原生宿主")
-    ap.add_argument("--ext-id", help="发布扩展的 32 位 ID（chrome://extensions 开发者模式）")
+    ap.add_argument("--ext-id", action="append", dest="ext_ids",
+                    help="发布扩展的 32 位 ID（可重复传入多个）")
     ap.add_argument("--browser", choices=["chrome", "edge", "both"], default="both")
     ap.add_argument("--print", dest="dry_run", action="store_true", help="只打印不写入")
     ap.add_argument("--unregister", action="store_true", help="清理注册与文件")
@@ -123,9 +126,9 @@ def main():
     if args.unregister:
         unregister(browsers)
         return
-    if not args.ext_id:
+    if not args.ext_ids:
         ap.error("缺少 --ext-id（或用 --print 预览、--unregister 清理）")
-    sys.exit(0 if register(args.ext_id, browsers, args.dry_run) else 1)
+    sys.exit(0 if register(args.ext_ids, browsers, args.dry_run) else 1)
 
 
 if __name__ == "__main__":
