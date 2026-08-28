@@ -48,7 +48,15 @@ def test_qwen联网档白名单下发():
     from geo.engines import adapter_meta
     meta = adapter_meta("qwen")
     names = [o["name"] for o in meta["web_model_options"]]
-    assert names == ["qwen3.7-max-2026-05-20"]  # 实时翻译模型不在联网白名单
+    # 2026-08-22：glm-5.2（百炼托管的智谱模型）只进常规档——DashScope
+    # 原生协议不支持它的 enable_search（实测 400），不进联网白名单
+    assert names == ["qwen3.7-max-2026-06-08", "qwen3.7-max-2026-05-20",
+                     "qwen3.7-max-2026-05-17", "qwen3.7-max-preview",
+                     "qwen3.7-plus-2026-05-26", "qwen3.7-plus", "qwen3.7-flash"]
+    # 常规档含 glm-5.2 且在末位；描述留空（前端显示模型名）
+    normal = [o["name"] for o in meta["model_options"]]
+    assert normal == names + ["glm-5.2"]
+    assert all(not (o.get("desc") or "") for o in meta["model_options"])
 
 
 def test_qwen联网请求带enable_source并解析来源(monkeypatch):

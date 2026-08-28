@@ -24,7 +24,15 @@ def test_normalize_domain():
 def test_site_name():
     assert site_name("m.zhipin.com") == "BOSS直聘"
     assert site_name("www.zhihu.com") == "知乎"
-    assert site_name("unknown-site.cn") == "unknown-site.cn"
+    # 2026-08-27 扩充：按实际监测数据补录的高频信源
+    assert site_name("kanzhun.com") == "看准网"
+    assert site_name("seo.shuidi.cn") == "水滴信用"
+    assert site_name("qixin.com") == "启信宝"
+    assert site_name("cd.58.com") == "58同城"
+    # 未收录兜底（2026-08-27 修订）：显示主域名可读名，不再回落整串裸域名
+    assert site_name("unknown-site.cn") == "Unknown-site"
+    assert site_name("sub.deep.example.com") == "Example"  # 取主域名首段
+    assert site_name("7788.com") == "7788商城（收藏/二手）"  # 纯数字主域用收录名
 
 
 def test_extract_urls():

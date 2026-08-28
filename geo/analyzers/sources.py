@@ -30,15 +30,46 @@ def classify_domain(domain: str) -> str:
 
 
 # 域名前缀 → 网站中文名（显示用，如 m.zhipin.com → BOSS直聘）。顺序即优先级，具体在前。
+# 2026-08-27 扩充：按实际监测数据里出现的高频信源补录（招聘/招标/企业信用/黄页类为主）。
 _SITE_NAMES = [
     ("baike.baidu.com", "百度百科"),
     ("aiqicha.baidu.com", "爱企查"),
     ("zhipin.com", "BOSS直聘"),
+    ("kanzhun.com", "看准网"),
     ("liepin.com", "猎聘"),
     ("lagou.com", "拉勾招聘"),
     ("51job.com", "前程无忧"),
+    ("zhaopin.com", "智联招聘"),
+    ("58.com", "58同城"),
     ("qcc.com", "企查查"),
     ("tianyancha.com", "天眼查"),
+    ("qixin.com", "启信宝"),
+    ("shuidi.cn", "水滴信用"),
+    ("qiyeku.cn", "企业库"),
+    ("11467.com", "顺企网"),
+    ("yellowurl.cn", "黄页88"),
+    ("7788.com", "7788商城（收藏/二手）"),
+    ("maigoo.com", "买购网（十大品牌）"),
+    ("ihchina.cn", "中国非物质文化遗产网"),
+    ("cbi360.net", "建筑网（cbi360）"),
+    ("qianlima.com", "千里马招标网"),
+    ("bidizhaobiao.com", "必得招标"),
+    ("bidcenter.com.cn", "采购与招标网"),
+    ("biaozhaozhao.com", "标招招"),
+    ("chinabidding.cn", "中国招标网"),
+    ("chinabidding.com.cn", "中国采购与招标网"),
+    ("lqzfqc.com", "龙泉政府网（汽车产业）"),
+    ("dav01.com", "DAV音响（迪士普）"),
+    ("10jqka.com.cn", "同花顺财经"),
+    ("360.cn", "360"),
+    ("cctv.com", "央视网"),
+    ("cnr.cn", "央广网"),
+    ("smzdm.com", "什么值得买"),
+    ("meipian.cn", "美篇"),
+    ("php.cn", "PHP中文网"),
+    ("aitop100.cn", "人工智能排行榜"),
+    ("liebiao.com", "猎豹 WiFi"),
+    ("navtool.cn", "导航工具网"),
     ("zhihu.com", "知乎"),
     ("xiaohongshu.com", "小红书"),
     ("douban.com", "豆瓣"),
@@ -92,12 +123,28 @@ def normalize_domain(domain: str) -> str:
 
 
 def site_name(domain: str) -> str:
-    """域名 → 网站中文名（如 m.zhipin.com → BOSS直聘）；未收录时回落规范化域名。"""
+    """域名 → 网站中文名（如 m.zhipin.com → BOSS直聘）。
+
+    未收录时的兜底（2026-08-27）：不再显示整个裸域名（子域名常常一长串），
+    而是取主域名的可读形式——首段有意义的（如 seo.shuidi.cn 的 shuidi）
+    显示「Shuidi」，纯数字/单字母的（如 7788.com）原样显示主域名。
+    """
     d = normalize_domain(domain)
     for key, name in _SITE_NAMES:
         if key in d:
             return name
-    return d
+    # 兜底：主域名 = 去掉子域后的最后两段（如 seo.shuidi.cn → shuidi.cn）
+    parts = d.split(".")
+    main = ".".join(parts[-2:]) if len(parts) >= 2 else d
+    first = main.split(".")[0]
+    if not first:
+        return d
+    # 纯数字/单字符没有可读性，直接显示主域名
+    if first.isdigit() or len(first) <= 1:
+        return main
+    # 首字母大写（英文站名习惯）；中文域名原样
+    readable = first[:1].upper() + first[1:]
+    return readable
 
 
 def extract_urls(text: str) -> list:
