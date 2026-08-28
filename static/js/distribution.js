@@ -8,14 +8,29 @@ initNav("distribution");
 
 let currentBrief = null;   // 当前简报（生成文章时随请求回传，保证所见即所得）
 let selectedTopicIdx = -1; // 简报中选中的主题（生成时作为首选）
+let overviewCache = null;  // 首屏数据（平台清单/扩展在线状态）
 
 /* ---------------- 首屏：配置 + 稿件统计 ---------------- */
 
 function loadOverview() {
   geoApi("/api/distribution/overview").then(function (d) {
+    overviewCache = d;
     renderDraftStats(d.stats);
+    renderChannelLine(d);
   }).catch(function () {});
   loadConfig();
+}
+
+function renderChannelLine(d) {
+  const el = document.getElementById("channel-line");
+  if (!el) return;
+  const cs = d.channel_stats || {};
+  const online = d.agent_online;
+  el.innerHTML =
+    '<span class="tag ' + (online ? "tag-green" : "tag-gray") + '">'
+    + (online ? "分发桥在线" : "分发桥离线") + "</span> "
+    + "多平台任务：待发 " + (cs.pending || 0) + " ｜分发中 " + (cs.dispatching || 0)
+    + " ｜已发 " + (cs.published || 0) + " ｜失败 " + (cs.failed || 0);
 }
 
 function loadConfig() {
@@ -138,7 +153,9 @@ function renderEditor(draft, showPublish) {
     '<button class="btn btn-primary" id="ed-save">保存修改</button>' +
     (showPublish ? '<button class="btn btn-primary" id="ed-publish">发布到官网</button>' : "") +
     '<span class="saved-hint hidden" id="ed-hint"></span></div>' +
-    '<div class="small-note mt-8" id="ed-msg"></div>';
+    '<div class="small-note mt-8" id="ed-msg"></div>' +
+    '<div class="mt-8" id="mp-box"></div>';
+  renderChannelBox(draft);
 
   document.getElementById("ed-save").addEventListener("click", function () {
     geoApi("/api/distribution/drafts/" + draft.id, {
@@ -183,6 +200,96 @@ function renderEditor(draft, showPublish) {
       });
     });
   }
+}
+
+/* ---------------- 多平台分发（二期） ---------------- */
+
+function renderChannelBox(draft) {
+  const box = document.getElementById("mp-box");
+  if (!box) return;
+  const platforms = (overviewCache && overviewCache.platforms) || [];
+  if (!platforms.length) {
+    geoApi("/api/distribution/overview").then(function (d) {
+      overviewCache = d;
+      renderChannelBox(draft);
+    }).catch(function () {});
+    return;
+  }
+  const online = overviewCache && overviewCache.agent_online;
+  box.innerHTML =
+    '<div class="card-title">多平台分发</div>' +
+    '<div class="small-note">审阅后勾选平台，本机分发桥会把稿件交给浏览器里的发布扩展执行'
+    + '（需扩展已安装并登录对应平台）。'
+    + (online ? '<span class="tag tag-green">分发桥在线</span>'
+              : '<span class="tag tag-gray">分发桥离线——请确认宿主已注册且扩展已启动</span>')
+    + "</div>" +
+    '<div id="mp-checks" style="display:flex;gap:12px;flex-wrap:wrap;margin:6px 0">' +
+    platforms.map(function (p) {
+      return '<label style="cursor:pointer"><input type="checkbox" value="' + esc(p.id)
+        + '"> ' + esc(p.name) + "</label>";
+    }).join("") + "</div>" +
+    '<button class="btn" id="mp-dispatch">分发到勾选平台</button>' +
+    '<button class="btn" id="mp-refresh" style="margin-left:6px">刷新状态</button>' +
+    '<div id="mp-list" class="mt-8"></div>';
+  document.getElementById("mp-dispatch").addEventListener("click", function () {
+    const checked = Array.prototype.slice.call(
+      box.querySelectorAll("#mp-checks input:checked")).map(function (i) { return i.value; });
+    if (!checked.length) { showToast("请先勾选平台", "error"); return; }
+    geoApi("/api/distribution/drafts/" + draft.id + "/channels", {
+      method: "POST", body: { platforms: checked },
+    }).then(function (res) {
+      showToast(res.message || "已排队", "success");
+      loadChannels(draft.id);
+      loadOverview();
+    }).catch(function (m) { showToast(m || "排队失败", "error"); });
+  });
+  document.getElementById("mp-refresh").addEventListener("click", function () {
+    loadChannels(draft.id);
+    loadOverview();
+  });
+  loadChannels(draft.id);
+}
+
+function loadChannels(draftId) {
+  geoApi("/api/distribution/drafts/" + draftId + "/channels").then(function (items) {
+    const list = document.getElementById("mp-list");
+    if (!list) return;
+    if (!items.length) { list.innerHTML = ""; return; }
+    const names = {};
+    ((overviewCache && overviewCache.platforms) || []).forEach(function (p) {
+      names[p.id] = p.name;
+    });
+    list.innerHTML = items.map(function (t) {
+      const cls = t.status === "published" ? "tag-green"
+        : t.status === "failed" ? "tag-red"
+        : t.status === "dispatching" ? "tag-orange" : "tag-gray";
+      const label = { published: "已发布", failed: "失败", dispatching: "分发中",
+                      pending: "待分发" }[t.status] || t.status;
+      let html = '<div style="display:flex;align-items:center;gap:8px;padding:4px 0">'
+        + '<span class="tag ' + cls + '">' + label + "</span>"
+        + "<span>" + esc(names[t.platform] || t.platform) + "</span>";
+      if (t.platform_url) {
+        html += '<a href="' + esc(t.platform_url) + '" target="_blank" rel="noopener" '
+          + 'style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+          + esc(t.platform_url) + "</a>";
+      } else {
+        html += "<span style='flex:1'></span>";
+      }
+      if (t.status === "failed") {
+        html += '<span class="small-note">' + esc(t.error_msg || "") + "</span>"
+          + '<button class="btn" style="padding:2px 8px" data-retry="' + t.id + '">重试</button>';
+      }
+      return html + "</div>";
+    }).join("");
+    list.querySelectorAll("[data-retry]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        geoApi("/api/distribution/channels/" + btn.getAttribute("data-retry") + "/retry",
+               { method: "POST", body: {} })
+          .then(function () { loadChannels(draftId); loadOverview(); })
+          .catch(function (m) { showToast(m || "重试失败", "error"); });
+      });
+    });
+  }).catch(function () {});
 }
 
 /* ---------------- 稿件库 ---------------- */
