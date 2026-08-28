@@ -5,6 +5,9 @@
   分析钥匙未配置 → 记 status=unavailable；全部满足 → 建 pending 记录并异步生成。
 - 生成（generate）：仅对 mentioned=true 的竞品调模型总结（1 次重试），建议再调
   1 次；全程失败 → status=failed + error_msg 大白话；绝不中断/回滚监测轮次。
+
+名字提取/清洗的纯规则部分拆在 brand_extract.py（本模块经导入复用并
+re-export，`competitor_analysis._clean_brands` 等既有引用与测试注入点不变）。
 """
 
 import json
@@ -13,6 +16,10 @@ import threading
 import traceback
 
 from geo.analyzers import llm_client
+from geo.analyzers.brand_extract import (AUTO_BRAND_CHARS, AUTO_BRAND_MAX_ANSWERS,
+                                         _clean_brands, _current_auto,
+                                         _rule_extract_companies, _save_and_recompute,
+                                         _strip_name_wraps)
 from geo.models import db as database
 
 STATUS_PENDING = "pending"
@@ -31,29 +38,6 @@ RETRY_TIMES = 1           # 单次模型调用失败重试次数
 # 前 N 家，控制费用与报告长度；统计表/趋势不受影响，仍展示全部。
 # （2026-08-15 按用户要求 8 → 5；旧结果多于上限时查看页面会自动重新生成）
 ANALYSIS_MAX_COMPETITORS = 5
-
-_QUOTE_CHARS = "“”\"'‘’「」『』【】《》〈〉（）()[]<>"
-_WRAP_LEAD = ("例如", "比如", "譬如")
-
-
-def _strip_name_wraps(name: str) -> str:
-    """清洗 LLM 提取的包装杂质：如“XX有限公司”→XX有限公司（引号/括号/如/例如前缀）。"""
-    b = str(name or "").strip()
-    if not b:
-        return ""
-    had_quote = any(q in b for q in "“”\"'‘’「」『』")
-    for _ in range(4):
-        prev = b
-        b = b.strip(_QUOTE_CHARS + "，,。.;；:：、 ")
-        for p in _WRAP_LEAD:
-            if b.startswith(p) and len(b) > len(p) + 2:
-                b = b[len(p):].strip()
-        # 原本带引号的“如「XX」”形态：剥掉引号后再去“如”；不带引号的品牌名（如家酒店）不动
-        if had_quote and b.startswith("如") and len(b) > 2:
-            b = b[1:].strip()
-        if b == prev:
-            break
-    return b
 
 # 测试注入点：默认走真实分析模型
 _chat = llm_client.chat
@@ -75,55 +59,6 @@ def _extract_json(text: str):
     if start >= 0 and end > start:
         return json.loads(t[start:end + 1])
     raise llm_client.AnalysisError("分析结果格式不对，请稍后再试")
-
-
-# 自动提取品牌：本轮回答最多看 8 条、每条截断 1000 字（控制 token 成本与
-# 推理模型耗时；规则法不截断，企业名由规则法保证召回）
-AUTO_BRAND_MAX_ANSWERS = 8
-AUTO_BRAND_CHARS = 1000
-# 规则兜底：企业名模式（LLM 漏提时兜底提取，双保险）。
-# 前段排除标点/括号/“为/公司”等前缀干扰（如“总公司为浙江龙威…”“前身为杭州鼎林…”只取公司名本身）
-_COMPANY_RE = re.compile(r"[^，。；：、（）()·\-—\s为*#]{2,20}?(?:有限责任公司|股份有限公司|有限公司)")
-# 信息平台噪音（非竞品）：回答里“信息来源于企查查/天眼查”这类
-_PLATFORM_NOISE = ("企查查", "天眼查", "爱企查", "百度百科", "知乎")
-
-
-def _rule_extract_companies(texts: list, exclude: list) -> list:
-    """规则法提取企业名：'XX有限公司/有限责任公司' 模式，排除自己品牌/别名。"""
-    out = []
-    for t in texts:
-        for m in _COMPANY_RE.finditer(t or ""):
-            name = m.group(0).strip()
-            if len(name) < 6:  # 过滤过短泛称
-                continue
-            if name in exclude:
-                continue
-            if name not in out:
-                out.append(name)
-    return out
-
-
-def _clean_brands(names: list, self_related: list) -> list:
-    """清洗：包装杂质（引号/如/例如前缀）/自己品牌/信息平台噪音/超长；子串归一保留最长形式。"""
-    cleaned = []
-    for b in names:
-        b = _strip_name_wraps(b)
-        if len(b) < 2 or len(b) > 40:
-            continue
-        if any(e and e in b for e in self_related):  # 子串匹配：全称“浙江威启…有限公司”也排除
-            continue
-        if any(p in b for p in _PLATFORM_NOISE):
-            continue
-        if b not in cleaned:
-            cleaned.append(b)
-    # 子串归一：保留最长形式（“XX公司龙泉分公司”覆盖“XX公司”，避免重复统计）
-    final = []
-    for n in cleaned:
-        if any(n in o for o in final):
-            continue
-        final = [o for o in final if o not in n]
-        final.append(n)
-    return final
 
 
 def extract_auto_brands(round_id: int, brand_id: int, with_llm: bool = True):
@@ -198,35 +133,6 @@ def extract_auto_brands(round_id: int, brand_id: int, with_llm: bool = True):
     except Exception:
         # 静默：自动提取失败不影响监测收尾与既有竞品分析
         return
-
-
-def _current_auto(round_id: int) -> str:
-    """读当前 auto_competitors 原始串（供 LLM 合并时取基线）。"""
-    with database.session_scope() as s:
-        row = s.get(database.MonitorRound, round_id)
-        return row.auto_competitors if row else "[]"
-
-
-def _save_and_recompute(round_id: int, self_name: str, aliases: list, cleaned: list):
-    """落库 auto_competitors + 回算各回答顺位/竞品明细（单事务）。"""
-    from geo.analyzers import mention as mention_mod
-    with database.session_scope() as s:
-        row = s.get(database.MonitorRound, round_id)
-        if row:
-            row.auto_competitors = database.jdumps(cleaned)
-        # 回算：用提取的竞品名单重算每条回答的顺位与竞品明细
-        rows = (s.query(database.MonitorResult)
-                .filter(database.MonitorResult.round_id == round_id).all())
-        brand_names = [n for n in dict.fromkeys([self_name] + aliases) if n]
-        for r in rows:
-            if not r.answer_text:
-                continue
-            mentioned = mention_mod.mention_count(r.answer_text, brand_names) > 0
-            if mentioned:
-                r.mention_position = mention_mod.brand_position(
-                    r.answer_text, brand_names, cleaned)
-            r.competitor_mentions = database.jdumps(
-                mention_mod.competitor_mentions(r.answer_text, cleaned, brand_names))
 
 
 def finalize_competitors(round_id: int, brand_id: int):
