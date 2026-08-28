@@ -429,10 +429,10 @@ def test_各引擎厂商对比接口(client):
     with database.session_scope() as s:
         if not s.get(database.BrandProfile, 7):
             s.add(database.BrandProfile(id=7, brand_name="对比测试牌", auto_monitor=True))
-    # 造一轮正常完成的数据：豆包提及、千问未提及
+    # 造一轮正常完成的数据：豆包提及、千问未提及、opencode 提及（订阅网关不进厂商对比）
     with database.session_scope() as s:
         s.add(database.MonitorTask(id=501, type="manual", status="done",
-                                   mode="normal", brand_id=7, done_calls=2, total_calls=2))
+                                   mode="normal", brand_id=7, done_calls=3, total_calls=3))
         s.flush()
         s.add(database.MonitorRound(id=501, task_id=501, brand_id=7, mode="normal",
                                     mention_rate=0.5, net_sentiment=0.0, overall_score=50))
@@ -444,6 +444,10 @@ def test_各引擎厂商对比接口(client):
                                      model="qwen-max", question_id=1, question_text="q",
                                      answer_text="没有品牌", is_mentioned=False, mention_count=0,
                                      sentiment="neutral", sources="[]"))
+        s.add(database.MonitorResult(round_id=501, brand_id=7, engine_code="opencode",
+                                     model="qwen3.7-max", question_id=1, question_text="q",
+                                     answer_text="威启很好", is_mentioned=True, mention_count=1,
+                                     mention_position=1, sentiment="positive", sources="[]"))
 
     r = client.get("/api/report/engines?rounds=30&brand_id=7")
     body = r.get_json()
@@ -451,6 +455,7 @@ def test_各引擎厂商对比接口(client):
     d = body["data"]
     assert d["rounds_used"] == 1
     by_engine = {e["engine"]: e for e in d["engines"]}
+    # opencode 是订阅网关不是模型厂家：数据照常落库，但不进厂商对比
     assert set(by_engine) == {"doubao", "qwen"}
     ds = by_engine["doubao"]
     assert ds["answered"] == 1 and ds["mentioned"] == 1

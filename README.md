@@ -53,7 +53,7 @@ python app.py
 
 > **说明 1**：腾讯元宝本身没有官方公开接口，本系统按用户裁决，用腾讯云「大模型服务平台 TokenHub」（混元家族模型，如 hy3）接入，报告中会标注这个口径差异。
 >
-> **说明 2**：OpenCode 是订阅套餐（套餐内付费），其托管模型经网关按模型路由（chat/completions、responses、Anthropic messages 三种形态，默认 `https://opencode.ai/zen/go/v1`，可在 `config.yaml` 里改）；订阅制不按 token 计费，所以「本月大概花了多少钱」的估算不包含它。
+> **说明 2**：OpenCode 是订阅套餐（套餐内付费），其托管模型经网关按模型路由（chat/completions、responses、Anthropic messages 三种形态，默认 `https://opencode.ai/zen/go/v1`，可在 `config.yaml` 里改）；订阅制不按 token 计费，所以「本月大概花了多少钱」的估算不包含它；它也不是模型厂家，报告页「引擎厂商对比」不把它列为一行（回答数据照常监测与统计）。
 
 ---
 

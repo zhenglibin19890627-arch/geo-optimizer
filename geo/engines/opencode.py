@@ -38,6 +38,9 @@ class OpenCodeAdapter(EngineAdapter):
     display_name = "OpenCode"
     note = "OpenCode Go 订阅托管模型：回答口径与其订阅端一致，费用按套餐计。"
     supports_web_search = False  # 官方 API 无联网工具（websearch 是客户端本地能力）
+    # 订阅网关（一把钥匙托管 GLM/Kimi/GPT/MiniMax 等多家模型），不是模型厂家：
+    # 不进报告页「引擎厂商对比」（模型归属随所选档位，归到 OpenCode 名下反而失真）
+    model_vendor = False
 
     @classmethod
     def _shape_for(cls, model: str) -> str:

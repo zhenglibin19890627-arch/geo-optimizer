@@ -93,6 +93,9 @@ class EngineAdapter:
     display_name = ""
     note = ""  # 口径说明（如元宝）
     supports_web_search = False  # 是否支持联网提问（各适配器按平台能力覆盖）
+    # 是否模型厂家自有引擎：订阅网关/聚合类（如 opencode，一把钥匙托管多家模型）
+    # 置 False——回答照常监测落库与统计，但不进报告页「引擎厂商对比」。
+    model_vendor = True
 
     def __init__(self):
         self.cfg = config.get_engine_config(self.code)

@@ -206,7 +206,12 @@ def report_engines():
         engines = []
         for code, eng in agg.items():
             try:
-                display_name = get_adapter(code).display_name
+                adapter = get_adapter(code)
+                # 订阅网关类（如 opencode）不是模型厂家：回答照常监测统计，
+                # 但不进「引擎厂商对比」卡（模型归属随档位走，算在网关名下会失真）
+                if not adapter.model_vendor:
+                    continue
+                display_name = adapter.display_name
             except Exception:
                 display_name = code
             models = [{"model": m, **_fill(slot)}
