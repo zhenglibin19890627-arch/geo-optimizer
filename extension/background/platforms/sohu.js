@@ -188,6 +188,11 @@ export async function publish({ post, log }) {
           target.dispatchEvent(new MouseEvent("mouseup", o));
           target.dispatchEvent(new MouseEvent("click", o));
         }
+        // 键盘兜底：部分弹窗响应 Enter 确认
+        try {
+          const ev = new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true });
+          (document.activeElement || document.body).dispatchEvent(ev);
+        } catch (e) {}
       `);
     }
     const confirmed = await waitForConditionInTab(
