@@ -256,7 +256,9 @@ function deleteBrand(id, name) {
 function loadKeys() {
   geoApi("/api/settings/keys").then(function (items) {
     setKeys = items || [];
-    const engines = setKeys.filter(function (k) { return k.engine !== "analysis"; });
+    const engines = setKeys.filter(function (k) {
+      return k.engine !== "analysis" && k.engine !== "create";
+    });
     const anyConfigured = engines.some(function (k) { return k.configured; });
     const banner = document.getElementById("keys-no-key-banner");
     banner.classList.toggle("hidden", anyConfigured);
@@ -283,7 +285,8 @@ function renderKeyTierRow(k) {
   const testHtml = k.configured
     ? '<button class="btn-text" data-test="' + esc(k.engine) + '">测试一下</button>'
     : '<a class="btn-text" href="' + (ENGINE_SITES[k.engine] || "#") + '" target="_blank" rel="noopener">去平台拿钥匙 →</a>';
-  const isAnalysis = k.engine === "analysis";
+  const isAnalysis = k.engine === "analysis" || k.engine === "create";
+  const settingPrefix = k.engine === "create" ? "create" : "analysis";
   const opts = k.model_options || [];
   const optionsHtml = opts.map(function (o) {
     return '<option value="' + esc(o.name) + '"' + (o.name === k.model ? " selected" : "") + ">" +
@@ -319,6 +322,18 @@ function renderKeyTierRow(k) {
       "</div>";
   }
 
+  let keyHtml = "";
+  if (k.engine === "create") {
+    /* 创作模型复用所选厂商自己的钥匙，不单独填钥匙 */
+    keyHtml = '<div class="kt-tier"><span class="small-note">钥匙复用所选厂商自己的钥匙（到上方对应厂商行填写即可），此处无需重复填写。</span></div>';
+  } else {
+    keyHtml = '<div class="kt-key">' +
+      '<input type="password" class="input" data-key-input="' + esc(k.engine) + '"' +
+      ' placeholder="' + esc(keyPlaceholder) + '" autocomplete="off" style="flex:1;min-width:220px">' +
+      '<button class="btn btn-secondary" data-key-save="' + esc(k.engine) + '">保存钥匙</button>' +
+      "</div>";
+  }
+
   row.innerHTML =
     '<div class="kt-main kt-collapse-head" data-collapse="' + esc(k.engine) + '">' +
     '<span class="kt-arrow">' + (collapsed ? "▸" : "▾") + "</span>" +
@@ -327,11 +342,7 @@ function renderKeyTierRow(k) {
     '<span class="en-actions">' + testHtml + "</span>" +
     "</div>" +
     '<div class="kt-fields' + (collapsed ? " hidden" : "") + '">' +
-    '<div class="kt-key">' +
-    '<input type="password" class="input" data-key-input="' + esc(k.engine) + '"' +
-    ' placeholder="' + esc(keyPlaceholder) + '" autocomplete="off" style="flex:1;min-width:220px">' +
-    '<button class="btn btn-secondary" data-key-save="' + esc(k.engine) + '">保存钥匙</button>' +
-    "</div>" +
+    keyHtml +
     tierHtml +
     "</div>";
 
@@ -348,18 +359,22 @@ function renderKeyTierRow(k) {
   if (isAnalysis) {
     const tierSel = row.querySelector("[data-tier]");
     const saveAnalysisTier = function () {
-      apiPost("/api/settings", { analysis_model: tierSel.value }).then(function () {
+      const payload = {};
+      payload[settingPrefix + "_model"] = tierSel.value;
+      apiPost("/api/settings", payload).then(function () {
         const vm = k.vendor_model_options || {};
         const pool = vm[k.vendor] || k.model_options || [];
         const desc = (pool.find(function (o) { return o.name === tierSel.value; }) || {}).desc || "";
         row.querySelector("[data-tier-desc]").textContent = desc;
-        showToast("已切换分析模型为「" + tierSel.value + "」", "success");
+        showToast("已切换" + k.display_name + "为「" + tierSel.value + "」", "success");
       }).catch(function () { loadKeys(); });
     };
     tierSel.addEventListener("change", saveAnalysisTier);
     const vendorSel = row.querySelector("[data-avendor]");
     vendorSel.addEventListener("change", function () {
-      apiPost("/api/settings", { analysis_vendor: vendorSel.value }).then(function () {
+      const vPayload = {};
+      vPayload[settingPrefix + "_vendor"] = vendorSel.value;
+      apiPost("/api/settings", vPayload).then(function () {
         k.vendor = vendorSel.value;
         const vm = k.vendor_model_options || {};
         const newOpts = vm[vendorSel.value] || [];
@@ -370,7 +385,7 @@ function renderKeyTierRow(k) {
           tierSel.value = newOpts[0].name;
           saveAnalysisTier();
         }
-        showToast("已切换分析模型厂商，型号已同步为该厂商第一档", "success");
+        showToast("已切换厂商，型号已同步为该厂商第一档", "success");
       }).catch(function () { loadKeys(); });
     });
   }

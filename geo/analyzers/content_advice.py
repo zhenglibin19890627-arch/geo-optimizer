@@ -98,7 +98,7 @@ def generate_suggestions(content: str, brand: dict, keywords: list) -> list:
         "只返回 JSON 数组，不要任何解释，格式："
         '[{"title": "建议标题（一句话）", "detail": "具体怎么做（1-3 句大白话）", "priority": "高|中|低"}]'
     )
-    text = llm_client.chat(prompt, temperature=0.5)
+    text = llm_client.chat(prompt, temperature=0.5, purpose="create")
     items = _extract_json_list(text)
     result = []
     for it in items[:10]:

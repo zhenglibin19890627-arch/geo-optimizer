@@ -524,6 +524,25 @@ def settings_keys():
             vendor_model_options.get(vendor) or [],
             llm_client.get_analysis_model()),
     })
+    # 内容创作模型：简报/生成/知识库/改写/优化建议用；未单独设置时回落分析模型
+    create_vendor = llm_client.get_create_vendor()
+    create_model = llm_client.get_create_model()
+    items.append({
+        "engine": "create",
+        "display_name": "内容创作模型",
+        "note": "内容创作专用（简报、生成文章、关键词提取、链接改写、优化建议）。"
+                "钥匙复用所选厂商自己的钥匙，无需重复填写；不单独设置时跟随分析用模型。",
+        "configured": llm_client.is_configured(),
+        "enabled": True,
+        "vendor": create_vendor,
+        "vendors": vendors,
+        "vendor_model_options": vendor_model_options,
+        "model": create_model,
+        "api_key_masked": _mask_key(
+            (config.get_engine_config(create_vendor).get("api_key") or "").strip()),
+        "model_options": _ensure_current_model(
+            vendor_model_options.get(create_vendor) or [], create_model),
+    })
     return ok(items, "获取成功")
 
 
@@ -592,6 +611,25 @@ def save_settings():
         database.set_setting("analysis_model", model)
         saved["analysis_model"] = model
 
+    # 内容创作模型（厂商/型号独立保存；未设置时回落分析模型）
+    if data.get("create_vendor"):
+        vendor = str(data["create_vendor"]).strip()
+        if vendor not in AUTO_CODES:
+            raise ApiError("没找到这个厂商，请刷新页面后重试")
+        database.set_setting("create_vendor", vendor)
+        saved["create_vendor"] = vendor
+
+    if data.get("create_model"):
+        model = str(data["create_model"]).strip()
+        vendor = str(data.get("create_vendor") or llm_client.get_create_vendor()).strip()
+        meta = adapter_meta(vendor)
+        options = [o.get("name", "") for o in (meta.get("model_options") or [])
+                   if isinstance(o, dict) and o.get("name")]
+        if options and model not in options:
+            raise ApiError(f"{meta['display_name']}没有这个创作档位，请从下拉列表里选")
+        database.set_setting("create_model", model)
+        saved["create_model"] = model
+
     return ok(saved, "设置已保存")
 
 
@@ -599,6 +637,14 @@ def save_settings():
 def test_key():
     data = get_json()
     code = str(data.get("engine_code") or "").strip()
+    if code == "create":
+        if not llm_client.is_configured():
+            return ok({"ok": False, "message": "钥匙尚未填写，请先到设置页填写"}, "测试完成")
+        try:
+            llm_client.chat("你好", temperature=0, purpose="create")
+        except llm_client.AnalysisError as e:
+            return ok({"ok": False, "message": e.message}, "测试完成")
+        return ok({"ok": True, "message": "连接成功，创作模型可用"}, "测试完成")
     if code == "analysis":
         if not llm_client.is_configured():
             return ok({"ok": False, "message": "钥匙尚未填写，请先到设置页填写"}, "测试完成")

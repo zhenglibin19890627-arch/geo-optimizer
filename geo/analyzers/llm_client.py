@@ -53,18 +53,32 @@ def get_analysis_model() -> str:
     return str(database.get_setting("analysis_model", default_model) or "")
 
 
+def get_create_vendor() -> str:
+    """内容创作厂商（关键词提取/生成/改写/建议用）；未设置则回落分析厂商。"""
+    vendor = str(database.get_setting("create_vendor", "") or "").strip()
+    return vendor if vendor in AUTO_CODES else get_analysis_vendor()
+
+
+def get_create_model() -> str:
+    """内容创作模型名；未设置则回落分析模型。"""
+    model = str(database.get_setting("create_model", "") or "").strip()
+    return model or get_analysis_model()
+
+
 def is_configured() -> bool:
     key, _base, _model = _vendor_cfg(get_analysis_vendor())
     return bool(key)
 
 
-def chat(prompt: str, temperature: float = 0.3, timeout: int = 60, system: str = None) -> str:
-    """用分析模型执行一次思考，返回文本。失败抛 AnalysisError（大白话）。"""
-    vendor = get_analysis_vendor()
+def chat(prompt: str, temperature: float = 0.3, timeout: int = 60, system: str = None,
+         purpose: str = "analysis") -> str:
+    """用分析模型执行一次思考，返回文本。失败抛 AnalysisError（大白话）。
+    purpose="create" 时用「内容创作模型」设置（未设置则回落分析模型）。"""
+    vendor = get_create_vendor() if purpose == "create" else get_analysis_vendor()
     api_key, base_url, _m = _vendor_cfg(vendor)
     if not api_key:
         raise AnalysisError("分析用的模型还没填钥匙（API Key），请先到设置页填写")
-    model = get_analysis_model()
+    model = get_create_model() if purpose == "create" else get_analysis_model()
     if not model:
         raise AnalysisError("分析用的模型还没设置好，请先到设置页选择")
     if not base_url:

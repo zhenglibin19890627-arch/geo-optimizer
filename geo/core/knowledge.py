@@ -159,7 +159,7 @@ def extract_keywords(doc_id: int, brand_id: int, count: int = 10) -> list:
         '- 严格输出 JSON 数组，如 ["关键词一","关键词二"]，不要任何解释或 markdown 包裹\n\n'
         f"【文章标题】{title}\n【文章内容】\n{content[:6000]}")
     try:
-        text = llm_client.chat(prompt, temperature=0.2, timeout=150, system=system)
+        text = llm_client.chat(prompt, temperature=0.2, timeout=150, system=system, purpose="create")
     except AnalysisError as e:
         raise KnowledgeError(e.message)
     # 容错解析：剥掉 markdown 代码块围栏后找 JSON 数组
@@ -216,7 +216,7 @@ def generate_draft(brand_id: int, doc_ids: list, keywords: list = None,
         '{"title": "文章标题（8-25 字，简洁有力）", "body": "Markdown 正文（可用 # ## ### 分层，'
         '从第一个段落或 # 标题开始，不含 title 字段内容；引号用中文引号）"}')
     try:
-        text = llm_client.chat(prompt, temperature=0.7, timeout=180, system=system)
+        text = llm_client.chat(prompt, temperature=0.7, timeout=180, system=system, purpose="create")
     except AnalysisError as e:
         raise KnowledgeError(e.message)
     cleaned = text.replace("```json", "").replace("```", "").strip()
@@ -283,7 +283,7 @@ def rewrite_from_url(brand_id: int, url: str, user_instruction: str = "",
         '{"title": "新文章标题（8-25 字）", "body": "Markdown 正文"}\n\n'
         f"【参考文章正文】\n{content[:8000]}")
     try:
-        text = llm_client.chat(prompt, temperature=0.6, timeout=180, system=system)
+        text = llm_client.chat(prompt, temperature=0.6, timeout=180, system=system, purpose="create")
     except AnalysisError as e:
         raise KnowledgeError(e.message)
     cleaned = text.replace("```json", "").replace("```", "").strip()

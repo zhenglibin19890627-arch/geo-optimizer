@@ -339,7 +339,7 @@ def _llm_brief(snap: dict) -> dict:
         '  "angle": "切入角度(30字内)", "distillation_words": ["必须自然融入正文的关键词3~6个"],',
         '  "target_domains": ["适合投稿/分发的信源域名"]}]}',
     ]
-    raw = llm_client.chat("\n".join(lines), temperature=0.3, timeout=120)
+    raw = llm_client.chat("\n".join(lines), temperature=0.3, timeout=120, purpose="create")
     obj = _extract_json(raw)
     if not isinstance(obj, dict) or not (obj.get("topics") or []):
         raise llm_client.AnalysisError("分析结果缺少主题清单，请稍后再试")
@@ -458,7 +458,7 @@ def generate_draft(brand_id: int, brief: dict = None, user_instruction: str = ""
         "4. 不要夸大功效、不承诺效果、不编造具体数据与第三方评价。",
     ])
 
-    raw = llm_client.chat(prompt, temperature=0.5, timeout=180)
+    raw = llm_client.chat(prompt, temperature=0.5, timeout=180, purpose="create")
     title, body, summary, tags = "", "", "", ""
     try:
         obj = _extract_json(raw)
