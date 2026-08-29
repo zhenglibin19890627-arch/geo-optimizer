@@ -1,11 +1,20 @@
 // 账号管理页：检测各平台登录态、添加/启用/删除账号、设置默认发布账号
 
-function send(action, extra) {
-  return chrome.runtime.sendMessage({ channel: "geo-ext", action, ...extra });
+async function send(action, extra) {
+  const res = await chrome.runtime.sendMessage({ channel: "geo-ext", action, ...extra });
+  if (!res || !res.ok) throw new Error(res ? res.error : "扩展后台无响应（service worker 未运行？）");
+  return res.data;
 }
 
 async function render() {
-  const platforms = await send("overview");
+  let platforms;
+  try {
+    platforms = await send("overview");
+  } catch (err) {
+    const root = document.getElementById("platforms");
+    root.innerHTML = '<div class="card">加载失败：' + (err.message || err) + "</div>";
+    return;
+  }
   const root = document.getElementById("platforms");
   root.textContent = "";
   const tpl = document.getElementById("account-row");
