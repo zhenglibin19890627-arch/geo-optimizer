@@ -27,7 +27,10 @@ const PLATFORMS = {
     support: { markdown: true, html: true, latex: false },
     editorUrl: "https://mp.toutiao.com/profile_v4/graphic/publish",
     loginUrl: "https://mp.toutiao.com",
-    // 未登录访问创作平台首页时头条自动跳转登录（不硬编码登录路由，防失效）
+    // 登录判定：按 URL 探测会话 cookie 名单（域过滤可能读不到 host-only 会话）
+    probeUrls: ["https://mp.toutiao.com/", "https://sso.toutiao.com/", "https://www.toutiao.com/"],
+    loginCookieNames: ["sso_uid_tt", "sso_uid_tt_ss", "toutiao_sso_user", "passport_csrf_token",
+      "sid_guard", "uid_tt", "sid_tt", "sessionid", "sid_ucp_v1"],
     loginCookies: [{ domain: "toutiao.com", name: "sid_tt" }, { domain: "toutiao.com", name: "sessionid" }],
   },
 };
@@ -52,10 +55,20 @@ export function getPlatform(id) {
   return platform;
 }
 
-// 登录检测：按平台声明的 cookie 名单探测（name="*" 表示该域存在任意 cookie 即算）
+// 登录检测：优先按 URL × 会话 cookie 名单探测（weiqi 验证过的方式），
+// 无名单时回退到旧域过滤逻辑
 export async function checkLogin(platformId) {
   const platform = getPlatform(platformId);
   try {
+    if (platform.probeUrls && platform.loginCookieNames) {
+      for (const url of platform.probeUrls) {
+        for (const name of platform.loginCookieNames) {
+          const found = await chrome.cookies.get({ url, name });
+          if (found) return true;
+        }
+      }
+      return false;
+    }
     for (const probe of platform.loginCookies) {
       if (probe.name === "*") {
         const all = await chrome.cookies.getAll({ domain: probe.domain });
