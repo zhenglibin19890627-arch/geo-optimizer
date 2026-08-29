@@ -179,7 +179,7 @@ export async function publish({ post, log }) {
     const confirmed = await waitForConditionInTab(
       tab.id,
       `!location.pathname.includes('addarticle')
-        || /发布成功|发表成功|成功发布/.test((document.body.textContent || ""))
+        || /发布成功|发表成功|成功发布|已发布|审核中/.test((document.body.textContent || ""))
         || !!document.querySelector('[class*="toast-success"], [class*="success-toast"], [class*="message-success"]')`,
       20000,
       1000,

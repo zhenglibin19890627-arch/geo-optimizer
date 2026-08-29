@@ -98,19 +98,30 @@ export async function publish({ post, log }) {
     await log("注入完成（策略#" + filled.strategy + "，标题" + (filled.titleFilled ? "✓" : "✗") + "），触发发布");
     await new Promise((r) => setTimeout(r, 800));
 
-    // ---- 发布按钮：优先主按钮（byte-btn-primary）上的发布文本，再类名/文本级联 ----
+    // ---- 发布按钮：优先主按钮（byte-btn-primary），用完整指针事件序列模拟真实点击
+    //（字节系按钮框架监听 pointerdown/mousedown/up 全链路，单发 click 可能无效）----
     const clicked = await evalInTab(tab.id, `
+      const fireReal = (el) => {
+        const r = el.getBoundingClientRect();
+        const x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const o = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0 };
+        try { el.dispatchEvent(new PointerEvent("pointerdown", o)); } catch (e) {}
+        el.dispatchEvent(new MouseEvent("mousedown", o));
+        try { el.dispatchEvent(new PointerEvent("pointerup", o)); } catch (e) {}
+        el.dispatchEvent(new MouseEvent("mouseup", o));
+        el.dispatchEvent(new MouseEvent("click", o));
+      };
       const btns = () => Array.from(document.querySelectorAll(
         'button, .btn, [role="button"], a.btn, input[type="submit"]'))
         .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
       const primary = btns().find((b) => /byte-btn-primary|btn-primary/.test(String(b.className))
         && /发布|发表|确认/.test((b.textContent || "").trim()));
-      if (primary) { primary.click(); return "primary:" + String(primary.className).slice(0, 40); }
+      if (primary) { fireReal(primary); return "primary:" + String(primary.className).slice(0, 40); }
       const byClass = document.querySelector(
         'button[class*="publish"], .btn[class*="publish"], [role="button"][class*="publish"]');
-      if (byClass && !byClass.disabled) { byClass.click(); return "class:" + String(byClass.className).slice(0, 40); }
+      if (byClass && !byClass.disabled) { fireReal(byClass); return "class:" + String(byClass.className).slice(0, 40); }
       const exact = btns().find((b) => ["发布", "发表", "发布文章"].includes((b.textContent || "").trim()));
-      if (exact) { exact.click(); return "text-exact"; }
+      if (exact) { fireReal(exact); return "text-exact"; }
       return "NONE::" + btns().slice(0, 15).map((b) =>
         ((b.textContent || "").trim().slice(0, 12) || "[无文本]") + "|"
         + String(b.className || "").slice(0, 40)).join(" ;; ");
@@ -120,17 +131,18 @@ export async function publish({ post, log }) {
         + " ——内容已注入，未发布任何内容");
     }
 
-    // ---- 提交确认：字节系弹窗（byte-modal 等）内点确认/发布，多轮尝试；等待离开发布页或成功提示 ----
+    // ---- 提交确认：字节系弹窗/抽屉（byte-modal/byte-drawer 等）内点确认/发布，多轮尝试 ----
     for (let i = 0; i < 4; i++) {
       await new Promise((r) => setTimeout(r, 1800));
       await evalInTab(tab.id, `
         const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-        const dlgs = Array.from(document.querySelectorAll(
-          '.byte-modal, [class*="modal"], [class*="dialog"], [class*="Dialog"]')).filter(visible);
-        for (const d of dlgs) {
-          const btns = Array.from(d.querySelectorAll("button"))
-            .filter((b) => visible(b) && /确认|确定|发布|发表/.test((b.textContent || "").trim()));
-          const hit = btns.find((b) => /byte-btn-primary|btn-primary/.test(String(b.className))) || btns[0];
+        const panels = Array.from(document.querySelectorAll(
+          '.byte-modal, .byte-drawer, [class*="modal"], [class*="drawer"], [class*="Drawer"], [class*="dialog"], [class*="Dialog"]'))
+          .filter(visible);
+        for (const d of panels) {
+          const btns = Array.from(d.querySelectorAll("button, [role=button]"))
+            .filter((b) => visible(b) && /^(确认|确定|发布|发表)$/.test((b.textContent || "").trim()));
+          const hit = btns.find((b) => /byte-btn-primary|btn-primary/.test(String(b.className))) || btns[btns.length - 1];
           if (hit) { hit.click(); }
         }
       `);
@@ -138,7 +150,7 @@ export async function publish({ post, log }) {
     const confirmed = await waitForConditionInTab(
       tab.id,
       `!location.pathname.includes('graphic/publish')
-        || /发布成功|发表成功|成功发布/.test((document.body.textContent || ""))
+        || /发布成功|发表成功|成功发布|审核中/.test((document.body.textContent || ""))
         || !!document.querySelector('[class*="toast-success"], [class*="success-toast"], [class*="message-success"], .byte-toast-success')`,
       12000,
       1000,
