@@ -181,10 +181,27 @@ export async function publish({ post, log }) {
       );
       return { url };
     }
+    // 未确认成功：带回现场信息（URL/弹窗/提示文字/发布元素状态）
+    const scene = await evalInTab(tab.id, `
+      const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+      const dlgs = Array.from(document.querySelectorAll(
+        '.modal, [class*="modal"], [class*="dialog"], [class*="Dialog"], .el-dialog')).filter(visible)
+        .slice(0, 3).map((d) => String(d.className).slice(0, 40) + "::"
+          + (d.innerText || "").replace(/\\s+/g, " ").slice(0, 70));
+      const msgs = Array.from(document.querySelectorAll(
+        '[class*="toast"], [class*="message"], [class*="notice"], [class*="tip"], [class*="Toast"], [class*="Message"]'))
+        .filter(visible).slice(0, 4).map((m) => (m.innerText || "").replace(/\\s+/g, " ").slice(0, 60));
+      const pub = Array.from(document.querySelectorAll('[class*="publish-report"], [class*="publish"]'))
+        .filter(visible).slice(0, 3).map((p) => String(p.className).slice(0, 40)
+          + (p.getAttribute("aria-disabled") === "true" ? "[禁用]" : ""));
+      return "URL=" + location.href.slice(0, 60)
+        + " || 弹窗[" + (dlgs.join(" ;; ") || "无") + "]"
+        + " || 提示[" + (msgs.join(" ;; ") || "无") + "]"
+        + " || 发布元素[" + (pub.join(" ;; ") || "无") + "]";
+    `);
     throw new Error(
-      "内容已注入编辑器（搜狐自动保存草稿），但发布提交未能自动确认"
-      + (clicked ? "（已点击「" + clicked + "」按钮但未见成功反馈）" : "（未找到发布按钮）")
-      + "——请到 " + EDITOR_URL + " 人工确认发布，未发出任何误内容");
+      "搜狐号发布提交未能自动确认（点击了「" + clicked + "」）。现场： " + scene.slice(0, 380)
+      + " ——内容已注入并自动存草稿，未确认发出任何内容");
   } finally {
     chrome.tabs.remove(tab.id).catch(() => {});
   }

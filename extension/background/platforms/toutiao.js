@@ -148,23 +148,26 @@ export async function publish({ post, log }) {
       const url = await evalInTab(tab.id, `return location.href;`);
       return { url };
     }
-    // 未确认成功：带回现场信息（URL/弹窗/按钮）供联调定位
+    // 未确认成功：带回现场信息（URL/弹窗/提示文字/按钮）供联调定位
     const scene = await evalInTab(tab.id, `
       const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
       const dlgs = Array.from(document.querySelectorAll(
-        '.modal, [class*="dialog"], [class*="modal"], [class*="popup"]')).filter(visible);
-      const dlgInfo = dlgs.slice(0, 3).map((d) =>
-        String(d.className).slice(0, 50) + " :: "
-        + Array.from(d.querySelectorAll("button")).map((b) => (b.textContent || "").trim().slice(0, 10)).join("/"));
+        '.byte-modal, [class*="modal"], [class*="dialog"], [class*="Dialog"], [class*="popup"]')).filter(visible)
+        .slice(0, 3).map((d) => String(d.className).slice(0, 40) + "::"
+          + (d.innerText || "").replace(/\\s+/g, " ").slice(0, 70));
+      const msgs = Array.from(document.querySelectorAll(
+        '[class*="toast"], [class*="message"], [class*="notice"], [class*="tip"], [class*="Toast"], [class*="Message"]'))
+        .filter(visible).slice(0, 4).map((m) => (m.innerText || "").replace(/\\s+/g, " ").slice(0, 60));
       const btnInfo = Array.from(document.querySelectorAll(
         'button, .btn, [role="button"]')).filter(visible).slice(0, 12).map((b) =>
         ((b.textContent || "").trim().slice(0, 12) || "[无文本]") + "|" + String(b.className || "").slice(0, 30));
-      return "URL=" + location.href
-        + " || 弹窗[" + (dlgInfo.join(" ;; ") || "无") + "]"
+      return "URL=" + location.href.slice(0, 60)
+        + " || 弹窗[" + (dlgs.join(" ;; ") || "无") + "]"
+        + " || 提示[" + (msgs.join(" ;; ") || "无") + "]"
         + " || 按钮[" + btnInfo.join(" ;; ") + "]";
     `);
     throw new Error(
-      "头条发布提交未能自动确认（点击了「" + clicked + "」）。现场： " + scene
+      "头条发布提交未能自动确认（点击了「" + clicked + "」）。现场： " + scene.slice(0, 400)
       + " ——内容已注入，未确认发出任何内容");
   } finally {
     chrome.tabs.remove(tab.id).catch(() => {});
