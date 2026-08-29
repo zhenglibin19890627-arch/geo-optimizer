@@ -35,6 +35,35 @@
         <span class="saved-hint hidden" id="gen-hint">生成约需 30~120 秒，请勿关闭页面…</span>
         <div id="gen-editor-area" class="mt-8"></div>
       </div>
+
+      <!-- 卡片2b：知识库（参考 weiqi 知识库能力，自研实现） -->
+      <div class="card" id="kb-card">
+        <div class="card-head">
+          <div class="card-title">知识库 · 备选创作路径（选文档 → 提关键词 → 生成稿件）</div>
+          <button class="btn" id="kb-add-btn">新增文档</button>
+        </div>
+        <div class="small-note" id="kb-note">把公司资料、产品说明、过往佳作等存入知识库；生成时勾选若干篇作为参考资料，AI 提取“蒸馏词”融入标题，按需结合用户指令产出草稿。生成后进入稿件库，审阅后分发。</div>
+        <div id="kb-doc-list" style="margin:8px 0"></div>
+        <div class="card hidden" id="kb-edit-card" style="background:#fafafa">
+          <div class="field">
+            <label class="field-label">文档标题</label>
+            <input class="input" id="kb-title" placeholder="例：产品白皮书 v2">
+          </div>
+          <div class="field">
+            <label class="field-label">文档内容（Markdown/纯文本）</label>
+            <textarea class="textarea" id="kb-content" style="min-height:120px" placeholder="粘贴或编写知识内容……"></textarea>
+          </div>
+          <button class="btn btn-primary" id="kb-save-btn">保存文档</button>
+          <button class="btn" id="kb-cancel-btn">取消</button>
+          <span class="saved-hint hidden" id="kb-saved"></span>
+        </div>
+        <div class="field" style="margin-top:8px">
+          <label class="field-label">用户指令（可选，500 字内）</label>
+          <textarea class="textarea" id="kb-instruction" style="min-height:50px" placeholder="例：面向行业新读者，科普向，避免术语堆砌"></textarea>
+        </div>
+        <button class="btn btn-primary" id="kb-generate-btn">按勾选文档生成稿件</button>
+        <span class="saved-hint hidden" id="kb-gen-hint">生成约需 30~120 秒，请勿关闭页面…</span>
+      </div>
     </div>
 
     <div>

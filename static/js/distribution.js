@@ -379,3 +379,116 @@ document.getElementById("cfg-save").addEventListener("click", function () {
 
 loadOverview();
 loadDrafts();
+
+// ================= 知识库（参考 weiqi knowledgeDocs/蒸馏词能力，自研实现） =================
+(function () {
+  var editingDocId = null;
+  var docsCache = [];
+
+  function el(id) { return document.getElementById(id); }
+
+  function loadDocs() {
+    geoApi("/api/knowledge/docs").then(function (d) {
+      docsCache = (d && d.docs) || [];
+      renderDocs();
+    }).catch(function (m) { renderDocs(); });
+  }
+
+  function renderDocs() {
+    var box = el("kb-doc-list");
+    if (!docsCache.length) {
+      box.innerHTML = '<div class="small-note">知识库还是空的——点右上角「新增文档」，把公司资料、产品说明、过往佳作存进来。</div>';
+      return;
+    }
+    var html = "";
+    docsCache.forEach(function (doc) {
+      var kws = [];
+      try { kws = JSON.parse(doc.keywords || "[]"); } catch (e) { kws = []; }
+      html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid #f0f0f0">'
+        + '<input type="checkbox" class="kb-check" value="' + doc.id + '" style="margin-top:4px">'
+        + '<div style="flex:1;min-width:0">'
+        + '<div style="font-weight:600">' + esc(doc.title) + '</div>'
+        + '<div class="small-note">' + esc((doc.content || "").slice(0, 60)) + '…</div>'
+        + (kws.length ? '<div class="small-note">蒸馏词：' + esc(kws.join("、")) + '</div>' : "")
+        + '</div>'
+        + '<button class="btn" data-kb-kw="' + doc.id + '" style="margin-right:4px">提取关键词</button>'
+        + '<button class="btn" data-kb-edit="' + doc.id + '" style="margin-right:4px">编辑</button>'
+        + '<button class="btn" data-kb-del="' + doc.id + '">删除</button>'
+        + '</div>';
+    });
+    box.innerHTML = html;
+  }
+
+  el("kb-doc-list").addEventListener("click", function (ev) {
+    var t = ev.target;
+    var kwId = t.getAttribute && t.getAttribute("data-kb-kw");
+    var editId = t.getAttribute && t.getAttribute("data-kb-edit");
+    var delId = t.getAttribute && t.getAttribute("data-kb-del");
+    if (kwId) {
+      t.disabled = true; t.textContent = "提取中…";
+      geoApi("/api/knowledge/docs/" + kwId + "/keywords", { method: "POST", body: { count: 10 } })
+        .then(function (d) { loadDocs(); showToast("已提取 " + (d.keywords || []).length + " 个关键词", "success"); })
+        .catch(function (m) { t.disabled = false; t.textContent = "提取关键词"; showToast(m || "提取失败", "error"); });
+    } else if (editId) {
+      var doc = docsCache.find(function (x) { return String(x.id) === String(editId); });
+      if (!doc) return;
+      editingDocId = doc.id;
+      el("kb-title").value = doc.title;
+      el("kb-content").value = doc.content;
+      el("kb-edit-card").classList.remove("hidden");
+      el("kb-edit-card").scrollIntoView({ behavior: "smooth", block: "center" });
+    } else if (delId) {
+      if (!confirm("确定删除这篇知识库文档？")) return;
+      geoApi("/api/knowledge/docs/" + delId, { method: "DELETE", body: {} })
+        .then(function () { loadDocs(); showToast("已删除", "success"); })
+        .catch(function (m) { showToast(m || "删除失败", "error"); });
+    }
+  });
+
+  el("kb-add-btn").addEventListener("click", function () {
+    editingDocId = null;
+    el("kb-title").value = "";
+    el("kb-content").value = "";
+    el("kb-edit-card").classList.remove("hidden");
+    el("kb-title").focus();
+  });
+
+  el("kb-cancel-btn").addEventListener("click", function () {
+    el("kb-edit-card").classList.add("hidden");
+  });
+
+  el("kb-save-btn").addEventListener("click", function () {
+    var title = el("kb-title").value.trim();
+    var content = el("kb-content").value;
+    if (!title) { showToast("请填写文档标题", "error"); return; }
+    if (!content.trim()) { showToast("请填写文档内容", "error"); return; }
+    var req = editingDocId
+      ? geoApi("/api/knowledge/docs/" + editingDocId, { method: "PUT", body: { title: title, content: content } })
+      : geoApi("/api/knowledge/docs", { method: "POST", body: { title: title, content: content } });
+    req.then(function () {
+      el("kb-edit-card").classList.add("hidden");
+      loadDocs();
+      showToast("文档已保存", "success");
+    }).catch(function (m) { showToast(m || "保存失败", "error"); });
+  });
+
+  el("kb-generate-btn").addEventListener("click", function () {
+    var ids = Array.prototype.map.call(document.querySelectorAll(".kb-check:checked"), function (c) { return c.value; });
+    if (!ids.length) { showToast("请先勾选至少一篇知识库文档", "error"); return; }
+    var btn = el("kb-generate-btn"), hint = el("kb-gen-hint");
+    btn.disabled = true; hint.classList.remove("hidden");
+    geoApi("/api/knowledge/generate", {
+      method: "POST",
+      body: { doc_ids: ids, user_instruction: el("kb-instruction").value.trim(), generate_title: true }
+    }).then(function (draft) {
+      btn.disabled = false; hint.classList.add("hidden");
+      showToast("稿件《" + (draft.title || "") + "》已生成，请在下方稿件库审阅后分发", "success");
+      if (typeof loadDrafts === "function") loadDrafts();
+    }).catch(function (m) {
+      btn.disabled = false; hint.classList.add("hidden");
+      showToast(m || "生成失败", "error");
+    });
+  });
+
+  loadDocs();
+})();

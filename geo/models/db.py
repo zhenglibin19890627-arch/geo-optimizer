@@ -461,6 +461,31 @@ class ApiCallLog(Base):
 # ============================================================
 # 13. 内容分发稿件（监测缺口 → 创作简报 → AI 生成 → 人工审阅 → 官网直发）
 # ============================================================
+class KnowledgeDoc(Base):
+    """知识库文档：生成分发稿件的参考资料（参考 weiqi knowledgeDocs 能力，自研实现）。"""
+
+    __tablename__ = "knowledge_doc"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    brand_id = Column(Integer, default=1)
+    title = Column(Text)
+    content = Column(Text)  # 全文（Markdown/纯文本）
+    keywords = Column(Text)  # 蒸馏词（AI 提取，JSON 数组字符串）
+    created_at = Column(DateTime, default=now)
+    updated_at = Column(DateTime)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "brand_id": self.brand_id,
+            "title": self.title or "",
+            "content": self.content or "",
+            "keywords": self.keywords or "",
+            "created_at": str(self.created_at or ""),
+            "updated_at": str(self.updated_at or ""),
+        }
+
+
 class DistributionDraft(Base):
     __tablename__ = "distribution_draft"
 
