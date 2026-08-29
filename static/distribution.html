@@ -37,7 +37,6 @@
       </div>
 
       <!-- 卡片2b：知识库（参考 weiqi 知识库能力，自研实现） -->
-      </div>
       <div class="card" id="kb-card">
         <div class="card-head">
           <div class="card-title">方式二 · 知识库创作 —— 用你的资料写新文章</div>
@@ -70,7 +69,6 @@
         <button class="btn btn-primary" id="kb-generate-btn">按勾选文档生成稿件</button>
         <span class="saved-hint hidden" id="kb-gen-hint">生成约需 30~120 秒，请勿关闭页面…</span>
       </div>
-    </div>
 
       <!-- 卡片2c：链接改写（第三种创作方式） -->
       <div class="card" id="rw-card">
@@ -86,10 +84,11 @@
         </div>
         <button class="btn btn-primary" id="rw-btn">抓取并改写为新稿件</button>
         <span class="saved-hint hidden" id="rw-hint">抓取+改写约需 30~120 秒，请勿关闭页面…</span>
-    <div>
-      <!-- 卡片3：官网发布配置 -->
+      </div>
+
+      <!-- 卡片4：官网发布配置（独立卡片，非创作方式） -->
       <div class="card">
-        <div class="card-title">方式四 · 官网发布 —— 同步发布到自有官网</div>
+        <div class="card-title">官网发布配置</div>
         <div class="small-note">站点接口完全自定义：任何提供「POST 发布文章 + X-Api-Token 鉴权」约定的自有站点都能接入，系统不预置任何站点。</div>
         <div class="field">
           <label class="field-label">接口地址</label>
@@ -119,9 +118,9 @@
       </div>
 
       <!-- 稿件统计与发布状态已迁移至独立稿件库页 -->
+      </div>
     </div>
   </div>
-</div>
 
 <script src="/static/js/api.js"></script>
 <script src="/static/js/common.js"></script>
