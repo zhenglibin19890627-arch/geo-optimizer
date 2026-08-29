@@ -55,6 +55,7 @@ def get_analysis_model() -> str:
 
 def get_create_vendor() -> str:
     """内容创作厂商（关键词提取/生成/改写/建议用）；未设置则回落分析厂商。"""
+    from geo.engines import AUTO_CODES
     vendor = str(database.get_setting("create_vendor", "") or "").strip()
     return vendor if vendor in AUTO_CODES else get_analysis_vendor()
 
