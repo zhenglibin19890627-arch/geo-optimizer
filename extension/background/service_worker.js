@@ -41,6 +41,17 @@ async function handleUiAction(msg) {
       const nickname = loggedIn ? await fetchNickname(msg.platform) : null;
       return { loggedIn, nickname, loginUrl: platform.loginUrl };
     }
+    case "probeCookies": {
+      const platform = getPlatform(msg.platform);
+      const rootDomain = platform.loginCookies[0].domain;
+      const cookies = await chrome.cookies.getAll({ domain: rootDomain });
+      return cookies.slice(0, 25).map((c) => ({
+        name: c.name,
+        domain: c.domain,
+        hostOnly: c.hostOnly,
+        expirationDate: c.expirationDate ? "persistent" : "session",
+      }));
+    }
     case "addAccount": {
       getPlatform(msg.platform);
       return store.addAccount(msg.platform, msg.nickname);

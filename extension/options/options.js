@@ -75,7 +75,15 @@ async function render() {
           hint.textContent = "已打开登录页：登录完成后回到本页点「检测登录」。";
         });
         head.appendChild(go);
-        hint.textContent = "在该平台官网登录后，点「检测登录」即可添加账号。";
+        // 调试探针：列出该平台根域实际可见的 cookie，便于定位登录态识别问题
+        try {
+          const cookies = await send("probeCookies", { platform: p.id });
+          hint.textContent = cookies.length
+            ? "该域可见 cookie（" + cookies.length + " 个）："
+              + cookies.map((c) => c.name).slice(0, 10).join(", ")
+              + (cookies.length > 10 ? " …" : "")
+            : "该域下没有看到任何 cookie——你可能还没有访问过该平台，或登录的是其他站点。";
+        } catch (err) { /* 探针失败不影响主流程 */ }
       }
 
       list.textContent = "";
