@@ -72,7 +72,7 @@ def delete_doc(doc_id: int):
 @bp.route("/knowledge/docs/<int:doc_id>/keywords", methods=["POST"])
 def extract_keywords(doc_id: int):
     brand_id = current_brand_id()
-    data = get_json(silent=True) or {}
+    data = get_json()
     try:
         words = knowledge.extract_keywords(doc_id, brand_id, data.get("count") or 10)
     except KnowledgeError as e:
