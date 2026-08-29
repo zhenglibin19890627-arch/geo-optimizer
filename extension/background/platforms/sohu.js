@@ -159,12 +159,21 @@ export async function publish({ post, log }) {
         + " ——内容已注入并自动存草稿，未发布任何内容");
     }
 
-    // ---- 提交确认：处理可能的确认弹窗，等待离开编辑器或出现成功提示 ----
-    await new Promise((r) => setTimeout(r, 1500));
-    await evalInTab(tab.id, `
-      const dlg = document.querySelector('.modal.show button.primary, .el-dialog button.primary, [class*="dialog"] button.primary');
-      if (dlg) { dlg.click(); }
-    `);
+    // ---- 提交确认：搜狐点击发布会弹 alert-dialog（如"确认发布文章么？...确定 取消"），
+    // 按文字找 确定/确认 按钮多轮点击；等待离开编辑器或出现成功提示 ----
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 1200));
+      await evalInTab(tab.id, `
+        const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+        const dlgs = Array.from(document.querySelectorAll(
+          '[class*="alert-dialog"], .modal, [class*="dialog"], [class*="Dialog"], .el-dialog')).filter(visible);
+        for (const d of dlgs) {
+          const btns = Array.from(d.querySelectorAll("button, [role=\"button\"], a"))
+            .filter((b) => visible(b) && /^(确定|确认|发布)$/.test((b.textContent || "").trim()));
+          if (btns.length) { btns[btns.length - 1].click(); }
+        }
+      `);
+    }
     const confirmed = await waitForConditionInTab(
       tab.id,
       `!location.pathname.includes('addarticle')

@@ -148,7 +148,13 @@ export async function publish({ post, log }) {
       const url = await evalInTab(tab.id, `return location.href;`);
       return { url };
     }
-    // 未确认成功：带回现场信息（URL/弹窗/提示文字/按钮）供联调定位
+    // 延迟复查：部分提交后跳转较慢，6 秒后再确认一次
+    await new Promise((r) => setTimeout(r, 6000));
+    const late = await evalInTab(tab.id, `return location.href;`);
+    if (!late.includes("graphic/publish")) {
+      return { url: late };
+    }
+    // 仍未确认：带回现场信息（URL/页面标题/弹窗/提示文字/按钮）
     const scene = await evalInTab(tab.id, `
       const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
       const dlgs = Array.from(document.querySelectorAll(
@@ -156,12 +162,13 @@ export async function publish({ post, log }) {
         .slice(0, 3).map((d) => String(d.className).slice(0, 40) + "::"
           + (d.innerText || "").replace(/\\s+/g, " ").slice(0, 70));
       const msgs = Array.from(document.querySelectorAll(
-        '[class*="toast"], [class*="message"], [class*="notice"], [class*="tip"], [class*="Toast"], [class*="Message"]'))
-        .filter(visible).slice(0, 4).map((m) => (m.innerText || "").replace(/\\s+/g, " ").slice(0, 60));
+        '[class*="toast"], [class*="message"], [class*="notice"], [class*="tip"], [class*="Toast"], [class*="Message"], [class*="byte-toast"]'))
+        .slice(0, 5).map((m) => (m.innerText || "").replace(/\\s+/g, " ").slice(0, 60)).filter(Boolean);
       const btnInfo = Array.from(document.querySelectorAll(
-        'button, .btn, [role="button"]')).filter(visible).slice(0, 12).map((b) =>
-        ((b.textContent || "").trim().slice(0, 12) || "[无文本]") + "|" + String(b.className || "").slice(0, 30));
+        'button, .btn, [role="button"]')).filter(visible).slice(0, 8).map((b) =>
+        ((b.textContent || "").trim().slice(0, 10) || "[无文本]") + "|" + String(b.className || "").slice(0, 25));
       return "URL=" + location.href.slice(0, 60)
+        + " || 标题=" + document.title.slice(0, 30)
         + " || 弹窗[" + (dlgs.join(" ;; ") || "无") + "]"
         + " || 提示[" + (msgs.join(" ;; ") || "无") + "]"
         + " || 按钮[" + btnInfo.join(" ;; ") + "]";
