@@ -157,6 +157,19 @@ def test_心跳与队列概览(tmpdb, client):
     assert [p["id"] for p in data["platforms"]] == ["zhihu", "sohu", "toutiao"]
 
 
+def test_心跳携带平台登录快照(tmpdb, client):
+    client.post("/api/agent/heartbeat", json={
+        "version": "0.1.0",
+        "accounts": [{"platform": "zhihu", "status": "active"},
+                     {"platform": "sohu", "status": "logged_out"}]})
+    r = client.get("/api/distribution/overview", query_string={"brand_id": 41})
+    agent = r.get_json()["data"]["agent"]
+    assert agent["online"] is True
+    acc = {a["platform"]: a["status"] for a in agent["accounts"]}
+    assert acc == {"zhihu": "active", "sohu": "logged_out"}
+    assert agent["accounts_at"]
+
+
 def test_桥令牌鉴权(tmpdb, client, monkeypatch):
     monkeypatch.setattr(database, "get_setting",
                         lambda key, default=None:

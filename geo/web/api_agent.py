@@ -34,16 +34,24 @@ def _check_agent_token():
 
 @bp.route("/agent/heartbeat", methods=["POST"])
 def heartbeat():
-    """宿主每 30 秒一次：记录在线状态与版本，供分发页状态灯显示。"""
+    """宿主每 30 秒一次：记录在线状态、版本与各平台登录快照（若有）。"""
     _check_agent_token()
     data = request.get_json(silent=True) or {}
     version = str(data.get("version") or "")
     if not _VERSION_RE.match(version):
         version = ""
-    database.set_setting("agent_last_seen", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    database.set_setting("agent_last_seen", now_str)
     if version:
         database.set_setting("agent_version", version)
-    return ok({"server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    accounts = data.get("accounts")
+    if isinstance(accounts, list):
+        clean = [{"platform": str(a.get("platform") or "")[:30],
+                  "status": str(a.get("status") or "")[:30]}
+                 for a in accounts if isinstance(a, dict)]
+        database.set_setting("agent_accounts",
+                             database.jdumps({"at": now_str, "accounts": clean}))
+    return ok({"server_time": now_str,
                "heartbeat_ttl": distribution.AGENT_HEARTBEAT_TTL}, "在线")
 
 

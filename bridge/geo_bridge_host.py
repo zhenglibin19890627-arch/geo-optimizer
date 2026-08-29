@@ -139,7 +139,7 @@ class ExtClient:
                 continue
             if msg is None:
                 log("扩展侧输入流已关闭")
-                self._alive = False
+                self.close()  # 置断开标记并唤醒所有等待中的请求
                 break
             rid = msg.get("id")
             event = self._pending.pop(rid, None)
@@ -167,6 +167,8 @@ class ExtClient:
             self._pending.pop(rid, None)
             raise RuntimeError(f"扩展响应超时（{action}，{timeout:.0f}s）")
         msg = event["msg"]
+        if msg is None:  # 被断开唤醒：等待期间连接已关
+            raise RuntimeError("扩展连接已断开")
         if not msg.get("ok"):
             err = msg.get("error") or {}
             raise RuntimeError(f"扩展返回错误（{action}）："
@@ -195,9 +197,11 @@ class GeoClient:
         with urlreq.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
-    def heartbeat(self):
-        return self._call("POST", "/api/agent/heartbeat",
-                          {"version": HOST_NAME + "/1.0"})
+    def heartbeat(self, accounts=None):
+        payload = {"version": HOST_NAME + "/1.0"}
+        if accounts is not None:
+            payload["accounts"] = accounts
+        return self._call("POST", "/api/agent/heartbeat", payload)
 
     def claim(self, platforms=None, limit: int = 3):
         body = self._call("POST", "/api/agent/claim",
@@ -333,6 +337,22 @@ def start_http_bridge():
 
 # ---------------- 主循环 ----------------
 
+def collect_accounts(ext: ExtClient, cfg: dict):
+    """向扩展要各平台账号登录状态（list_accounts），供分发页显示。
+
+    返回 [{platform, status}]；扩展不可达时返回 None（心跳不带该字段，
+    GEO 保留上次快照）。
+    """
+    try:
+        data = ext.request("list_accounts", {}, timeout=cfg["rpc_timeout"]) or []
+        return [{"platform": str(a.get("platform") or ""),
+                 "status": str(a.get("status") or "")}
+                for a in data if isinstance(a, dict)]
+    except Exception as e:
+        log(f"list_accounts 失败（扩展未连接？）：{e}")
+        return None
+
+
 def main_loop(ext: ExtClient, geo: GeoClient, cfg: dict, max_tasks: int = 0):
     """max_tasks>0 时跑够就返回（测试用）；0 = 常驻直到扩展断开。"""
     server = start_http_bridge()
@@ -342,8 +362,9 @@ def main_loop(ext: ExtClient, geo: GeoClient, cfg: dict, max_tasks: int = 0):
         while ext.alive:
             now = time.time()
             if now - last_beat >= cfg["heartbeat"]:
+                accounts = collect_accounts(ext, cfg)
                 try:
-                    geo.heartbeat()
+                    geo.heartbeat(accounts)
                     last_beat = now
                 except Exception as e:
                     log(f"GEO 心跳失败（{e}）；{cfg['idle']}s 后重试")

@@ -216,17 +216,28 @@ function renderChannelBox(draft) {
     return;
   }
   const online = overviewCache && overviewCache.agent_online;
+  const agentAcc = {};
+  ((overviewCache && overviewCache.agent && overviewCache.agent.accounts) || [])
+    .forEach(function (a) { agentAcc[a.platform] = a.status; });
+  const accNote = (overviewCache && overviewCache.agent && overviewCache.agent.accounts
+                   && overviewCache.agent.accounts.length)
+    ? "" : '<div class="small-note">暂无平台登录快照（分发桥下一跳心跳会带来）。</div>';
   box.innerHTML =
     '<div class="card-title">多平台分发</div>' +
     '<div class="small-note">审阅后勾选平台，本机分发桥会把稿件交给浏览器里的发布扩展执行'
     + '（需扩展已安装并登录对应平台）。'
     + (online ? '<span class="tag tag-green">分发桥在线</span>'
               : '<span class="tag tag-gray">分发桥离线——请确认宿主已注册且扩展已启动</span>')
-    + "</div>" +
+    + "</div>" + accNote +
     '<div id="mp-checks" style="display:flex;gap:12px;flex-wrap:wrap;margin:6px 0">' +
     platforms.map(function (p) {
+      const st = agentAcc[p.id];
+      const chip = st
+        ? ('<span class="tag ' + (st === "active" || st === "ok" ? "tag-green" : "tag-orange")
+           + '">' + esc(st) + "</span> ")
+        : "";
       return '<label style="cursor:pointer"><input type="checkbox" value="' + esc(p.id)
-        + '"> ' + esc(p.name) + "</label>";
+        + '"> ' + esc(p.name) + "</label>" + chip;
     }).join("") + "</div>" +
     '<button class="btn" id="mp-dispatch">分发到勾选平台</button>' +
     '<button class="btn" id="mp-refresh" style="margin-left:6px">刷新状态</button>' +

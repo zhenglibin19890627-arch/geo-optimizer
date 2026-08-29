@@ -48,6 +48,7 @@ def overview():
         "stats": stats,
         "channel_stats": channel_stats,
         "agent_online": distribution.agent_online(),
+        "agent": distribution.agent_status(),
         "platforms": [{"id": k, "name": v}
                       for k, v in distribution.SUPPORTED_PLATFORMS.items()],
     }, "获取成功")

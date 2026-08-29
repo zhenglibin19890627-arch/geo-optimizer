@@ -127,6 +127,14 @@ def agent_online() -> bool:
 CHANNEL_DISPATCH_STALE_MINUTES = 30
 
 
+def agent_status() -> dict:
+    """分发页用的扩展综合状态：在线灯 + 各平台登录快照。"""
+    snap = database.jloads(database.get_setting("agent_accounts", "") or "", None) or {}
+    accounts = snap.get("accounts") if isinstance(snap, dict) else None
+    return {"online": agent_online(), "accounts": accounts or [],
+            "accounts_at": snap.get("at") if isinstance(snap, dict) else None}
+
+
 def reap_stale_channel_tasks(max_age_minutes: int = CHANNEL_DISPATCH_STALE_MINUTES) -> int:
     """回收卡在 dispatching 的僵尸任务（宿主中断时来不及回写）。
 

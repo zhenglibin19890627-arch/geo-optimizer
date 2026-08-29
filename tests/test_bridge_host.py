@@ -43,6 +43,21 @@ def write_frame(fd, obj):
     fd.flush()
 
 
+def read_expect(proc, action, accounts_data=None):
+    """读帧直到等到期望的 action；途中的 list_accounts（心跳携带）自动应答。"""
+    while True:
+        req = read_frame(proc.stdout)
+        if req is None:
+            raise AssertionError("流结束，未等到 " + action)
+        if req["action"] == "list_accounts":
+            write_frame(proc.stdin, {"id": req["id"], "ok": True,
+                                     "data": accounts_data or []})
+            continue
+        if req["action"] != action:
+            raise AssertionError(f"未预期 action {req['action']}，期望 {action}")
+        return req
+
+
 # ---------------- GEO 桩服务 ----------------
 
 @pytest.fixture()
@@ -108,27 +123,23 @@ def test_宿主全链路_心跳领取建稿发布回写(geo_stub):
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
 
     try:
-        # 请求 1：心跳后立刻领取 → create_post
-        req = read_frame(proc.stdout)
-        assert req["action"] == "create_post", req
+        # 请求 1：心跳后立刻领取 → create_post（途中的 list_accounts 自动应答）
+        req = read_expect(proc, "create_post")
         assert req["payload"]["title"] == "桩标题"
         assert req["payload"]["tags"] == ["云澜", "中台"]
         write_frame(proc.stdin, {"id": req["id"], "ok": True, "data": {"postId": "p-1"}})
 
         # 请求 2：publish_post
-        req = read_frame(proc.stdout)
-        assert req["action"] == "publish_post", req
+        req = read_expect(proc, "publish_post")
         assert req["payload"]["postId"] == "p-1"
         assert req["payload"]["targets"] == [{"platform": "zhihu"}]
         write_frame(proc.stdin, {"id": req["id"], "ok": True, "data": {"jobId": "j-1"}})
 
         # 请求 3+：轮询 job → 第一次运行中，第二次成功
-        req = read_frame(proc.stdout)
-        assert req["action"] == "get_job_status"
+        req = read_expect(proc, "get_job_status")
         write_frame(proc.stdin, {"id": req["id"], "ok": True,
                                  "data": {"state": "running", "progress": 30}})
-        req = read_frame(proc.stdout)
-        assert req["action"] == "get_job_status"
+        req = read_expect(proc, "get_job_status")
         write_frame(proc.stdin, {"id": req["id"], "ok": True, "data": {
             "state": "published", "progress": 100,
             "results": [{"platform": "zhihu", "status": "published",
@@ -168,8 +179,7 @@ def test_宿主对扩展错误的处理(geo_stub):
         [sys.executable, HOST_SCRIPT], stdin=subprocess.PIPE,
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
     try:
-        req = read_frame(proc.stdout)
-        assert req["action"] == "create_post"
+        req = read_expect(proc, "create_post")
         write_frame(proc.stdin, {"id": req["id"], "ok": False, "error": {
             "code": "validation_error", "message": "标题不能为空"}})
         deadline = time.time() + 15
@@ -247,16 +257,13 @@ def test_宿主对接真实GEO服务全链路():
                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                 env=env)
         try:
-            req = read_frame(proc.stdout)
-            assert req["action"] == "create_post"
+            req = read_expect(proc, "create_post")
             write_frame(proc.stdin, {"id": req["id"], "ok": True,
                                      "data": {"postId": "rp-1"}})
-            req = read_frame(proc.stdout)
-            assert req["action"] == "publish_post"
+            req = read_expect(proc, "publish_post")
             write_frame(proc.stdin, {"id": req["id"], "ok": True,
                                      "data": {"jobId": "rj-1"}})
-            req = read_frame(proc.stdout)
-            assert req["action"] == "get_job_status"
+            req = read_expect(proc, "get_job_status")
             write_frame(proc.stdin, {"id": req["id"], "ok": True, "data": {
                 "state": "published", "progress": 100,
                 "results": [{"platform": "zhihu", "status": "published",
