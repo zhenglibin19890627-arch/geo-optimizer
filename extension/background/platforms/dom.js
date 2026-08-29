@@ -44,23 +44,19 @@ export async function evalInTab(tabId, statements) {
 }
 
 export async function waitForTabComplete(tabId, timeoutMs = 30000) {
-  await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { cleanup(); reject(new Error("页面加载超时")); }, timeoutMs);
-    // onUpdated 回调签名：(tabId: number, changeInfo: {status...}, tab)
-    function listener(updatedTabId, changeInfo) {
-      if (updatedTabId === tabId && changeInfo && changeInfo.status === "complete") {
-        cleanup(); resolve();
-      }
+  // 纯轮询实现：不依赖 tabs.onUpdated 事件（免疫回调签名/竞态问题）
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    let tab;
+    try {
+      tab = await chrome.tabs.get(tabId);
+    } catch (err) {
+      throw new Error("标签页已关闭");
     }
-    function cleanup() {
-      clearTimeout(timer);
-      chrome.tabs.onUpdated.removeListener(listener);
-    }
-    chrome.tabs.onUpdated.addListener(listener);
-    chrome.tabs.get(tabId).then((tab) => {
-      if (tab.status === "complete") { cleanup(); resolve(); }
-    }).catch(() => { cleanup(); reject(new Error("标签页已关闭")); });
-  });
+    if (tab.status === "complete") return;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  throw new Error("页面加载超时(geo-publish/0.1.2)");
 }
 
 export async function waitForConditionInTab(tabId, conditionJs, timeoutMs = 20000, intervalMs = 500) {
