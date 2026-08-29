@@ -130,7 +130,7 @@ async function publishPost(payload) {
   return { jobId: job.id };
 }
 
-function requireString(value, name) {
+export function requireString(value, name) {
   if (typeof value !== "string" || !value.trim()) {
     throw store.rpcError("validation_error", name + " 必填");
   }
