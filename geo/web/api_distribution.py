@@ -195,6 +195,37 @@ def retry_channel(task_id: int):
     return ok(None, "已重新排队，等待分发桥领取")
 
 
+@bp.route("/distribution/channels/<int:task_id>/manual", methods=["POST"])
+def manual_publish(task_id: int):
+    """人工确认发布：自动化发不出、用户在保留的编辑器页面手动发出后，
+    在稿件库点「手动已发」把这条渠道记为已发布（统计口径与自动发布一致）。"""
+    brand_id = current_brand_id()
+    data = get_json()
+    platform_url = str(data.get("platform_url") or "").strip()[:500]
+    now = datetime.now()
+    with database.session_scope() as s:
+        row = s.get(database.DistributionChannelTask, task_id)
+        if not row or row.brand_id != brand_id:
+            raise ApiError("这条分发任务不存在")
+        if row.status == "published":
+            raise ApiError("这条渠道已经是已发布状态")
+        row.status = "published"
+        if platform_url:
+            row.platform_url = platform_url
+        row.error_msg = "（手动确认发布）"
+        row.published_at = now
+        row.updated_at = now
+        draft = s.get(database.DistributionDraft, row.draft_id) if row.draft_id else None
+        if draft and draft.status != "published":
+            draft.status = "published"
+            if platform_url:
+                draft.published_url = platform_url
+            draft.published_at = now
+            draft.error_msg = ""
+            draft.updated_at = now
+    return ok({"task_id": task_id}, "已记录为手动发布成功")
+
+
 @bp.route("/distribution/drafts/<int:draft_id>", methods=["PUT"])
 def update_draft(draft_id: int):
     """人工审阅编辑：标题/正文/摘要/标签。"""

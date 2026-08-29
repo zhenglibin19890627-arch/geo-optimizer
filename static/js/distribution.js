@@ -393,9 +393,12 @@ function loadDrafts() {
             html += '<a href="' + esc(t.platform_url) + '" target="_blank" rel="noopener" '
               + 'class="small-note" style="text-decoration:none">打开 ↗</a>';
           }
-          if (t.status === "failed") {
-            html += '<span class="small-note" style="color:#c0392b">' + esc((t.error_msg || "").slice(0, 80)) + "</span>"
-              + '<button class="btn" style="padding:1px 6px;font-size:12px" data-retry="' + t.id + '">重试</button>';
+          if (t.status === "failed" || t.status === "pending" || t.status === "dispatching") {
+            if (t.status === "failed") {
+              html += '<span class="small-note" style="color:#c0392b">' + esc((t.error_msg || "").slice(0, 80)) + "</span>"
+                + '<button class="btn" style="padding:1px 6px;font-size:12px" data-retry="' + t.id + '">重试</button>';
+            }
+            html += '<button class="btn" style="padding:1px 6px;font-size:12px" data-manual="' + t.id + '">手动已发</button>';
           }
           return html + "</div>";
         }).join("");
@@ -405,6 +408,16 @@ function loadDrafts() {
                    { method: "POST", body: {} })
               .then(function () { loadDrafts(); loadOverview(); })
               .catch(function (m) { showToast(m || "重试失败", "error"); });
+          });
+        });
+        sub.querySelectorAll("[data-manual]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            const url = prompt("你已在平台上手动发布成功——可粘贴发布后的文章链接（不知道就留空）：", "");
+            if (url === null) return;
+            geoApi("/api/distribution/channels/" + btn.getAttribute("data-manual") + "/manual",
+                   { method: "POST", body: { platform_url: (url || "").trim() } })
+              .then(function () { loadDrafts(); loadOverview(); showToast("已记录手动发布成功", "success"); })
+              .catch(function (m) { showToast(m || "记录失败", "error"); });
           });
         });
       }).catch(function () { sub.innerHTML = ""; });
