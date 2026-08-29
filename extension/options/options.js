@@ -83,7 +83,9 @@ async function render() {
               + cookies.map((c) => c.name).slice(0, 10).join(", ")
               + (cookies.length > 10 ? " …" : "")
             : "该域下没有看到任何 cookie——你可能还没有访问过该平台，或登录的是其他站点。";
-        } catch (err) { /* 探针失败不影响主流程 */ }
+        } catch (err) {
+          hint.textContent = "调试探针失败：" + (err.message || err) + "（扩展代码可能是旧版，请重载扩展并刷新本页）";
+        }
       }
 
       list.textContent = "";
