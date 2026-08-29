@@ -2,7 +2,8 @@
 
 import "./rpc.js";
 import * as store from "./store.js";
-import { listPlatforms, checkLogin, getPlatform } from "./platforms/registry.js";
+import { listPlatforms, getPlatform } from "./platforms/registry.js";
+import { detectLogin } from "./platforms/login_detect.js";
 import { fetchNickname } from "./platforms/profile.js";
 import { runJob } from "./publish.js";
 
@@ -23,7 +24,7 @@ async function handleUiAction(msg) {
       const out = [];
       for (const platform of listPlatforms()) {
         const platformAccounts = accounts.filter((a) => a.platform === platform.id);
-        const loggedIn = await checkLogin(platform.id);
+        const loggedIn = (await detectLogin(platform.id)).loggedIn;
         out.push({
           ...platform,
           loggedIn,
@@ -37,9 +38,11 @@ async function handleUiAction(msg) {
     }
     case "detectLogin": {
       const platform = getPlatform(msg.platform);
-      const loggedIn = await checkLogin(msg.platform);
-      const nickname = loggedIn ? await fetchNickname(msg.platform) : null;
-      return { loggedIn, nickname, loginUrl: platform.loginUrl };
+      const det = await detectLogin(msg.platform);
+      if (det.loggedIn && !det.nickname) {
+        det.nickname = await fetchNickname(msg.platform);
+      }
+      return { ...det, loginUrl: platform.loginUrl };
     }
     case "probeCookies": {
       const platform = getPlatform(msg.platform);

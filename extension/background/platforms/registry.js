@@ -16,9 +16,9 @@ const PLATFORMS = {
     id: "sohu",
     name: "搜狐号",
     support: { markdown: true, html: true, latex: false },
-    editorUrl: "https://mp.sohu.com/main/home/index",
-    loginUrl: "https://mp.sohu.com",
-    // 未登录访问后台首页时搜狐自动呈现登录界面（不硬编码登录路由，防失效）
+    editorUrl: "https://mp.sohu.com/mpfe/v4/contentManagement/news/addarticle",
+    loginUrl: "https://mp.sohu.com/mpfe/v4/login",
+    // 登录检测不走 cookie（域过滤读不到其会话），由 login_detect.js 调后台 API 验证
     loginCookies: [{ domain: "sohu.com", name: "*" }],
   },
   toutiao: {

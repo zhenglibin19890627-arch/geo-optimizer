@@ -1,51 +1,46 @@
-// 搜狐号适配器：mp.sohu.com 图文发布
-// 编辑器为自研富文本；首版走“打开发布页 → 注入 → 发布”流程，选择器待真机联调核对。
+// 搜狐号适配器：打开发文编辑器（Quill）→ 注入标题与 HTML → 后续发布按钮逻辑真机联调补齐
+// 编辑器为 .ql-editor[contenteditable]，正文以 HTML 粘贴注入（搜狐不支持 markdown 直传）。
 
 import { renderMarkdown } from "../render.js";
 import { evalInTab, waitForTabComplete, waitForConditionInTab } from "./dom.js";
 
-const EDITOR_URL = "https://mp.sohu.com/main/home/index";
+const EDITOR_URL = "https://mp.sohu.com/mpfe/v4/contentManagement/news/addarticle";
 
 export async function publish({ post, log }) {
   const { html } = renderMarkdown(post.body_md);
-  await log("打开搜狐号后台");
+  await log("打开搜狐号发文编辑器");
   const tab = await chrome.tabs.create({ url: EDITOR_URL, active: false });
   try {
     await waitForTabComplete(tab.id);
-    // 发布入口在后台首页；未登录会跳转到登录页
     const loggedIn = await waitForConditionInTab(
       tab.id,
-      `!location.href.includes('passport.sohu.com')`,
+      `!location.href.includes('mpfe/v4/login') && !location.href.includes('passport.sohu.com')`,
       15000,
     );
     if (!loggedIn) throw new Error("搜狐号未登录（跳转到了登录页）");
 
-    // 打开发文页：后台首页的「发文」按钮（或直接进入图文编辑路由）
-    await evalInTab(tab.id, `
-      const btn = Array.from(document.querySelectorAll('a,button,div'))
-        .find((el) => (el.textContent || '').trim() === '发文');
-      if (btn) { btn.click(); return true; }
-      location.href = 'https://mp.sohu.com/main/news/edit';
-      return true;
-    `);
-    await log("等待图文编辑器加载");
+    await log("等待编辑器加载（Quill）");
     const editorReady = await waitForConditionInTab(
       tab.id,
-      `document.querySelector('.edui-editor, .UEditor, [contenteditable="true"], iframe.edui')`,
+      `document.querySelector('.ql-editor[contenteditable="true"], [contenteditable="true"]')`,
       30000,
     );
     if (!editorReady) throw new Error("编辑器未找到（页面改版，需核对接入点）");
 
-    await log("注入标题与正文（首版联调）");
+    await log("注入标题、摘要与正文");
     await evalInTab(tab.id, `
-      const titleEl = document.querySelector('input[placeholder*="标题"], .title-input input, input.title');
+      const titleEl = document.querySelector(
+        'input[placeholder*="标题"], textarea[placeholder*="标题"], .publish-title input, .article-title input');
       if (titleEl) geoSetNativeValue(titleEl, ${JSON.stringify(post.title)});
-      const editor = document.querySelector('[contenteditable="true"]') ||
-        (document.querySelector('iframe.edui, .edui-editor-iframeholder iframe') || {}).contentWindow?.document?.body;
-      if (editor) geoPasteHtml('[contenteditable="true"]', ${JSON.stringify(html)});
+      const summaryEl = document.querySelector(
+        'textarea.abstract-main-textarea, textarea[placeholder*="摘要"]');
+      if (summaryEl && ${JSON.stringify(post.summary || "")}) {
+        geoSetNativeValue(summaryEl, ${JSON.stringify(post.summary || "")});
+      }
+      geoPasteHtml('.ql-editor[contenteditable="true"], [contenteditable="true"]', ${JSON.stringify(html)});
       return true;
     `);
-    throw new Error("搜狐号发布流程待真机联调：已定位编辑器，发布按钮提交逻辑将在联调中补齐（本条不会发布任何内容）");
+    throw new Error("搜狐号发布按钮提交逻辑待真机联调补齐（本次已验证编辑器可达与注入，未发布任何内容）");
   } finally {
     chrome.tabs.remove(tab.id).catch(() => {});
   }
