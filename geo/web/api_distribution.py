@@ -125,20 +125,47 @@ def _channels_payload(tasks):
             for t in tasks]
 
 
+def _run_site_publish(task_id: int, draft_id: int, brand_id: int):
+    """官网渠道同步发布：成功→published+url，失败→failed+原因。返回 (是否成功, 说明)。"""
+    try:
+        result = distribution.publish_official(draft_id, brand_id)
+    except EngineError as e:
+        with database.session_scope() as s:
+            r = s.get(database.DistributionChannelTask, task_id)
+            if r:
+                r.status = "failed"
+                r.error_msg = e.message
+                r.updated_at = datetime.now()
+        return False, e.message
+    url = result.get("url") or ""
+    with database.session_scope() as s:
+        r = s.get(database.DistributionChannelTask, task_id)
+        if r:
+            r.status = "published"
+            r.platform_url = url
+            r.error_msg = ""
+            r.updated_at = datetime.now()
+    return True, url
+
+
 @bp.route("/distribution/drafts/<int:draft_id>/channels", methods=["POST"])
 def create_channels(draft_id: int):
     """审阅后勾选平台 → 建多平台待发任务（人工审阅制：不会自动发布，
-    任务由本机宿主领取后经扩展执行）。payload: {"platforms": ["zhihu", ...]}"""
+    任务由本机宿主领取后经扩展执行）。官网渠道特殊：同步直发，立即出结果。
+    payload: {"platforms": ["zhihu", ...]}"""
     brand_id = current_brand_id()
     data = get_json()
     platforms = [str(p).strip() for p in (data.get("platforms") or [])]
     if not platforms:
         raise ApiError("请至少勾选一个平台")
-    bad = [p for p in platforms if p not in distribution.SUPPORTED_PLATFORMS]
+    valid = dict(distribution.SUPPORTED_PLATFORMS)
+    valid["site"] = "官网"
+    bad = [p for p in platforms if p not in valid]
     if bad:
         raise ApiError(f"暂不支持的平台：{'、'.join(bad)}（当前支持："
-                       f"{'、'.join(distribution.SUPPORTED_PLATFORMS.values())}）")
+                       f"{'、'.join(valid.values())}）")
     now = datetime.now()
+    site_task_ids = []
     with database.session_scope() as s:
         draft = _draft_or_404(s, draft_id, brand_id)
         if not (draft.title or "").strip() or not (draft.body_md or "").strip():
@@ -153,15 +180,23 @@ def create_channels(draft_id: int):
         for p in dict.fromkeys(platforms):
             if p in have:
                 continue
+            # 官网任务置 dispatching：宿主只领 pending，不会误抢；下面同步执行
             row = database.DistributionChannelTask(
                 brand_id=brand_id, draft_id=draft_id, platform=p,
-                status="pending", created_at=now)
+                status="dispatching" if p == "site" else "pending", created_at=now)
             s.add(row)
             created.append(row)
         s.flush()
-        return ok(_channels_payload(created),
-                  f"已排队 {len(created)} 个平台"
-                  + ("（其余平台已有进行中的任务）" if len(created) < len(set(platforms)) else ""))
+        site_task_ids = [(r.id, r.draft_id) for r in created if r.platform == "site"]
+    site_note = ""
+    for task_id, d_id in site_task_ids:
+        ok_flag, info = _run_site_publish(task_id, d_id, brand_id)
+        site_note = "官网" + ("已发布" + (f"（{info}）" if info else "")
+                             if ok_flag else f"发布失败（{info}）")
+    return ok(_channels_payload(created),
+              f"已排队 {len(created)} 个平台"
+              + ("；" + site_note if site_note else "")
+              + ("（其余平台已有进行中的任务）" if len(created) < len(set(platforms)) else ""))
 
 
 @bp.route("/distribution/drafts/<int:draft_id>/channels", methods=["GET"])
@@ -187,11 +222,18 @@ def retry_channel(task_id: int):
             raise ApiError("这个任务属于其他品牌，请切换品牌后操作")
         if row.status not in ("failed", "published"):
             raise ApiError("只有失败（或已发布需重发）的任务可以重试")
-        row.status = "pending"
+        is_site = row.platform == "site"
+        draft_id_for_site = row.draft_id
+        row.status = "dispatching" if is_site else "pending"
         row.error_msg = ""
         row.platform_url = ""
         row.job_id = ""
         row.updated_at = datetime.now()
+    if is_site:
+        ok_flag, info = _run_site_publish(task_id, draft_id_for_site, brand_id)
+        return ok({"ok": ok_flag},
+                  "官网" + ("已发布" + (f"：{info}" if info else "") if ok_flag
+                            else f"发布失败：{info}"))
     return ok(None, "已重新排队，等待分发桥领取")
 
 

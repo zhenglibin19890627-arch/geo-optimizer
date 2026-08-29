@@ -108,6 +108,7 @@ function renderList() {
   });
 }
 
+var PLAT_CN = { zhihu: "知乎", sohu: "搜狐", toutiao: "头条", site: "官网" };
 function loadChips(d, box) {
   geoApi("/api/distribution/drafts/" + d.id + "/channels").then(function (ch) {
     channelCache[d.id] = ch;
@@ -117,7 +118,7 @@ function loadChips(d, box) {
         : (t.status === "dispatching" || t.status === "pending") ? "run" : "idle";
       var lb = { published: "已发布", failed: "失败", dispatching: "分发中", pending: "待分发" }[t.status] || t.status;
       var html = '<span class="p-chip"><span class="p-dot ' + cls + '"></span>'
-        + esc(t.platform) + " · " + lb;
+        + esc(PLAT_CN[t.platform] || t.platform) + " · " + lb;
       if (t.platform_url) html += ' · <a href="' + esc(t.platform_url) + '" target="_blank" rel="noopener">打开 ↗</a>';
       if (t.status === "failed") {
         html += ' · <a href="javascript:;" data-retry="' + t.id + '" style="color:var(--warn,#F59E0B)">重试</a>';
@@ -152,7 +153,7 @@ function openView(id) {
     var platLine = ch.length
       ? " · 渠道：" + ch.map(function (t) {
           var mark = t.status === "published" ? "✅" : t.status === "failed" ? "❌" : "⏳";
-          return mark + t.platform;
+          return mark + (PLAT_CN[t.platform] || t.platform);
         }).join(" ")
       : "";
     el("view-meta").textContent = "创建于 " + (d.created_at || "").slice(0, 16)

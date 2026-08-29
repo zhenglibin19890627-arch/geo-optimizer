@@ -261,7 +261,9 @@ function renderChannelBox(draft) {
       }
       return '<label style="cursor:pointer"><input type="checkbox" value="' + esc(p.id)
         + '"> ' + esc(p.name) + "</label>" + chip;
-    }).join("") + "</div>" +
+    }).join("")
+    + '<label style="cursor:pointer"><input type="checkbox" value="site"> 官网（自有站点，勾选即直发）</label>'
+    + "</div>" +
     '<button class="btn" id="mp-dispatch">分发到勾选平台</button>' +
     '<button class="btn" id="mp-refresh" style="margin-left:6px">刷新状态</button>' +
     '<div id="mp-list" class="mt-8"></div>';
@@ -289,7 +291,7 @@ function loadChannels(draftId) {
     const list = document.getElementById("mp-list");
     if (!list) return;
     if (!items.length) { list.innerHTML = ""; return; }
-    const names = {};
+    const names = { site: "官网" };
     ((overviewCache && overviewCache.platforms) || []).forEach(function (p) {
       names[p.id] = p.name;
     });
