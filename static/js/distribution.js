@@ -325,10 +325,24 @@ function loadDrafts() {
       const label = d.status === "published" ? "已发布"
         : d.status === "failed" ? "发布失败" : "待审阅";
       const div = document.createElement("div");
-      div.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border,#f0f0f0)";
+      div.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border,#f0f0f0);flex-wrap:wrap";
+      let meta = "";
+      if (d.published_url) {
+        meta += '<a href="' + esc(d.published_url) + '" target="_blank" rel="noopener" '
+          + 'class="tag tag-green" style="text-decoration:none">查看发布内容 ↗</a>';
+      }
+      if (d.source_round_id) {
+        meta += '<a href="/monitor.html?round_id=' + encodeURIComponent(d.source_round_id)
+          + '" target="_blank" rel="noopener" class="small-note" style="text-decoration:none">简报溯源：第 '
+          + esc(d.source_round_id) + " 轮监测 ↗</a>";
+      } else if (d.brief) {
+        const hint = (d.brief.positioning || d.brief.angle || "").toString().slice(0, 30);
+        meta += '<span class="small-note">来自创作简报' + (hint ? "：" + esc(hint) : "") + "</span>";
+      }
       div.innerHTML =
         '<span class="tag ' + cls + '">' + label + "</span>" +
-        '<span style="flex:1;cursor:pointer" class="draft-title">' + esc(d.title) + "</span>" +
+        '<span style="flex:1;min-width:120px;cursor:pointer" class="draft-title">' + esc(d.title) + "</span>" +
+        meta +
         '<button class="btn" style="padding:2px 8px" data-act="del">删除</button>';
       div.querySelector(".draft-title").addEventListener("click", function () {
         geoApi("/api/distribution/drafts/" + d.id).then(function (full) {

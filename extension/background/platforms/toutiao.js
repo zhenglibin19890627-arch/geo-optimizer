@@ -122,6 +122,27 @@ export async function publish({ post, log }) {
     // ---- 提交确认：字节系弹窗/抽屉内的确认按钮，同样 CDP 真实点击，多轮尝试 ----
     for (let i = 0; i < 4; i++) {
       await new Promise((r) => setTimeout(r, 1800));
+      if (i === 0) {
+        // 发表设置抽屉里优先选「无封面」（测试稿无图，带封面会卡校验）
+        const coverPos = await elementCenter(tab.id, `
+          const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+          const panels = Array.from(document.querySelectorAll(
+            '.byte-modal, .byte-drawer, [class*="modal"], [class*="drawer"], [class*="Drawer"], [class*="dialog"], [class*="Dialog"]'))
+            .filter(visible);
+          window.geoTarget = null;
+          for (const d of panels) {
+            const hits = Array.from(d.querySelectorAll("label, span, div, li, input"))
+              .filter((e) => visible(e) && (e.textContent || "").trim() === "无封面"
+                && e.children.length <= 2);
+            if (hits.length) { window.geoTarget = hits[hits.length - 1]; break; }
+          }
+        `);
+        if (coverPos) {
+          await log("发表设置：选择无封面");
+          await realClick(tab.id, coverPos.x, coverPos.y);
+          await new Promise((r) => setTimeout(r, 800));
+        }
+      }
       const dlgPos = await elementCenter(tab.id, `
         const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
         const panels = Array.from(document.querySelectorAll(
