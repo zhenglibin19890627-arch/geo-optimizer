@@ -103,40 +103,19 @@
         <span class="saved-hint hidden" id="cfg-saved"></span>
       </div>
 
-      <!-- 卡片4：稿件库 -->
-      <!-- 卡片：稿件库 -->
-      <div class="card">
-        <div class="card-head">
-          <div class="card-title">稿件库</div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <a href="/static/drafts.html" class="small-note" style="text-decoration:none;color:var(--primary,#2563EB)">📊 独立页面 ↗</a>
-            <span class="small-note">平台后台：</span>
-            <a href="https://zhuanlan.zhihu.com/posts" target="_blank" rel="noopener" class="small-note">知乎文章管理 ↗</a>
-            <a href="https://mp.sohu.com/mpfe/v4/contentManagement/first/page" target="_blank" rel="noopener" class="small-note">搜狐号主页 ↗</a>
-            <a href="https://mp.toutiao.com/profile_v4/graphic/articles" target="_blank" rel="noopener" class="small-note">头条内容管理 ↗</a>
-          </div>
+      <!-- 发布状态条（稿件库已迁移至独立页） -->
+      <div class="card" style="padding:10px 14px">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <span class="small-note" id="channel-line"></span>
+          <span class="small-note" id="draft-stats"></span>
+          <a href="/static/drafts.html" class="btn btn-xs" style="margin-left:auto;text-decoration:none;padding:3px 12px">📊 打开稿件库（独立页）</a>
         </div>
-          <div class="small-note" id="draft-stats"></div>
-          <select class="input" id="draft-filter-status" style="width:auto;padding:2px 6px">
-            <option value="">全部状态</option>
-            <option value="published">已发布</option>
-            <option value="draft">待审阅</option>
-            <option value="failed">发布失败</option>
-          </select>
-          <select class="input" id="draft-filter-time" style="width:auto;padding:2px 6px">
-            <option value="all">全部时间</option>
-            <option value="week">最近一周</option>
-            <option value="month">最近一月</option>
-            <option value="custom">自定义…</option>
-          </select>
-          <span id="draft-custom-range" class="hidden" style="display:inline-flex;gap:4px;align-items:center">
-            <input type="date" class="input" id="draft-date-start" style="width:auto;padding:2px 6px">
-            <span class="small-note">至</span>
-            <input type="date" class="input" id="draft-date-end" style="width:auto;padding:2px 6px">
-          </span>
+        <div style="display:flex;gap:10px;margin-top:6px">
+          <span class="small-note">平台后台：</span>
+          <a href="https://zhuanlan.zhihu.com/posts" target="_blank" rel="noopener" class="small-note">知乎文章管理 ↗</a>
+          <a href="https://mp.sohu.com/mpfe/v4/contentManagement/first/page" target="_blank" rel="noopener" class="small-note">搜狐号主页 ↗</a>
+          <a href="https://mp.toutiao.com/profile_v4/graphic/articles" target="_blank" rel="noopener" class="small-note">头条内容管理 ↗</a>
         </div>
-        <div class="small-note" id="channel-line" style="margin-bottom:6px"></div>
-        <div id="draft-list"></div>
       </div>
     </div>
   </div>

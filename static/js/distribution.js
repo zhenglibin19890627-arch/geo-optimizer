@@ -128,7 +128,7 @@ function generateArticle() {
     btn.disabled = false;
     document.getElementById("gen-hint").classList.add("hidden");
     renderEditor(draft, true);
-    loadDrafts();
+    loadOverview();
   }).catch(function (m) {
     btn.disabled = false;
     document.getElementById("gen-hint").classList.add("hidden");
@@ -206,7 +206,7 @@ function renderEditor(draft, showPublish) {
       },
     }).then(function () {
       showToast("稿件已保存", "success");
-      loadDrafts();
+      loadOverview();
     }).catch(function (m) { showToast(m || "保存失败", "error"); });
   });
 
@@ -229,7 +229,7 @@ function renderEditor(draft, showPublish) {
         document.getElementById("ed-msg").textContent =
           "已发布到官网" + (res.url ? "：" + res.url : "") + "。报告页信源排行将把它标注为「已布点」。";
         showToast("已发布到官网", "success");
-        loadDrafts();
+        loadOverview();
         loadConfig();
       }).catch(function (m) {
         pub.disabled = false;
@@ -347,174 +347,7 @@ function loadChannels(draftId) {
   }).catch(function () {});
 }
 
-/* ---------------- 稿件库 ---------------- */
-
-function draftTimeRange() {
-  const mode = (document.getElementById("draft-filter-time") || {}).value || "all";
-  if (mode === "all") return null;
-  const today = new Date();
-  if (mode === "week") {
-    const from = new Date(today.getTime() - 7 * 86400000);
-    return { start: fmtDate(from), end: fmtDate(today) };
-  }
-  if (mode === "month") {
-    const from = new Date(today.getTime() - 30 * 86400000);
-    return { start: fmtDate(from), end: fmtDate(today) };
-  }
-  // 自定义：读取日历输入（起止可只填一端）
-  const s = (document.getElementById("draft-date-start") || {}).value || "";
-  const e = (document.getElementById("draft-date-end") || {}).value || "";
-  if (!s && !e) return null;
-  return { start: s, end: e };
-}
-
-function fmtDate(d) {
-  const p = function (n) { return (n < 10 ? "0" : "") + n; };
-  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
-}
-
-function loadDrafts() {
-  const statusFilter = (document.getElementById("draft-filter-status") || {}).value || "";
-  const range = draftTimeRange();
-  geoApi("/api/distribution/drafts").then(function (items) {
-    const list = document.getElementById("draft-list");
-    // 数据增长策略：状态筛选 + 时间范围（创建时间，闭区间）+ 时间倒序
-    let shown = items.filter(function (d) {
-      if (statusFilter && d.status !== statusFilter) return false;
-      if (range) {
-        const day = (d.created_at || "").slice(0, 10);
-        if (range.start && day && day < range.start) return false;
-        if (range.end && day && day > range.end) return false;
-      }
-      return true;
-    });
-    const total = shown.length;
-    const stats = document.getElementById("draft-stats");
-    if (stats) {
-      let rangeText = "";
-      if (range) rangeText = "，" + (range.start || "…") + " ~ " + (range.end || "今天");
-      stats.textContent = "共 " + items.length + " 篇稿件，符合条件 " + total + " 篇" + rangeText;
-    }
-    if (!shown.length) {
-      list.innerHTML = '<div class="empty">没有符合条件的稿件。</div>';
-      return;
-    }
-    list.innerHTML = "";
-    shown.forEach(function (d) {
-      const cls = d.status === "published" ? "tag-green"
-        : d.status === "failed" ? "tag-red" : "tag-gray";
-      const label = d.status === "published" ? "已发布"
-        : d.status === "failed" ? "发布失败" : "待审阅";
-      const div = document.createElement("div");
-      div.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border,#f0f0f0);flex-wrap:wrap";
-      let meta = "";
-      if (d.published_url) {
-        meta += '<a href="' + esc(d.published_url) + '" target="_blank" rel="noopener" '
-          + 'class="tag tag-green" style="text-decoration:none">查看发布内容 ↗</a>';
-      }
-      if (d.source_round_id) {
-        meta += '<a href="/monitor.html?round_id=' + encodeURIComponent(d.source_round_id)
-          + '" target="_blank" rel="noopener" class="small-note" style="text-decoration:none">简报溯源：第 '
-          + esc(d.source_round_id) + " 轮监测 ↗</a>";
-      } else if (d.brief) {
-        const hint = (d.brief.angle || "").toString().slice(0, 30);
-        meta += '<span class="small-note">来自创作简报' + (hint ? "：" + esc(hint) : "") + "</span>";
-      }
-      div.innerHTML =
-        '<span class="tag ' + cls + '">' + label + "</span>" +
-        '<span style="flex:1;min-width:120px;cursor:pointer" class="draft-title">' + esc(d.title) + "</span>" +
-        '<span class="small-note">' + esc((d.created_at || "").slice(0, 16)) + "</span>" +
-        meta +
-        '<button class="btn" style="padding:2px 8px" data-act="del">删除</button>';
-      div.querySelector(".draft-title").addEventListener("click", function () {
-        geoApi("/api/distribution/drafts/" + d.id).then(function (full) {
-          document.getElementById("gen-card").classList.remove("hidden");
-          renderEditor(full, full.status !== "published");
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }).catch(function (m) { showToast(m || "读取失败", "error"); });
-      });
-      div.querySelector('[data-act="del"]').addEventListener("click", function () {
-        confirmDialog("删除这篇稿件？该操作不可恢复。", function () {
-          geoApi("/api/distribution/drafts/" + d.id, { method: "DELETE", body: {} }).then(function () {
-            loadDrafts();
-            showToast("已删除", "success");
-          }).catch(function (m) { showToast(m || "删除失败", "error"); });
-        }, { danger: true });
-      });
-      list.appendChild(div);
-      // 平台明细子行：每篇稿件在各平台的发布状态与链接（懒加载，逐条填充）
-      const sub = document.createElement("div");
-      sub.style.cssText = "padding:0 0 6px 28px;border-bottom:1px solid var(--border,#f0f0f0)";
-      sub.textContent = "";
-      sub.innerHTML = '<div class="small-note" style="color:#999">平台明细加载中…</div>';
-      list.appendChild(sub);
-      geoApi("/api/distribution/drafts/" + d.id + "/channels").then(function (ch) {
-        if (!ch.length) { sub.innerHTML = ""; return; }
-        sub.innerHTML = ch.map(function (t) {
-          const c = t.status === "published" ? "tag-green"
-            : t.status === "failed" ? "tag-red"
-            : t.status === "dispatching" ? "tag-orange" : "tag-gray";
-          const lb = { published: "已发布", failed: "失败", dispatching: "分发中", pending: "待分发" }[t.status] || t.status;
-          let html = '<div style="display:flex;align-items:center;gap:8px;padding:2px 0;flex-wrap:wrap">'
-            + '<span class="tag ' + c + '" style="font-size:11px">' + lb + "</span>"
-            + "<span class='small-note'>" + esc(t.platform) + "</span>";
-          if (t.platform_url) {
-            html += '<a href="' + esc(t.platform_url) + '" target="_blank" rel="noopener" '
-              + 'class="small-note" style="text-decoration:none">打开 ↗</a>';
-          }
-          if (t.status === "failed" || t.status === "pending" || t.status === "dispatching") {
-            if (t.status === "failed") {
-              html += '<span class="small-note" style="color:#c0392b">' + esc((t.error_msg || "").slice(0, 80)) + "</span>"
-                + '<button class="btn" style="padding:1px 6px;font-size:12px" data-retry="' + t.id + '">重试</button>';
-            }
-            html += '<button class="btn" style="padding:1px 6px;font-size:12px" data-manual="' + t.id + '">手动已发</button>';
-          }
-          return html + "</div>";
-        }).join("");
-        sub.querySelectorAll("[data-retry]").forEach(function (btn) {
-          btn.addEventListener("click", function () {
-            geoApi("/api/distribution/channels/" + btn.getAttribute("data-retry") + "/retry",
-                   { method: "POST", body: {} })
-              .then(function () { loadDrafts(); loadOverview(); })
-              .catch(function (m) { showToast(m || "重试失败", "error"); });
-          });
-        });
-        sub.querySelectorAll("[data-manual]").forEach(function (btn) {
-          btn.addEventListener("click", function () {
-            const url = prompt("你已在平台上手动发布成功——可粘贴发布后的文章链接（不知道就留空）：", "");
-            if (url === null) return;
-            geoApi("/api/distribution/channels/" + btn.getAttribute("data-manual") + "/manual",
-                   { method: "POST", body: { platform_url: (url || "").trim() } })
-              .then(function () { loadDrafts(); loadOverview(); showToast("已记录手动发布成功", "success"); })
-              .catch(function (m) { showToast(m || "记录失败", "error"); });
-          });
-        });
-      }).catch(function () { sub.innerHTML = ""; });
-    });
-  }).catch(function () {
-    document.getElementById("draft-list").innerHTML = '<div class="empty">稿件库读取失败。</div>';
-  });
-}
-
-document.getElementById("draft-filter-status").addEventListener("change", loadDrafts);
-document.getElementById("draft-filter-time").addEventListener("change", function () {
-  const custom = document.getElementById("draft-custom-range");
-  if (this.value === "custom") {
-    custom.classList.remove("hidden");
-    // 默认预填最近一月，方便直接调整
-    if (!document.getElementById("draft-date-start").value) {
-      document.getElementById("draft-date-start").value = fmtDate(new Date(Date.now() - 30 * 86400000));
-    }
-    if (!document.getElementById("draft-date-end").value) {
-      document.getElementById("draft-date-end").value = fmtDate(new Date());
-    }
-  } else {
-    custom.classList.add("hidden");
-  }
-  loadDrafts();
-});
-document.getElementById("draft-date-start").addEventListener("change", loadDrafts);
-document.getElementById("draft-date-end").addEventListener("change", loadDrafts);
+/* 稿件库已迁移至独立页 /static/drafts.html（导航「稿件库」），此处不再重复渲染 */
 
 /* ---------------- 绑定 ---------------- */
 
@@ -542,7 +375,6 @@ document.getElementById("cfg-save").addEventListener("click", function () {
 });
 
 loadOverview();
-loadDrafts();
 
 // ================= 知识库（参考 weiqi knowledgeDocs/蒸馏词能力，自研实现） =================
 (function () {
@@ -647,7 +479,7 @@ loadDrafts();
     }).then(function (draft) {
       btn.disabled = false; hint.classList.add("hidden");
       showToast("稿件《" + (draft.title || "") + "》已生成，请在下方稿件库审阅后分发", "success");
-      if (typeof loadDrafts === "function") loadDrafts();
+      loadOverview();
     }).catch(function (m) {
       btn.disabled = false; hint.classList.add("hidden");
       showToast(m || "生成失败", "error");
