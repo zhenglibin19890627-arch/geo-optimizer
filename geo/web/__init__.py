@@ -88,6 +88,14 @@ def create_app() -> Flask:
     app.json.ensure_ascii = False
     CORS(app, resources={r"/api/*": {"origins": _LOCAL_ORIGIN_RE}})
 
+    @app.after_request
+    def no_cache_for_static(resp):
+        """本地单机系统：页面/JS/CSS 禁缓存，改动刷新即生效（避免浏览器缓存旧代码）。"""
+        path = resp.path or ""
+        if path.startswith("/static") or path == "/" or path.endswith(".html"):
+            resp.headers["Cache-Control"] = "no-cache, max-age=0"
+        return resp
+
     @app.before_request
     def guard_cross_origin_writes():
         """写操作（POST/PUT/DELETE）只接受本机来源：无 Origin 的脚本/curl 放行，
