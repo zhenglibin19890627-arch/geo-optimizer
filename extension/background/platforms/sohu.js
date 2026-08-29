@@ -125,21 +125,28 @@ export async function publish({ post, log }) {
     await log("注入完成（策略#" + filled.strategy + "，标题" + (filled.titleFilled ? "✓" : "✗") + "），触发发布");
     await new Promise((r) => setTimeout(r, 800));
 
-    // ---- 发布按钮：类名候选 → 精确文本 → 包含文本 ----
+    // ---- 发布按钮：可点击元素上的类名候选 → 精确文本 → 包含文本 ----
     const clicked = await evalInTab(tab.id, `
       const btns = () => Array.from(document.querySelectorAll(
         'button, .btn, [role="button"], a.btn, input[type="submit"]'))
         .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
       const byClass = document.querySelector(
-        '.publish-btn, .btn-publish, .submit-btn, .btn-submit, [class*="publish-btn"], [class*="btn-publish"]');
-      if (byClass && !byClass.disabled) { byClass.click(); return "class"; }
+        'button[class*="publish"], .btn[class*="publish"], [role="button"][class*="publish"], button[class*="submit"], .btn[class*="submit"]');
+      if (byClass && !byClass.disabled) { byClass.click(); return "class:" + byClass.className; }
       const exact = btns().find((b) => ["发布", "发布文章", "发表"].includes((b.textContent || "").trim()));
       if (exact) { exact.click(); return "text-exact"; }
       const partial = btns().find((b) => /发布|发表/.test((b.textContent || "").trim())
         && !/定时|预览|存草稿|草稿/.test((b.textContent || "").trim()));
       if (partial) { partial.click(); return "text-partial"; }
-      return "";
+      // 未命中：带回现场按钮清单供联调定位
+      return "NONE::" + btns().slice(0, 15).map((b) =>
+        ((b.textContent || "").trim().slice(0, 12) || "[无文本]") + "|"
+        + String(b.className || "").slice(0, 40)).join(" ;; ");
     `);
+    if (clicked.startsWith("NONE::")) {
+      throw new Error("搜狐号发布按钮未找到。页面可见按钮清单： " + clicked.slice(6)
+        + " ——内容已注入并自动存草稿，未发布任何内容");
+    }
 
     // ---- 提交确认：处理可能的确认弹窗，等待离开编辑器或出现成功提示 ----
     await new Promise((r) => setTimeout(r, 1500));

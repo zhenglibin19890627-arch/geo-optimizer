@@ -98,21 +98,27 @@ export async function publish({ post, log }) {
     await log("注入完成（策略#" + filled.strategy + "，标题" + (filled.titleFilled ? "✓" : "✗") + "），触发发布");
     await new Promise((r) => setTimeout(r, 800));
 
-    // ---- 发布按钮：类名候选 → 精确文本 → 包含文本（排除定时/预览/草稿） ----
+    // ---- 发布按钮：可点击元素上的类名候选 → 精确文本 → 包含文本（排除定时/预览/草稿） ----
     const clicked = await evalInTab(tab.id, `
       const btns = () => Array.from(document.querySelectorAll(
         'button, .btn, [role="button"], a.btn, input[type="submit"]'))
         .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
       const byClass = document.querySelector(
-        '[class*="publish-btn"], [class*="btn-publish"], .submit-btn, .btn-submit');
-      if (byClass && !byClass.disabled) { byClass.click(); return "class"; }
+        'button[class*="publish"], .btn[class*="publish"], [role="button"][class*="publish"], button[class*="submit"], .btn[class*="submit"]');
+      if (byClass && !byClass.disabled) { byClass.click(); return "class:" + byClass.className; }
       const exact = btns().find((b) => ["发布", "发表", "发布文章"].includes((b.textContent || "").trim()));
       if (exact) { exact.click(); return "text-exact"; }
       const partial = btns().find((b) => /发布|发表/.test((b.textContent || "").trim())
         && !/定时|预览|存草稿|草稿/.test((b.textContent || "").trim()));
       if (partial) { partial.click(); return "text-partial"; }
-      return "";
+      return "NONE::" + btns().slice(0, 15).map((b) =>
+        ((b.textContent || "").trim().slice(0, 12) || "[无文本]") + "|"
+        + String(b.className || "").slice(0, 40)).join(" ;; ");
     `);
+    if (clicked.startsWith("NONE::")) {
+      throw new Error("头条发布按钮未找到。页面可见按钮清单： " + clicked.slice(6)
+        + " ——内容已注入，未发布任何内容");
+    }
 
     // ---- 提交确认：处理确认弹窗，等待离开发布页或出现成功提示 ----
     await new Promise((r) => setTimeout(r, 1500));
@@ -134,10 +140,24 @@ export async function publish({ post, log }) {
       const url = await evalInTab(tab.id, `return location.href;`);
       return { url };
     }
+    // 未确认成功：带回现场信息（URL/弹窗/按钮）供联调定位
+    const scene = await evalInTab(tab.id, `
+      const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+      const dlgs = Array.from(document.querySelectorAll(
+        '.modal, [class*="dialog"], [class*="modal"], [class*="popup"]')).filter(visible);
+      const dlgInfo = dlgs.slice(0, 3).map((d) =>
+        String(d.className).slice(0, 50) + " :: "
+        + Array.from(d.querySelectorAll("button")).map((b) => (b.textContent || "").trim().slice(0, 10)).join("/"));
+      const btnInfo = Array.from(document.querySelectorAll(
+        'button, .btn, [role="button"]')).filter(visible).slice(0, 12).map((b) =>
+        ((b.textContent || "").trim().slice(0, 12) || "[无文本]") + "|" + String(b.className || "").slice(0, 30));
+      return "URL=" + location.href
+        + " || 弹窗[" + (dlgInfo.join(" ;; ") || "无") + "]"
+        + " || 按钮[" + btnInfo.join(" ;; ") + "]";
+    `);
     throw new Error(
-      "内容已注入编辑器，但发布提交未能自动确认"
-      + (clicked ? "（已点击「" + clicked + "」按钮但未见成功反馈）" : "（未找到发布按钮）")
-      + "——请到头条创作平台人工确认发布，未发出任何误内容");
+      "头条发布提交未能自动确认（点击了「" + clicked + "」）。现场： " + scene
+      + " ——内容已注入，未确认发出任何内容");
   } finally {
     chrome.tabs.remove(tab.id).catch(() => {});
   }
