@@ -570,8 +570,10 @@ function renderQBank() {
     const menuWrap = document.createElement("div");
     menuWrap.className = "qb-menu";
     const menuBtn = document.createElement("button");
-    menuBtn.className = "btn-text";
-    menuBtn.textContent = "管理 ▾";
+    menuBtn.className = "btn-text qb-menu-btn";
+    menuBtn.textContent = "⚙️";
+    menuBtn.title = "管理操作（编辑 / 移动 / 删除）";
+    menuBtn.setAttribute("aria-label", "管理操作");
     menuBtn.addEventListener("click", function (e) {
       e.stopPropagation();
       document.querySelectorAll(".qb-menu.open").forEach(function (m) {

@@ -8,6 +8,12 @@
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <style>
   .qb-menu { position: relative; }
+  .qb-menu-btn {
+    font-size: 15px; padding: 3px 8px; border-radius: 7px; line-height: 1;
+    border: 1px solid transparent;
+  }
+  .qb-menu-btn:hover { background: var(--primary-light, #EFF4FF); border-color: var(--border, #E2E8F0); }
+  .qb-menu.open .qb-menu-btn { background: var(--primary-light, #EFF4FF); border-color: var(--primary, #2563EB); }
   .qb-menu-pop {
     display: none; position: absolute; right: 0; top: calc(100% + 4px); background: #fff;
     border: 1px solid var(--border, #E2E8F0); border-radius: 10px; min-width: 110px; padding: 4px;
