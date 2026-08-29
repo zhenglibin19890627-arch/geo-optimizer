@@ -17,8 +17,8 @@ const PLATFORMS = {
     name: "搜狐号",
     support: { markdown: true, html: true, latex: false },
     editorUrl: "https://mp.sohu.com/main/home/index",
-    loginUrl: "https://mp.sohu.com/login",
-    // 搜狐 mp 登录 cookie 名以真机核对为准，先探测 mp.sohu.com 域任意 cookie
+    loginUrl: "https://mp.sohu.com",
+    // 未登录访问后台首页时搜狐自动呈现登录界面（不硬编码登录路由，防失效）
     loginCookies: [{ domain: "sohu.com", name: "*" }],
   },
   toutiao: {
@@ -26,8 +26,8 @@ const PLATFORMS = {
     name: "今日头条",
     support: { markdown: true, html: true, latex: false },
     editorUrl: "https://mp.toutiao.com/profile_v4/graphic/publish",
-    loginUrl: "https://mp.toutiao.com/login/",
-    // 头条 mp 登录态常见 cookie：sid_tt / sessionid（.toutiao.com 域）
+    loginUrl: "https://mp.toutiao.com",
+    // 未登录访问创作平台首页时头条自动跳转登录（不硬编码登录路由，防失效）
     loginCookies: [{ domain: "toutiao.com", name: "sid_tt" }, { domain: "toutiao.com", name: "sessionid" }],
   },
 };
