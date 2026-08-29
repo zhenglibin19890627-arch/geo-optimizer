@@ -91,7 +91,7 @@ def create_app() -> Flask:
     @app.after_request
     def no_cache_for_static(resp):
         """本地单机系统：页面/JS/CSS 禁缓存，改动刷新即生效（避免浏览器缓存旧代码）。"""
-        path = resp.path or ""
+        path = request.path or ""
         if path.startswith("/static") or path == "/" or path.endswith(".html"):
             resp.headers["Cache-Control"] = "no-cache, max-age=0"
         return resp

@@ -47,7 +47,7 @@ def test_expand_无关键词报错():
 def test_expand_调用模型并裁剪(monkeypatch):
     captured = {}
 
-    def fake_chat(prompt, temperature=0.3, timeout=60, system=None):
+    def fake_chat(prompt, temperature=0.3, timeout=60, system=None, purpose="analysis"):
         captured["prompt"] = prompt
         captured["temperature"] = temperature
         return '["1问？", "2问？", "3问？", "4问？", "5问？"]'
