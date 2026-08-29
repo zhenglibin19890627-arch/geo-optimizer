@@ -10,8 +10,10 @@ const EDITOR_URL = "https://mp.toutiao.com/profile_v4/graphic/publish";
 
 export async function publish({ post, log }) {
   const { html } = renderMarkdown(post.body_md);
-  await log("打开头条创作平台");
-  const tab = await chrome.tabs.create({ url: EDITOR_URL, active: false });
+  await log("打开头条创作平台（前台标签页）");
+  // 前台打开：后台标签页会被 Chrome 降频，部分发布流程在不可见状态下不响应点击（weiqi 同款做法）
+  const tab = await chrome.tabs.create({ url: EDITOR_URL, active: true });
+  let published = false; // 失败时保留标签页，供人工完成发布
   try {
     await waitForTabComplete(tab.id);
     const loggedIn = await waitForConditionInTab(
@@ -152,6 +154,7 @@ export async function publish({ post, log }) {
     await new Promise((r) => setTimeout(r, 6000));
     const late = await evalInTab(tab.id, `return location.href;`);
     if (!late.includes("graphic/publish")) {
+      published = true;
       return { url: late };
     }
     // 强信号检测：①新标签页里的头条文章页 ②页面关键词扫描（发布成功/失败/验证/封面）
@@ -160,6 +163,7 @@ export async function publish({ post, log }) {
       /toutiao\.com\/(article|a\d)/i.test(t.url || "")
       || /toutiao\.com.*\/articles/i.test(t.url || ""));
     if (articleTab && articleTab.id !== tab.id) {
+      published = true;
       return { url: articleTab.url };
     }
     const kw = await evalInTab(tab.id, `
@@ -191,9 +195,8 @@ export async function publish({ post, log }) {
         + " || 按钮[" + btnInfo.join(" ;; ") + "]";
     `);
     throw new Error(
-      "头条发布提交未能自动确认（已用 CDP 真实点击发布）。现场： " + kw + " " + scene.slice(0, 300)
-      + " ——内容已注入，未确认发出任何内容");
+      "头条发布未能自动确认——编辑器标签页已保留，请手动完成发布（内容已注入，检查右侧「发表设置」后点右上角「发布」即可）。现场： " + kw + " " + scene.slice(0, 300));
   } finally {
-    chrome.tabs.remove(tab.id).catch(() => {});
+    if (published) chrome.tabs.remove(tab.id).catch(() => {});
   }
 }

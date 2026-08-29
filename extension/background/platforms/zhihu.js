@@ -8,8 +8,10 @@ const EDITOR_URL = "https://zhuanlan.zhihu.com/write";
 
 export async function publish({ post, log }) {
   const { html } = renderMarkdown(post.body_md);
-  await log("打开知乎专栏编辑器");
-  const tab = await chrome.tabs.create({ url: EDITOR_URL, active: false });
+  await log("打开知乎专栏编辑器（前台标签页）");
+  // 前台打开 + 失败时保留标签页：自动化发不出去就让人工在原页面完成发布
+  const tab = await chrome.tabs.create({ url: EDITOR_URL, active: true });
+  let published = false;
   try {
     await waitForTabComplete(tab.id);
     const editorReady = await waitForConditionInTab(
@@ -53,14 +55,15 @@ export async function publish({ post, log }) {
         tab.id,
         `return (location.origin + location.pathname).replace(/\\/edit$/, "");`,
       );
+      published = true;
       return { url };
     }
-    // 自动发布未确认：内容已在编辑器且知乎自动保存草稿，降级为人工发布
+    // 自动发布未确认：内容已在编辑器且知乎自动保存草稿，降级为人工发布（保留编辑器页面）
     throw new Error(
-      "内容已注入编辑器（知乎草稿箱已自动保存），但自动发布未确认"
+      "内容已注入编辑器（知乎草稿箱已自动保存），自动发布未确认"
       + (clicked ? "（已点击发布但未检测到落地页跳转，请检查知乎后台）" : "（未找到发布按钮）")
-      + "——请到 zhuanlan.zhihu.com/write 人工确认发布");
+      + "——编辑器标签页已保留，请手动完成发布");
   } finally {
-    chrome.tabs.remove(tab.id).catch(() => {});
+    if (published) chrome.tabs.remove(tab.id).catch(() => {});
   }
 }

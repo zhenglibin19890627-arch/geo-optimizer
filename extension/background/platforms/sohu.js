@@ -9,8 +9,10 @@ const EDITOR_URL = "https://mp.sohu.com/mpfe/v4/contentManagement/news/addarticl
 
 export async function publish({ post, log }) {
   const { html } = renderMarkdown(post.body_md);
-  await log("打开搜狐号发文编辑器");
-  const tab = await chrome.tabs.create({ url: EDITOR_URL, active: false });
+  await log("打开搜狐号发文编辑器（前台标签页）");
+  // 前台打开：后台标签页会被 Chrome 降频，部分发布流程在不可见状态下不响应点击（weiqi 同款做法）
+  const tab = await chrome.tabs.create({ url: EDITOR_URL, active: true });
+  let published = false; // 失败时保留标签页，供人工完成发布
   try {
     await waitForTabComplete(tab.id);
     const loggedIn = await waitForConditionInTab(
@@ -186,6 +188,7 @@ export async function publish({ post, log }) {
     );
 
     if (confirmed) {
+      published = true;
       const url = await evalInTab(
         tab.id,
         `return location.href;`,
@@ -211,9 +214,8 @@ export async function publish({ post, log }) {
         + " || 发布元素[" + (pub.join(" ;; ") || "无") + "]";
     `);
     throw new Error(
-      "搜狐号发布提交未能自动确认（已用 CDP 真实点击发布与确认）。现场： " + scene.slice(0, 380)
-      + " ——内容已注入并自动存草稿，未确认发出任何内容");
+      "搜狐号发布未能自动确认——编辑器标签页已保留，请手动完成发布（内容已注入并自动存草稿，直接点右上角「发布」即可）。现场： " + scene.slice(0, 300));
   } finally {
-    chrome.tabs.remove(tab.id).catch(() => {});
+    if (published) chrome.tabs.remove(tab.id).catch(() => {});
   }
 }
