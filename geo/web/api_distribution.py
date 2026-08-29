@@ -231,6 +231,28 @@ def manual_publish(task_id: int):
     return ok({"task_id": task_id}, "已记录为手动发布成功")
 
 
+@bp.route("/distribution/drafts/<int:draft_id>/advice", methods=["POST"])
+def draft_advice(draft_id: int):
+    """审阅环节的 GEO 优化建议：规则评分 + AI 建议（原内容优化页能力并入分发流程）。"""
+    brand_id = current_brand_id()
+    with database.session_scope() as s:
+        row = _draft_or_404(s, draft_id, brand_id)
+        content = (row.title or "") + "\n\n" + (row.body_md or "")
+    from geo.analyzers import content_advice
+    brand = database.get_brand(brand_id)
+    keywords = []
+    with database.session_scope() as s:
+        keywords = [k.text for k in s.query(database.Keyword)
+                    .filter(database.Keyword.brand_id == brand_id)
+                    .filter(database.Keyword.enabled == True).all()]  # noqa: E712
+    score = content_advice.geo_score(content, brand.get("brand_name") or "我的品牌", keywords)
+    try:
+        suggestions = content_advice.generate_suggestions(content, brand, keywords)
+    except Exception:
+        suggestions = []
+    return ok({"score": score, "suggestions": suggestions}, "优化建议已生成")
+
+
 @bp.route("/distribution/drafts/<int:draft_id>", methods=["PUT"])
 def update_draft(draft_id: int):
     """人工审阅编辑：标题/正文/摘要/标签。"""

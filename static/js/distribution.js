@@ -151,11 +151,49 @@ function renderEditor(draft, showPublish) {
     '<input class="input" id="ed-tags" value="' + esc(draft.tags) + '"></div>' +
     '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
     '<button class="btn btn-primary" id="ed-save">保存修改</button>' +
+    '<button class="btn" id="ed-advice">GEO 优化建议</button>' +
     (showPublish ? '<button class="btn btn-primary" id="ed-publish">发布到官网</button>' : "") +
     '<span class="saved-hint hidden" id="ed-hint"></span></div>' +
     '<div class="small-note mt-8" id="ed-msg"></div>' +
+    '<div class="mt-8 hidden" id="advice-box" style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:12px 14px"></div>' +
     '<div class="mt-8" id="mp-box"></div>';
   renderChannelBox(draft);
+
+  document.getElementById("ed-advice").addEventListener("click", function () {
+    const btn = this, box = document.getElementById("advice-box");
+    btn.disabled = true; btn.textContent = "分析中…（约 30 秒）";
+    // 先保存最新编辑，保证建议针对当前内容
+    geoApi("/api/distribution/drafts/" + draft.id, {
+      method: "PUT",
+      body: {
+        title: document.getElementById("ed-title").value,
+        body_md: document.getElementById("ed-body").value,
+        summary: document.getElementById("ed-summary").value,
+        tags: document.getElementById("ed-tags").value,
+      },
+    }).then(function () {
+      return geoApi("/api/distribution/drafts/" + draft.id + "/advice", { method: "POST", body: {} });
+    }).then(function (res) {
+      btn.disabled = false; btn.textContent = "GEO 优化建议";
+      box.classList.remove("hidden");
+      const sc = res.score || {};
+      let html = '<div style="font-weight:700;margin-bottom:6px">GEO 友好度：'
+        + esc(String(sc.score != null ? sc.score : "-")) + " / 100</div>";
+      (res.suggestions || []).forEach(function (s) {
+        const pc = s.priority === "高" ? "#DC2626" : s.priority === "低" ? "#6B7280" : "#F59E0B";
+        html += '<div style="margin:8px 0"><span style="color:' + pc + ';font-weight:700">['
+          + esc(s.priority) + ']</span> <b>' + esc(s.title) + "</b><br>"
+          + '<span class="small-note">' + esc(s.detail) + "</span></div>";
+      });
+      if (!(res.suggestions || []).length) {
+        html += '<div class="small-note">AI 这次没能给出建议，请稍后再试。</div>';
+      }
+      box.innerHTML = html;
+    }).catch(function (m) {
+      btn.disabled = false; btn.textContent = "GEO 优化建议";
+      showToast(m || "分析失败", "error");
+    });
+  });
 
   document.getElementById("ed-save").addEventListener("click", function () {
     geoApi("/api/distribution/drafts/" + draft.id, {

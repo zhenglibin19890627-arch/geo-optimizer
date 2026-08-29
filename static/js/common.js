@@ -4,7 +4,7 @@
 
 const NAV_ITEMS = [
   { key: "index", label: "首页", href: "/static/index.html" },
-  { key: "optimize", label: "内容优化", href: "/static/optimize.html" },
+  { key: "optimize", label: "内容优化", href: "/static/optimize.html", hidden: true },
   { key: "monitor", label: "监测中心", href: "/static/monitor.html" },
   { key: "report", label: "报告", href: "/static/report.html" },
   { key: "distribution", label: "内容分发", href: "/static/distribution.html" },
@@ -16,7 +16,9 @@ const NAV_ITEMS = [
 function initNav(active) {
   const navbar = document.createElement("nav");
   navbar.className = "navbar";
-  const items = NAV_ITEMS.map(function (it) {
+  const items = NAV_ITEMS.filter(function (it) {
+    return !it.hidden || it.key === active; // hidden 项不在导航显示，但直链访问时仍高亮
+  }).map(function (it) {
     const cls = it.key === active ? "nav-item active" : "nav-item";
     const dot = it.key === "index" ? '<span class="nav-dot" id="nav-dot"></span>' : "";
     return '<a class="' + cls + '" href="' + it.href + '">' + it.label + dot + "</a>";
