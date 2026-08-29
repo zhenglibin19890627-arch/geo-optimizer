@@ -1,0 +1,207 @@
+/* ============================================================
+   稿件库独立页：统计概览 + 搜索/状态/时间筛选 + 平台明细 + 查看全文
+   ============================================================ */
+
+initNav("drafts");
+
+var allDrafts = [];      // 全量稿件（接口已按创建时间倒序）
+var channelCache = {};   // draft_id -> 渠道任务列表
+
+function el(id) { return document.getElementById(id); }
+
+function fmtDate(d) {
+  var p = function (n) { return (n < 10 ? "0" : "") + n; };
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
+
+function timeRange() {
+  var mode = el("d-time").value;
+  if (mode === "all") return null;
+  var today = new Date();
+  if (mode === "week") return { start: fmtDate(new Date(today.getTime() - 7 * 86400000)), end: fmtDate(today) };
+  if (mode === "month") return { start: fmtDate(new Date(today.getTime() - 30 * 86400000)), end: fmtDate(today) };
+  var s = el("d-date-start").value, e = el("d-date-end").value;
+  if (!s && !e) return null;
+  return { start: s, end: e };
+}
+
+function renderStats() {
+  el("st-all").textContent = allDrafts.length;
+  el("st-published").textContent = allDrafts.filter(function (d) { return d.status === "published"; }).length;
+  el("st-draft").textContent = allDrafts.filter(function (d) { return d.status === "draft"; }).length;
+  el("st-failed").textContent = allDrafts.filter(function (d) { return d.status === "failed"; }).length;
+}
+
+function renderList() {
+  var kw = el("d-search").value.trim().toLowerCase();
+  var status = el("d-status").value;
+  var range = timeRange();
+  var shown = allDrafts.filter(function (d) {
+    if (status && d.status !== status) return false;
+    if (kw && (d.title || "").toLowerCase().indexOf(kw) < 0
+      && (d.summary || "").toLowerCase().indexOf(kw) < 0) return false;
+    if (range) {
+      var day = (d.created_at || "").slice(0, 10);
+      if (range.start && day && day < range.start) return false;
+      if (range.end && day && day > range.end) return false;
+    }
+    return true;
+  });
+  el("d-count").textContent = "符合条件 " + shown.length + " / " + allDrafts.length + " 篇";
+  var list = el("draft-list");
+  if (!shown.length) {
+    list.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:#9CA3AF">'
+      + (allDrafts.length ? "没有符合条件的稿件。" : "还没有稿件——去「内容分发」生成第一篇。") + "</div>";
+    return;
+  }
+  list.innerHTML = "";
+  shown.forEach(function (d) {
+    var card = document.createElement("div");
+    card.className = "draft-card st-" + d.status;
+    var srcHtml = "";
+    if (d.source_round_id) {
+      srcHtml = '<a href="/monitor.html?round_id=' + encodeURIComponent(d.source_round_id)
+        + '" target="_blank" rel="noopener" class="src-badge" style="text-decoration:none">简报溯源 · 第 '
+        + esc(d.source_round_id) + " 轮监测</a>";
+    } else if (d.brief) {
+      srcHtml = '<span class="src-badge">来自创作简报</span>';
+    } else {
+      srcHtml = '<span class="src-badge">知识库生成</span>';
+    }
+    var pubHtml = d.published_url
+      ? '<a href="' + esc(d.published_url) + '" target="_blank" rel="noopener" style="color:var(--success,#16A34A);text-decoration:none">已发布内容 ↗</a>'
+      : "";
+    card.innerHTML =
+      '<div class="draft-head">'
+      + '<div style="flex:1;min-width:0">'
+      + '<div class="draft-title-main" data-view="' + d.id + '">' + esc(d.title) + "</div>"
+      + '<div class="draft-meta">'
+      + '<span>' + esc((d.created_at || "").slice(0, 16)) + "</span>"
+      + srcHtml
+      + pubHtml
+      + "</div></div>"
+      + '<div class="draft-actions">'
+      + '<button class="btn btn-xs" data-view="' + d.id + '">查看</button>'
+      + '<button class="btn btn-xs" data-edit="' + d.id + '">去编辑</button>'
+      + '<button class="btn btn-xs" data-del="' + d.id + '">删除</button>'
+      + "</div></div>"
+      + '<div class="platform-chips" data-chips="' + d.id + '"><span class="small-note" style="color:#bbb">平台明细加载中…</span></div>';
+    list.appendChild(card);
+
+    loadChips(d, card.querySelector('[data-chips="' + d.id + '"]'));
+  });
+
+  list.querySelectorAll("[data-view]").forEach(function (n) {
+    n.addEventListener("click", function () { openView(n.getAttribute("data-view")); });
+  });
+  list.querySelectorAll("[data-edit]").forEach(function (n) {
+    n.addEventListener("click", function () { location.href = "/static/distribution.html"; });
+  });
+  list.querySelectorAll("[data-del]").forEach(function (n) {
+    n.addEventListener("click", function () {
+      confirmDialog("删除这篇稿件？该操作不可恢复。", function () {
+        geoApi("/api/distribution/drafts/" + n.getAttribute("data-del"), { method: "DELETE", body: {} })
+          .then(function () { loadAll(); showToast("已删除", "success"); })
+          .catch(function (m) { showToast(m || "删除失败", "error"); });
+      }, { danger: true });
+    });
+  });
+}
+
+function loadChips(d, box) {
+  geoApi("/api/distribution/drafts/" + d.id + "/channels").then(function (ch) {
+    channelCache[d.id] = ch;
+    if (!ch.length) { box.innerHTML = '<span class="small-note" style="color:#bbb">尚未分发——去「内容分发」勾选平台</span>'; return; }
+    box.innerHTML = ch.map(function (t) {
+      var cls = t.status === "published" ? "ok" : t.status === "failed" ? "bad"
+        : (t.status === "dispatching" || t.status === "pending") ? "run" : "idle";
+      var lb = { published: "已发布", failed: "失败", dispatching: "分发中", pending: "待分发" }[t.status] || t.status;
+      var html = '<span class="p-chip"><span class="p-dot ' + cls + '"></span>'
+        + esc(t.platform) + " · " + lb;
+      if (t.platform_url) html += ' · <a href="' + esc(t.platform_url) + '" target="_blank" rel="noopener">打开 ↗</a>';
+      if (t.status === "failed") {
+        html += ' · <a href="javascript:;" data-retry="' + t.id + '" style="color:var(--warn,#F59E0B)">重试</a>';
+        html += ' · <a href="javascript:;" data-manual="' + t.id + '" style="color:var(--success,#16A34A)">手动已发</a>';
+      }
+      return html + "</span>";
+    }).join("");
+    box.querySelectorAll("[data-retry]").forEach(function (a) {
+      a.addEventListener("click", function () {
+        geoApi("/api/distribution/channels/" + a.getAttribute("data-retry") + "/retry", { method: "POST", body: {} })
+          .then(function () { loadAll(); showToast("已重新排队", "success"); })
+          .catch(function (m) { showToast(m || "重试失败", "error"); });
+      });
+    });
+    box.querySelectorAll("[data-manual]").forEach(function (a) {
+      a.addEventListener("click", function () {
+        var url = prompt("你已在平台上手动发布成功——可粘贴发布后的文章链接（不知道就留空）：", "");
+        if (url === null) return;
+        geoApi("/api/distribution/channels/" + a.getAttribute("data-manual") + "/manual",
+               { method: "POST", body: { platform_url: (url || "").trim() } })
+          .then(function () { loadAll(); showToast("已记录手动发布成功", "success"); })
+          .catch(function (m) { showToast(m || "记录失败", "error"); });
+      });
+    });
+  }).catch(function () { box.innerHTML = ""; });
+}
+
+function openView(id) {
+  geoApi("/api/distribution/drafts/" + id).then(function (d) {
+    el("view-title").textContent = d.title;
+    var ch = channelCache[id] || [];
+    var platLine = ch.length
+      ? " · 渠道：" + ch.map(function (t) {
+          var mark = t.status === "published" ? "✅" : t.status === "failed" ? "❌" : "⏳";
+          return mark + t.platform;
+        }).join(" ")
+      : "";
+    el("view-meta").textContent = "创建于 " + (d.created_at || "").slice(0, 16)
+      + " · 状态：" + ({ published: "已发布", draft: "待审阅", failed: "发布失败" }[d.status] || d.status)
+      + platLine;
+    el("view-body").textContent = d.body_md || "";
+    el("view-mask").classList.add("show");
+  }).catch(function (m) { showToast(m || "读取失败", "error"); });
+}
+
+function loadAll() {
+  geoApi("/api/distribution/drafts").then(function (items) {
+    allDrafts = items || [];
+    renderStats();
+    renderList();
+  }).catch(function () {
+    el("draft-list").innerHTML = '<div class="card" style="text-align:center;padding:30px;color:#DC2626">稿件库读取失败，请确认服务已启动。</div>';
+  });
+}
+
+/* ---------------- 事件绑定 ---------------- */
+
+el("d-search").addEventListener("input", renderList);
+el("d-status").addEventListener("change", renderList);
+el("d-time").addEventListener("change", function () {
+  var custom = el("d-custom-range");
+  if (this.value === "custom") {
+    custom.classList.remove("hidden");
+    if (!el("d-date-start").value) el("d-date-start").value = fmtDate(new Date(Date.now() - 30 * 86400000));
+    if (!el("d-date-end").value) el("d-date-end").value = fmtDate(new Date());
+  } else {
+    custom.classList.add("hidden");
+  }
+  renderList();
+});
+el("d-date-start").addEventListener("change", renderList);
+el("d-date-end").addEventListener("change", renderList);
+el("d-refresh").addEventListener("click", loadAll);
+document.querySelectorAll(".stat-tile").forEach(function (tile) {
+  tile.addEventListener("click", function () {
+    document.querySelectorAll(".stat-tile").forEach(function (t) { t.classList.remove("active"); });
+    tile.classList.add("active");
+    el("d-status").value = tile.getAttribute("data-st");
+    renderList();
+  });
+});
+el("view-close").addEventListener("click", function () { el("view-mask").classList.remove("show"); });
+el("view-mask").addEventListener("click", function (e) {
+  if (e.target === el("view-mask")) el("view-mask").classList.remove("show");
+});
+
+loadAll();
