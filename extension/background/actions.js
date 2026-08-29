@@ -3,7 +3,8 @@
 // publish_post / get_job_status / cancel_job / render_wechat_html
 
 import * as store from "./store.js";
-import { listPlatforms, getPlatform, checkLogin } from "./platforms/registry.js";
+import { listPlatforms, getPlatform } from "./platforms/registry.js";
+import { detectLogin } from "./platforms/login_detect.js";
 import { runJob } from "./publish.js";
 import { renderMarkdown } from "./render.js";
 import { MANIFEST_VERSION } from "./version.js";
@@ -69,13 +70,13 @@ async function listAccountsWithLogin() {
   const config = await store.getConfig();
   const out = [];
   for (const account of accounts) {
-    const loggedIn = await checkLogin(account.platform);
+    const det = await detectLogin(account.platform);
     out.push({
       platform: account.platform,
       accountId: account.id,
       nickname: account.nickname,
       enabled: account.enabled,
-      status: loggedIn ? "active" : "logged_out",
+      status: det.loggedIn ? "active" : "logged_out",
       isDefaultPublish: config.defaultPublish[account.platform] === account.id,
     });
   }
