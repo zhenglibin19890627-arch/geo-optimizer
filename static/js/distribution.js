@@ -311,20 +311,51 @@ function loadChannels(draftId) {
 
 /* ---------------- 稿件库 ---------------- */
 
+function draftTimeRange() {
+  const mode = (document.getElementById("draft-filter-time") || {}).value || "all";
+  if (mode === "all") return null;
+  const today = new Date();
+  if (mode === "week") {
+    const from = new Date(today.getTime() - 7 * 86400000);
+    return { start: fmtDate(from), end: fmtDate(today) };
+  }
+  if (mode === "month") {
+    const from = new Date(today.getTime() - 30 * 86400000);
+    return { start: fmtDate(from), end: fmtDate(today) };
+  }
+  // 自定义：读取日历输入（起止可只填一端）
+  const s = (document.getElementById("draft-date-start") || {}).value || "";
+  const e = (document.getElementById("draft-date-end") || {}).value || "";
+  if (!s && !e) return null;
+  return { start: s, end: e };
+}
+
+function fmtDate(d) {
+  const p = function (n) { return (n < 10 ? "0" : "") + n; };
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate());
+}
+
 function loadDrafts() {
   const statusFilter = (document.getElementById("draft-filter-status") || {}).value || "";
-  const limit = parseInt((document.getElementById("draft-filter-limit") || {}).value || "20", 10);
+  const range = draftTimeRange();
   geoApi("/api/distribution/drafts").then(function (items) {
     const list = document.getElementById("draft-list");
-    // 数据增长策略：状态筛选 + 时间倒序 + 条数上限（API 本身已按创建时间倒序）
-    let shown = items.filter(function (d) { return !statusFilter || d.status === statusFilter; });
+    // 数据增长策略：状态筛选 + 时间范围（创建时间，闭区间）+ 时间倒序
+    let shown = items.filter(function (d) {
+      if (statusFilter && d.status !== statusFilter) return false;
+      if (range) {
+        const day = (d.created_at || "").slice(0, 10);
+        if (range.start && day && day < range.start) return false;
+        if (range.end && day && day > range.end) return false;
+      }
+      return true;
+    });
     const total = shown.length;
-    shown = shown.slice(0, limit);
     const stats = document.getElementById("draft-stats");
     if (stats) {
-      stats.textContent = "共 " + items.length + " 篇稿件"
-        + (statusFilter ? "，符合条件 " + total + " 篇" : "")
-        + (total > shown.length ? "，显示最近 " + shown.length + " 篇" : "");
+      let rangeText = "";
+      if (range) rangeText = "，" + (range.start || "…") + " ~ " + (range.end || "今天");
+      stats.textContent = "共 " + items.length + " 篇稿件，符合条件 " + total + " 篇" + rangeText;
     }
     if (!shown.length) {
       list.innerHTML = '<div class="empty">没有符合条件的稿件。</div>';
@@ -428,7 +459,24 @@ function loadDrafts() {
 }
 
 document.getElementById("draft-filter-status").addEventListener("change", loadDrafts);
-document.getElementById("draft-filter-limit").addEventListener("change", loadDrafts);
+document.getElementById("draft-filter-time").addEventListener("change", function () {
+  const custom = document.getElementById("draft-custom-range");
+  if (this.value === "custom") {
+    custom.classList.remove("hidden");
+    // 默认预填最近一月，方便直接调整
+    if (!document.getElementById("draft-date-start").value) {
+      document.getElementById("draft-date-start").value = fmtDate(new Date(Date.now() - 30 * 86400000));
+    }
+    if (!document.getElementById("draft-date-end").value) {
+      document.getElementById("draft-date-end").value = fmtDate(new Date());
+    }
+  } else {
+    custom.classList.add("hidden");
+  }
+  loadDrafts();
+});
+document.getElementById("draft-date-start").addEventListener("change", loadDrafts);
+document.getElementById("draft-date-end").addEventListener("change", loadDrafts);
 
 /* ---------------- 绑定 ---------------- */
 

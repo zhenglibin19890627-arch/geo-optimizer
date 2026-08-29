@@ -122,12 +122,17 @@
             <option value="draft">待审阅</option>
             <option value="failed">发布失败</option>
           </select>
-          <select class="input" id="draft-filter-limit" style="width:auto;padding:2px 6px">
-            <option value="10">最近 10 篇</option>
-            <option value="20" selected>最近 20 篇</option>
-            <option value="50">最近 50 篇</option>
-            <option value="200">最近 200 篇</option>
+          <select class="input" id="draft-filter-time" style="width:auto;padding:2px 6px">
+            <option value="all">全部时间</option>
+            <option value="week">最近一周</option>
+            <option value="month">最近一月</option>
+            <option value="custom">自定义…</option>
           </select>
+          <span id="draft-custom-range" class="hidden" style="display:inline-flex;gap:4px;align-items:center">
+            <input type="date" class="input" id="draft-date-start" style="width:auto;padding:2px 6px">
+            <span class="small-note">至</span>
+            <input type="date" class="input" id="draft-date-end" style="width:auto;padding:2px 6px">
+          </span>
         </div>
         <div class="small-note" id="channel-line" style="margin-bottom:6px"></div>
         <div id="draft-list"></div>
