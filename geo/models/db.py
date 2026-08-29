@@ -486,6 +486,30 @@ class KnowledgeDoc(Base):
         }
 
 
+class PlatformArticle(Base):
+    """平台历史文章：扩展用账号登录态拉取的账号全部已发布文章（不止 GEO 分发的）。"""
+
+    __tablename__ = "platform_article"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    brand_id = Column(Integer, default=1)
+    platform = Column(String(30))
+    title = Column(Text)
+    url = Column(Text)
+    publish_time = Column(String(20))
+    imported_at = Column(DateTime, default=now)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "platform": self.platform or "",
+            "title": self.title or "",
+            "url": self.url or "",
+            "publish_time": self.publish_time or "",
+            "imported_at": str(self.imported_at or ""),
+        }
+
+
 class DistributionDraft(Base):
     __tablename__ = "distribution_draft"
 

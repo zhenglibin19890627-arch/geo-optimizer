@@ -140,6 +140,23 @@
     <span class="small-note" id="d-count"></span>
   </div>
 
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-head">
+      <div class="card-title">平台历史文章</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="small-note" id="pa-last"></span>
+        <select class="input" id="pa-platform" style="width:auto;padding:3px 8px">
+          <option value="zhihu">知乎</option>
+          <option value="sohu">搜狐号</option>
+          <option value="toutiao">头条</option>
+        </select>
+        <button class="btn btn-primary btn-xs" id="pa-sync" disabled>同步历史文章</button>
+      </div>
+    </div>
+    <div class="small-note" style="margin-bottom:4px">经分发桥调用扩展，用你各平台账号的登录态拉取账号下已发布的全部文章（约需几秒到十几秒，完成后页面自动刷新）。</div>
+    <div id="pa-section"></div>
+  </div>
+
   <div id="draft-list"></div>
 </div>
 

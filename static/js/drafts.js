@@ -211,4 +211,43 @@ el("view-mask").addEventListener("click", function (e) {
   if (e.target === el("view-mask")) el("view-mask").classList.remove("show");
 });
 
+function loadPlatformArticles() {
+  geoApi("/api/distribution/platform-articles").then(function (d) {
+    const arts = d.articles || [];
+    const box = document.getElementById("pa-section");
+    const syncBtn = document.getElementById("pa-sync");
+    if (d.last_sync) document.getElementById("pa-last").textContent = "上次同步：" + d.last_sync;
+    if (syncBtn) {
+      syncBtn.disabled = false;
+      syncBtn.addEventListener("click", function () {
+        const platform = document.getElementById("pa-platform").value;
+        syncBtn.disabled = true; syncBtn.textContent = "同步中…";
+        geoApi("/api/distribution/platform-articles/sync", { method: "POST", body: { platform: platform } })
+          .then(function (r) { showToast(r.message || "已发起同步", "success"); })
+          .catch(function (m) { showToast(m || "发起失败", "error"); });
+        setTimeout(function () { location.reload(); }, 12000);
+      });
+    }
+    if (!arts.length) {
+      box.innerHTML = '<div class="small-note" style="color:#bbb">还没有导入平台历史文章——选择平台点「同步」拉取账号已发布的全部文章。</div>';
+      return;
+    }
+    const platforms = [];
+    arts.forEach(function (a) { if (platforms.indexOf(a.platform) < 0) platforms.push(a.platform); });
+    let html = "";
+    platforms.forEach(function (p) {
+      html += '<div style="font-weight:700;margin:10px 0 4px">' + esc(p)
+        + ' <span class="small-note">（' + arts.filter(function (a) { return a.platform === p; }).length + ' 篇）</span></div>';
+      arts.filter(function (a) { return a.platform === p; }).forEach(function (a) {
+        html += '<div style="display:flex;gap:8px;padding:3px 0;font-size:13px;align-items:center">'
+          + '<span class="small-note" style="width:86px;flex-shrink:0">' + esc(a.publish_time || "") + "</span>"
+          + '<a href="' + esc(a.url) + '" target="_blank" rel="noopener" style="flex:1;text-decoration:none;color:var(--text-main,#1F2937)">'
+          + esc(a.title) + " ↗</a></div>";
+      });
+    });
+    box.innerHTML = html;
+  }).catch(function () {});
+}
+
 loadAll();
+loadPlatformArticles();

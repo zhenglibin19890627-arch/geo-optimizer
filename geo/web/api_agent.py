@@ -175,3 +175,47 @@ def queue_stats():
     return ok({"stats": stats, "agent_online": distribution.agent_online(),
                "platforms": [{"id": k, "name": v}
                              for k, v in distribution.SUPPORTED_PLATFORMS.items()]}, "获取成功")
+
+
+@bp.route("/agent/articles-sync/pending", methods=["GET"])
+def articles_sync_pending():
+    """宿主轮询：是否有待执行的文章同步请求（设置键 article_sync_request）。"""
+    _check_agent_token()
+    platform = str(database.get_setting("article_sync_request", "") or "").strip()
+    return ok({"platform": platform})
+
+
+@bp.route("/agent/platform-articles", methods=["POST"])
+def platform_articles_ingest():
+    """宿主回传扩展拉取的平台历史文章：按 URL 去重入库，并清掉同步请求。"""
+    _check_agent_token()
+    data = request.get_json(silent=True) or {}
+    platform = str(data.get("platform") or "").strip()
+    if platform not in ("zhihu", "sohu", "toutiao"):
+        raise ApiError("platform 只允许 zhihu/sohu/toutiao")
+    articles = data.get("articles") or []
+    now = datetime.now()
+    added = 0
+    with database.session_scope() as s:
+        for a in articles:
+            if not isinstance(a, dict):
+                continue
+            url = str(a.get("url") or "").strip()
+            title = str(a.get("title") or "").strip()
+            if not url or not title:
+                continue
+            exists = (s.query(database.PlatformArticle)
+                      .filter(database.PlatformArticle.platform == platform,
+                              database.PlatformArticle.url == url).first())
+            if exists:
+                continue
+            s.add(database.PlatformArticle(
+                platform=platform, title=title[:300], url=url[:500],
+                publish_time=str(a.get("publish_time") or "")[:20],
+                imported_at=now))
+            added += 1
+        database.set_setting("article_sync_request", "")
+        database.set_setting(
+            "article_sync_result",
+            f"{platform}:{added} 篇新入库（共收到 {len(articles)} 篇）")
+    return ok({"added": added, "received": len(articles)}, f"已入库 {added} 篇")

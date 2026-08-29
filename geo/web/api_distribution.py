@@ -231,6 +231,29 @@ def manual_publish(task_id: int):
     return ok({"task_id": task_id}, "已记录为手动发布成功")
 
 
+@bp.route("/distribution/platform-articles/sync", methods=["POST"])
+def trigger_articles_sync():
+    """请求宿主经扩展拉取某平台的账号历史文章（异步：宿主下一轮轮询执行）。"""
+    data = get_json()
+    platform = str(data.get("platform") or "").strip()
+    if platform not in ("zhihu", "sohu", "toutiao"):
+        raise ApiError("platform 只允许 zhihu/sohu/toutiao")
+    database.set_setting("article_sync_request", platform)
+    return ok({"platform": platform}, "已发起同步请求，等待分发桥与扩展执行（约几秒到十几秒）")
+
+
+@bp.route("/distribution/platform-articles", methods=["GET"])
+def list_platform_articles():
+    brand_id = current_brand_id()
+    with database.session_scope() as s:
+        rows = (s.query(database.PlatformArticle)
+                .filter(database.PlatformArticle.brand_id == brand_id)
+                .order_by(database.PlatformArticle.publish_time.desc(),
+                          database.PlatformArticle.id.desc()).limit(200).all())
+        return ok({"articles": [r.to_dict() for r in rows],
+                   "last_sync": str(database.get_setting("article_sync_result", "") or "")})
+
+
 @bp.route("/distribution/drafts/<int:draft_id>/advice", methods=["POST"])
 def draft_advice(draft_id: int):
     """审阅环节的 GEO 优化建议：规则评分 + AI 建议（原内容优化页能力并入分发流程）。"""
