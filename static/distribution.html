@@ -37,6 +37,21 @@
       </div>
 
       <!-- 卡片2b：知识库（参考 weiqi 知识库能力，自研实现） -->
+      <!-- 卡片2c：链接改写（第三种创作方式） -->
+      <div class="card" id="rw-card">
+        <div class="card-head">
+          <div class="card-title">方式三 · 链接改写（任意网页 / 公众号文章）</div>
+        </div>
+        <div class="small-note" style="margin-bottom:8px">粘贴一篇文章链接（支持公众号 mp.weixin.qq.com 等各种网站），AI 提炼核心观点后完全重新组织语言，生成 GEO 友好的原创稿件，进入稿件库审阅后分发。</div>
+        <div class="field">
+          <input class="input" id="rw-url" placeholder="https://mp.weixin.qq.com/s/……">
+        </div>
+        <div class="field">
+          <input class="input" id="rw-instruction" placeholder="改写指令（可选，例：面向制造业老板，突出落地案例）">
+        </div>
+        <button class="btn btn-primary" id="rw-btn">抓取并改写为新稿件</button>
+        <span class="saved-hint hidden" id="rw-hint">抓取+改写约需 30~120 秒，请勿关闭页面…</span>
+      </div>
       <div class="card" id="kb-card">
         <div class="card-head">
           <div class="card-title">知识库 · 备选创作路径（选文档 → 提关键词 → 生成稿件）</div>

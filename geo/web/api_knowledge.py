@@ -80,6 +80,26 @@ def extract_keywords(doc_id: int):
     return ok({"doc_id": doc_id, "keywords": words}, f"已提取 {len(words)} 个关键词")
 
 
+@bp.route("/knowledge/rewrite", methods=["POST"])
+def rewrite_from_url():
+    """第三种创作方式：给文章链接（支持公众号等任意网页），AI 改写成新稿件。"""
+    brand_id = current_brand_id()
+    data = get_json()
+    url = str(data.get("url") or "").strip()
+    user_instruction = str(data.get("user_instruction") or "").strip()
+    if len(user_instruction) > 500:
+        raise ApiError("用户指令太长了（最多 500 字）")
+    try:
+        draft_id = knowledge.rewrite_from_url(
+            brand_id, url, user_instruction=user_instruction,
+            generate_title=bool(data.get("generate_title", True)))
+    except KnowledgeError as e:
+        raise ApiError(e.message)
+    with database.session_scope() as s:
+        row = s.get(database.DistributionDraft, draft_id)
+        return ok(row.to_dict(), "改写完成，请审阅编辑后再发布")
+
+
 @bp.route("/knowledge/generate", methods=["POST"])
 def generate_draft():
     """基于知识库生成文章草稿（draft 状态，人工审阅后走分发）。"""

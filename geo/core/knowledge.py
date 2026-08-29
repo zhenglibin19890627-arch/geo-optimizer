@@ -243,3 +243,56 @@ def generate_draft(brand_id: int, doc_ids: list, keywords: list = None,
         s.add(draft)
         s.flush()
         return draft.id
+
+
+def rewrite_from_url(brand_id: int, url: str, user_instruction: str = "",
+                     generate_title: bool = True) -> int:
+    """第三种创作方式：抓取任意网页/公众号文章，AI 改写为 GEO 友好的全新稿件。"""
+    url = (url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        raise KnowledgeError("请填写正确的文章链接（http/https 开头）")
+    from geo.core import fetcher
+    try:
+        fetched = fetcher.fetch_page(url)
+        content = str(fetched.get("text") or "")
+    except Exception as e:
+        raise KnowledgeError("网页抓取失败：" + str(e)[:120])
+    if len(content.strip()) < 100:
+        raise KnowledgeError("网页里没有提取到足够的正文（可能是动态渲染页面），请换一个链接")
+
+    system = "你是一名专业的中文内容改写专家，善于在保留原文核心观点的前提下产出全新表达。"
+    prompt = (
+        "下面是一篇参考文章的正文内容。请先提炼它的核心观点、论据与结构，"
+        "然后**完全重新组织语言**写一篇新文章：观点可借鉴，表达必须原创，不得整段照抄；"
+        "结构更清晰（用 # ## ### 分层），口语化改书面化，补充让内容对 AI 搜索引擎更友好的"
+        "总结句与要点列表。\n"
+        + (f"【改写要求】{user_instruction.strip()}\n" if user_instruction.strip() else "")
+        + "输出要求（严格 JSON 对象，不要任何解释、前后缀、markdown 包裹）：\n"
+        '{"title": "新文章标题（8-25 字）", "body": "Markdown 正文"}\n\n'
+        f"【参考文章正文】\n{content[:8000]}")
+    try:
+        text = llm_client.chat(prompt, temperature=0.6, timeout=180, system=system)
+    except AnalysisError as e:
+        raise KnowledgeError(e.message)
+    cleaned = text.replace("```json", "").replace("```", "").strip()
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start < 0 or end <= start:
+        raise KnowledgeError("AI 返回内容无法解析为文章，请稍后再试")
+    try:
+        obj = json.loads(cleaned[start:end + 1])
+        title = str(obj.get("title") or "").strip()
+        body = str(obj.get("body") or "").strip()
+    except (ValueError, TypeError):
+        raise KnowledgeError("AI 返回内容无法解析为文章，请稍后再试")
+    if not title or len(body) < 100:
+        raise KnowledgeError("AI 返回的文章不完整，请稍后再试")
+    now = database.now()
+    with database.session_scope() as s:
+        draft = database.DistributionDraft(
+            brand_id=brand_id, title=title[:100], body_md=body,
+            summary=body[:120], tags="链接改写",
+            brief_json=None, source_round_id=None,
+            status="draft", created_at=now, updated_at=now)
+        s.add(draft)
+        s.flush()
+        return draft.id

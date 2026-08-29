@@ -355,6 +355,30 @@ document.getElementById("cfg-save").addEventListener("click", function () {
 
 loadOverview();
 
+// ================= 链接改写（第三种创作方式） =================
+(function () {
+  function el(id) { return document.getElementById(id); }
+  el("rw-btn").addEventListener("click", function () {
+    const url = el("rw-url").value.trim();
+    if (!url) { showToast("请先粘贴文章链接", "error"); return; }
+    const btn = el("rw-btn"), hint = el("rw-hint");
+    btn.disabled = true; hint.classList.remove("hidden");
+    geoApi("/api/knowledge/rewrite", {
+      method: "POST",
+      body: { url: url, user_instruction: el("rw-instruction").value.trim() }
+    }).then(function (draft) {
+      btn.disabled = false; hint.classList.add("hidden");
+      showToast("改写完成《" + (draft.title || "") + "》，请审阅后分发", "success");
+      el("gen-card").classList.remove("hidden");
+      renderEditor(draft, true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }).catch(function (m) {
+      btn.disabled = false; hint.classList.add("hidden");
+      showToast(m || "改写失败", "error");
+    });
+  });
+})();
+
 // ================= 知识库（参考 weiqi knowledgeDocs/蒸馏词能力，自研实现） =================
 (function () {
   var editingDocId = null;
