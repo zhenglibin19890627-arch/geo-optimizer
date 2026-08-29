@@ -218,10 +218,10 @@ function renderChannelBox(draft) {
   const online = overviewCache && overviewCache.agent_online;
   const agentAcc = {};
   ((overviewCache && overviewCache.agent && overviewCache.agent.accounts) || [])
-    .forEach(function (a) { agentAcc[a.platform] = a.status; });
+    .forEach(function (a) { agentAcc[a.platform] = a; });
   const accNote = (overviewCache && overviewCache.agent && overviewCache.agent.accounts
                    && overviewCache.agent.accounts.length)
-    ? "" : '<div class="small-note">暂无平台登录快照（分发桥下一跳心跳会带来）。</div>';
+    ? "" : '<div class="small-note">暂无平台账号快照（重启浏览器让宿主换代后，下一次心跳会带来）。</div>';
   box.innerHTML =
     '<div class="card-title">多平台分发</div>' +
     '<div class="small-note">审阅后勾选平台，本机分发桥会把稿件交给浏览器里的发布扩展执行'
@@ -231,11 +231,19 @@ function renderChannelBox(draft) {
     + "</div>" + accNote +
     '<div id="mp-checks" style="display:flex;gap:12px;flex-wrap:wrap;margin:6px 0">' +
     platforms.map(function (p) {
-      const st = agentAcc[p.id];
-      const chip = st
-        ? ('<span class="tag ' + (st === "active" || st === "ok" ? "tag-green" : "tag-orange")
-           + '">' + esc(st) + "</span> ")
-        : "";
+      const a = agentAcc[p.id];
+      let chip = "";
+      if (a) {
+        const nick = a.nickname ? '（' + esc(a.nickname) + '）' : "";
+        if (a.is_default && a.enabled !== false) {
+          chip = '<span class="tag tag-green" title="' + nick + '">就绪·默认发布</span> ';
+        } else if (a.enabled !== false) {
+          chip = '<span class="tag tag-orange" title="' + nick
+            + '">已登录·未设默认发布</span> ';
+        } else {
+          chip = '<span class="tag tag-red">已停用</span> ';
+        }
+      }
       return '<label style="cursor:pointer"><input type="checkbox" value="' + esc(p.id)
         + '"> ' + esc(p.name) + "</label>" + chip;
     }).join("") + "</div>" +

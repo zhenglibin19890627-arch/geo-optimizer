@@ -338,16 +338,27 @@ def start_http_bridge():
 # ---------------- 主循环 ----------------
 
 def collect_accounts(ext: ExtClient, cfg: dict):
-    """向扩展要各平台账号登录状态（list_accounts），供分发页显示。
+    """向扩展要各平台账号状态（list_accounts），供分发页显示就绪度。
 
-    返回 [{platform, status}]；扩展不可达时返回 None（心跳不带该字段，
-    GEO 保留上次快照）。
+    扩展返回字段：{platform, accountId, nickname, enabled, status,
+    isDefaultPublish}。发布时目标不带 accountId 会按「默认发布账号」解析，
+    未设置会抛 default_account_not_configured——所以 isDefaultPublish 是
+    就绪的关键信号，必须带回。扩展不可达时返回 None（心跳不带该字段）。
     """
     try:
         data = ext.request("list_accounts", {}, timeout=cfg["rpc_timeout"]) or []
-        return [{"platform": str(a.get("platform") or ""),
-                 "status": str(a.get("status") or "")}
-                for a in data if isinstance(a, dict)]
+        accounts = []
+        for a in data:
+            if not isinstance(a, dict):
+                continue
+            accounts.append({
+                "platform": str(a.get("platform") or ""),
+                "nickname": str(a.get("nickname") or ""),
+                "enabled": bool(a.get("enabled")),
+                "is_default": bool(a.get("isDefaultPublish")),
+                "status": str(a.get("status") or ""),
+            })
+        return accounts
     except Exception as e:
         log(f"list_accounts 失败（扩展未连接？）：{e}")
         return None

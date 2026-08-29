@@ -160,13 +160,17 @@ def test_心跳与队列概览(tmpdb, client):
 def test_心跳携带平台登录快照(tmpdb, client):
     client.post("/api/agent/heartbeat", json={
         "version": "0.1.0",
-        "accounts": [{"platform": "zhihu", "status": "active"},
-                     {"platform": "sohu", "status": "logged_out"}]})
+        "accounts": [{"platform": "zhihu", "nickname": "云澜号",
+                      "enabled": True, "is_default": True, "status": "active"},
+                     {"platform": "sohu", "nickname": "搜狐号",
+                      "enabled": True, "is_default": False, "status": "active"}]})
     r = client.get("/api/distribution/overview", query_string={"brand_id": 41})
     agent = r.get_json()["data"]["agent"]
     assert agent["online"] is True
-    acc = {a["platform"]: a["status"] for a in agent["accounts"]}
-    assert acc == {"zhihu": "active", "sohu": "logged_out"}
+    acc = {a["platform"]: a for a in agent["accounts"]}
+    assert acc["zhihu"]["is_default"] is True
+    assert acc["zhihu"]["nickname"] == "云澜号"
+    assert acc["sohu"]["is_default"] is False
     assert agent["accounts_at"]
 
 

@@ -46,9 +46,17 @@ def heartbeat():
         database.set_setting("agent_version", version)
     accounts = data.get("accounts")
     if isinstance(accounts, list):
-        clean = [{"platform": str(a.get("platform") or "")[:30],
-                  "status": str(a.get("status") or "")[:30]}
-                 for a in accounts if isinstance(a, dict)]
+        clean = []
+        for a in accounts:
+            if not isinstance(a, dict):
+                continue
+            clean.append({
+                "platform": str(a.get("platform") or "")[:30],
+                "nickname": str(a.get("nickname") or "")[:50],
+                "enabled": bool(a.get("enabled")),
+                "is_default": bool(a.get("is_default")),
+                "status": str(a.get("status") or "")[:30],
+            })
         database.set_setting("agent_accounts",
                              database.jdumps({"at": now_str, "accounts": clean}))
     return ok({"server_time": now_str,
