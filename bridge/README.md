@@ -1,28 +1,34 @@
-# GEO 分发桥（org.synccaster.bridge）
+# GEO 分发桥（com.geo.bridge）
 
-把 GEO 里审阅好的稿件，经浏览器里的发布扩展发到知乎 / 搜狐号 / 今日头条。
+把 GEO 里审阅好的稿件，经浏览器里的**自研发布扩展**（本仓库 `extension/` 目录）发到知乎 / 搜狐号 / 今日头条。
 
 ```
 GEO 后端(/api/agent/*) ←HTTP─ geo_bridge_host.py ─Native Messaging→ 发布扩展 → 平台
 ```
 
+> 旧宿主名 `org.synccaster.bridge`（对接 weiqi 扩展）已退役：需要回退启用时用
+> `python bridge/register_host.py --host-name org.synccaster.bridge --ext-id <weiqi扩展ID>` 重注册即可。
+
 ## 文件
 
 - `geo_bridge_host.py` — 原生宿主本体（纯标准库，浏览器拉起，无 venv 依赖）
-- `register_host.py` — 一键注册/注销（写 HKCU 注册表 + manifest + 启动 .bat）
+- `register_host.py` — 一键注册/注销（写 HKCU 注册表 + manifest + 启动 .bat；`--host-name` 可覆盖宿主名）
+- `preflight.py` — 一键自检（注册表 / 宿主 / GEO / 各平台发布就绪度）
+- `status_check.py` — 状态速查（桥在线 + 渠道任务一览）
+- `test_dispatch.py` — 联调测试：插入测试稿 → 排队三平台 → 跟踪到终态
+- `watch_reload_and_retry.py` — 监视扩展重载后自动重试分发（联调用）
 
-## 首次接线（需要扩展 ID）
+## 首次接线（自研扩展）
 
-1. 打开 `chrome://extensions`（Edge 是 `edge://extensions`）→ 开启「开发者模式」
-2. 找到发布扩展卡片，复制 32 位 ID
-3. 在仓库根目录执行：
+1. `chrome://extensions`（Edge 是 `edge://extensions`）→ 开启「开发者模式」→「加载已解压的扩展程序」→ 选本仓库 `extension/` 目录
+2. 复制扩展卡片上的 32 位 ID，在仓库根目录执行：
 
 ```
 python bridge/register_host.py --ext-id <粘贴ID>
 ```
 
-4. **完全重启浏览器**（所有窗口退出），扩展启动时会自动连上本桥
-5. GEO 分发页顶部出现「分发桥在线」即接线成功
+3. 在扩展「账号管理」页检测各平台登录并添加账号（登录态即凭证，扩展不保存账号密码）
+4. GEO 分发页顶部出现「分发桥在线」、平台旁出现「就绪」徽章即接线成功
 
 ## 日常机制
 
