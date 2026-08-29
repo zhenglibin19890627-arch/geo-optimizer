@@ -6,6 +6,22 @@
 <title>问题库 - GEO 优化系统</title>
 <link rel="stylesheet" href="/static/css/style.css">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<style>
+  .qb-menu { position: relative; }
+  .qb-menu-pop {
+    display: none; position: absolute; right: 0; top: calc(100% + 4px); background: #fff;
+    border: 1px solid var(--border, #E2E8F0); border-radius: 10px; min-width: 110px; padding: 4px;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, .14); z-index: 30;
+  }
+  .qb-menu.open .qb-menu-pop { display: block; }
+  .qb-menu-pop button {
+    display: block; width: 100%; text-align: left; padding: 7px 12px; font-size: 13px;
+    background: none; border: 0; border-radius: 7px; cursor: pointer; color: var(--text-main, #1F2937);
+  }
+  .qb-menu-pop button:hover { background: var(--primary-light, #EFF4FF); }
+  .qb-menu-pop button.warn { color: var(--danger, #DC2626); }
+  .qb-menu-pop button.warn:hover { background: #FDEEEE; }
+</style>
 </head>
 <body>
 

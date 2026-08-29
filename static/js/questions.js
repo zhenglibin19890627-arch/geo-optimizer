@@ -547,28 +547,15 @@ function renderQBank() {
       '<span class="slider"></span></label>';
     row.appendChild(act);
 
-    const editBtn = document.createElement("button");
-    editBtn.className = "btn-text";
-    editBtn.textContent = "编辑";
-    editBtn.addEventListener("click", function () {
+    const editFn = function () {
       qbankEditingId = qbankEditingId === q.id ? null : q.id;
       renderRowMain(main, q);
-    });
-    row.appendChild(editBtn);
-
-    const moveBtn = document.createElement("button");
-    moveBtn.className = "btn-text gray";
-    moveBtn.textContent = "移动";
-    moveBtn.addEventListener("click", function (e) {
+    };
+    const moveFn = function (e) {
       e.stopPropagation();
-      openGroupPicker(moveBtn, function (g) { singleMove(q, g); });
-    });
-    row.appendChild(moveBtn);
-
-    const delBtn = document.createElement("button");
-    delBtn.className = "btn-text";
-    delBtn.textContent = "删除";
-    delBtn.addEventListener("click", function () {
+      openGroupPicker(menuBtn, function (g) { singleMove(q, g); });
+    };
+    const delFn = function () {
       const summary = (q.text || "").length > 20 ? q.text.slice(0, 20) + "…" : q.text;
       confirmDialog("确定要删除「" + summary + "」吗？删除后无法找回。", function () {
         apiDelete("/api/questions/" + q.id).then(function () {
@@ -577,8 +564,36 @@ function renderQBank() {
           loadGroups();
         }).catch(function () {});
       }, { title: "删除问题", okText: "确认删除", danger: true });
+    };
+
+    // 管理▾ 菜单：把编辑/移动/删除收纳成一个下拉，行更清爽
+    const menuWrap = document.createElement("div");
+    menuWrap.className = "qb-menu";
+    const menuBtn = document.createElement("button");
+    menuBtn.className = "btn-text";
+    menuBtn.textContent = "管理 ▾";
+    menuBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      document.querySelectorAll(".qb-menu.open").forEach(function (m) {
+        if (m !== menuWrap) m.classList.remove("open");
+      });
+      menuWrap.classList.toggle("open");
     });
-    row.appendChild(delBtn);
+    const pop = document.createElement("div");
+    pop.className = "qb-menu-pop";
+    const mkItem = function (label, fn, cls) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      if (cls) b.className = cls;
+      b.addEventListener("click", function (e) { e.stopPropagation(); menuWrap.classList.remove("open"); fn(e); });
+      pop.appendChild(b);
+    };
+    mkItem("✏️ 编辑", editFn);
+    mkItem("📁 移动", moveFn);
+    mkItem("🗑️ 删除", delFn, "warn");
+    menuWrap.appendChild(menuBtn);
+    menuWrap.appendChild(pop);
+    row.appendChild(menuWrap);
 
     act.querySelector('input[type="checkbox"]').addEventListener("change", function () {
       const newVal = this.checked;
@@ -757,3 +772,8 @@ function addToBank() {
 initNav("questions");
 bindConcepts(document);
 qInit();
+
+// 点击页面其他位置时收起「管理」下拉菜单
+document.addEventListener("click", function () {
+  document.querySelectorAll(".qb-menu.open").forEach(function (m) { m.classList.remove("open"); });
+});
