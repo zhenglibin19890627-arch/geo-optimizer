@@ -10,27 +10,13 @@ let currentBrief = null;   // 当前简报（生成文章时随请求回传，�
 let selectedTopicIdx = -1; // 简报中选中的主题（生成时作为首选）
 let overviewCache = null;  // 首屏数据（平台清单/扩展在线状态）
 
-/* ---------------- 首屏：配置 + 稿件统计 ---------------- */
+/* ---------------- 首屏：配置 + 平台清单（状态展示已迁移至稿件库独立页） ---------------- */
 
 function loadOverview() {
   geoApi("/api/distribution/overview").then(function (d) {
     overviewCache = d;
-    renderDraftStats(d.stats);
-    renderChannelLine(d);
   }).catch(function () {});
   loadConfig();
-}
-
-function renderChannelLine(d) {
-  const el = document.getElementById("channel-line");
-  if (!el) return;
-  const cs = d.channel_stats || {};
-  const online = d.agent_online;
-  el.innerHTML =
-    '<span class="tag ' + (online ? "tag-green" : "tag-gray") + '">'
-    + (online ? "分发桥在线" : "分发桥离线") + "</span> "
-    + "多平台任务：待发 " + (cs.pending || 0) + " ｜分发中 " + (cs.dispatching || 0)
-    + " ｜已发 " + (cs.published || 0) + " ｜失败 " + (cs.failed || 0);
 }
 
 function loadConfig() {
@@ -42,13 +28,6 @@ function loadConfig() {
     document.getElementById("cfg-token-masked").textContent =
       d.configured ? ("当前 Token：" + d.token_masked) : "尚未配置 Token，发布前请先填写";
   }).catch(function () {});
-}
-
-function renderDraftStats(stats) {
-  const el = document.getElementById("draft-stats");
-  if (!el) return;
-  el.textContent = "共 " + stats.total + " 篇｜待发 " + stats.draft
-    + " ｜已发 " + stats.published + " ｜失败 " + stats.failed;
 }
 
 /* ---------------- 简报 ---------------- */

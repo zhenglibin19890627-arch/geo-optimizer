@@ -171,6 +171,13 @@ function loadAll() {
   }).catch(function () {
     el("draft-list").innerHTML = '<div class="card" style="text-align:center;padding:30px;color:#DC2626">稿件库读取失败，请确认服务已启动。</div>';
   });
+  geoApi("/api/distribution/overview").then(function (d) {
+    const cs = d.channel_stats || {};
+    el("d-bridge").innerHTML = '<span class="tag ' + (d.agent_online ? "tag-green" : "tag-gray") + '">'
+      + (d.agent_online ? "分发桥在线" : "分发桥离线") + "</span>";
+    el("d-chan-stats").textContent = "多平台任务：待发 " + (cs.pending || 0)
+      + " ｜分发中 " + (cs.dispatching || 0) + " ｜已发 " + (cs.published || 0) + " ｜失败 " + (cs.failed || 0);
+  }).catch(function () { el("d-bridge").textContent = ""; });
 }
 
 /* ---------------- 事件绑定 ---------------- */

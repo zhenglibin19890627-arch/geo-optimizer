@@ -7,7 +7,15 @@
 <link rel="stylesheet" href="/static/css/style.css">
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <style>
-  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 14px 0 16px; }
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 14px 0 12px; }
+  .pub-line {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    background: var(--card, #fff); border: 1px solid var(--border, #E2E8F0); border-radius: 10px;
+    padding: 8px 12px; margin-bottom: 14px; font-size: 13px;
+  }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .tag-green { background: #E9F9EF; color: var(--success, #16A34A); }
+  .tag-gray { background: #F1F5F9; color: var(--text-sub, #6B7280); }
   .stat-tile {
     background: var(--card, #fff); border: 1px solid var(--border, #E2E8F0); border-radius: 10px;
     padding: 14px 16px; display: flex; align-items: center; gap: 12px; cursor: pointer;
@@ -97,6 +105,16 @@
       <div class="stat-icon" style="background:#FDEEEE">⚠️</div>
       <div><div class="stat-num" id="st-failed" style="color:var(--danger,#DC2626)">0</div><div class="stat-label">发布失败</div></div>
     </div>
+  </div>
+
+  <div class="pub-line" id="d-publine">
+    <span id="d-bridge">…</span>
+    <span id="d-chan-stats"></span>
+    <span style="flex:1"></span>
+    <span class="small-note">平台后台：</span>
+    <a href="https://www.zhihu.com/me" target="_blank" rel="noopener" class="small-note">知乎我的主页 ↗</a>
+    <a href="https://mp.sohu.com/mpfe/v4/contentManagement/first/page" target="_blank" rel="noopener" class="small-note">搜狐号主页 ↗</a>
+    <a href="https://mp.toutiao.com/profile_v4/graphic/articles" target="_blank" rel="noopener" class="small-note">头条内容管理 ↗</a>
   </div>
 
   <div class="toolbar">
