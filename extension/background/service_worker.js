@@ -44,13 +44,29 @@ async function handleUiAction(msg) {
     case "probeCookies": {
       const platform = getPlatform(msg.platform);
       const rootDomain = platform.loginCookies[0].domain;
-      const cookies = await chrome.cookies.getAll({ domain: rootDomain });
-      return cookies.slice(0, 25).map((c) => ({
-        name: c.name,
-        domain: c.domain,
-        hostOnly: c.hostOnly,
-        expirationDate: c.expirationDate ? "persistent" : "session",
-      }));
+      // 多角度查询：按根域 + 按平台各具体网址（两种过滤语义不同，结果合并去重）
+      const urls = [rootDomain, "www." + rootDomain, platform.loginUrl, platform.editorUrl]
+        .map((u) => (u.startsWith("https://") ? u : "https://" + u));
+      const merged = new Map();
+      const batches = await Promise.all([
+        chrome.cookies.getAll({ domain: rootDomain }),
+        ...urls.map((u) => chrome.cookies.getAll({ url: u }).catch(() => [])),
+      ]);
+      for (const batch of batches) {
+        for (const c of batch) {
+          const key = c.name + "@" + c.domain;
+          if (!merged.has(key)) {
+            merged.set(key, {
+              name: c.name,
+              domain: c.domain,
+              hostOnly: c.hostOnly,
+              persistent: !!c.expirationDate,
+              partitioned: !!(c.partitionKey && c.partitionKey.topLevelSite),
+            });
+          }
+        }
+      }
+      return Array.from(merged.values()).slice(0, 30);
     }
     case "addAccount": {
       getPlatform(msg.platform);
