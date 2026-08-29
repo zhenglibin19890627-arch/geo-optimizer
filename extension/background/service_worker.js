@@ -44,6 +44,7 @@ async function handleUiAction(msg) {
       }
       return { ...det, loginUrl: platform.loginUrl };
     }
+
     case "probeCookies": {
       const platform = getPlatform(msg.platform);
       const rootDomain = platform.loginCookies[0].domain;

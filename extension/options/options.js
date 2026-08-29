@@ -63,6 +63,10 @@ async function render() {
       });
       head.appendChild(check);
 
+      if (det.loggedIn && !det.nickname && det.rawSample) {
+        hint.textContent = "已登录，但未取到昵称。接口字段片段：" + det.rawSample;
+      }
+
       if (det.loggedIn) {
         const add = document.createElement("button");
         add.textContent = p.accounts.length ? "再添加一个账号" : "添加账号";

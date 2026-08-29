@@ -19,16 +19,33 @@ async function sohuRegisterInfo() {
     data.success === true ||
     (payload && typeof payload === "object" && Object.keys(payload).length > 0);
   if (!success) return { ok: false };
-  const nickname = payload.nickName || payload.name || payload.nickname || null;
-  return { ok: true, nickname: nickname ? String(nickname) : null };
+  // 昵称提取：data 与 result 两层都看（含 account 嵌套），与实际响应结构尽力匹配
+  const result = data.result && typeof data.result === "object" ? data.result : {};
+  const candidates = [
+    payload.nickName, payload.name, payload.nickname,
+    payload.account && payload.account.nickName,
+    result.nickName, result.name, result.nickname,
+  ];
+  const nickname = candidates.map((x) => (x == null ? "" : String(x).trim())).find(Boolean) || null;
+  if (nickname) return { ok: true, nickname };
+  // 取不到昵称：返回响应片段供页面显示，便于联调定位字段
+  let rawSample = "";
+  try {
+    rawSample = JSON.stringify(payload).slice(0, 260);
+  } catch { /* 忽略序列化失败 */ }
+  return { ok: true, nickname: null, rawSample };
 }
 
-// 返回 { loggedIn, nickname }
+// 返回 { loggedIn, nickname, rawSample? }
 export async function detectLogin(platformId) {
   if (platformId === "sohu") {
     try {
       const r = await sohuRegisterInfo();
-      return { loggedIn: r.ok, nickname: r.ok ? r.nickname : null };
+      return {
+        loggedIn: r.ok,
+        nickname: r.ok ? r.nickname : null,
+        ...(r.rawSample ? { rawSample: r.rawSample } : {}),
+      };
     } catch (err) {
       console.warn("sohu 登录检测失败", err);
       return { loggedIn: false, nickname: null };
