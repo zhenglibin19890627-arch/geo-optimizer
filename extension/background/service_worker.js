@@ -2,7 +2,7 @@
 
 import "./rpc.js";
 import * as store from "./store.js";
-import { listPlatforms, checkLogin, getPlatform, PLATFORMS } from "./platforms/registry.js";
+import { listPlatforms, checkLogin, getPlatform } from "./platforms/registry.js";
 import { fetchNickname } from "./platforms/profile.js";
 import { runJob } from "./publish.js";
 
