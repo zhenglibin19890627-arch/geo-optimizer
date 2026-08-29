@@ -8,6 +8,7 @@ async function sohuRegisterInfo() {
   const res = await fetch("https://mp.sohu.com/mpbp/bp/account/register-info", {
     credentials: "include",
     headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8000), // 8 秒超时，防挂起卡死渲染
   });
   if (!res.ok) return { ok: false };
   const data = await res.json().catch(() => null);

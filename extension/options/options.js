@@ -40,7 +40,12 @@ async function render() {
       hint.textContent = "";
       let det = { loggedIn: p.loggedIn, nickname: null, loginUrl: "" };
       try {
-        det = await send("detectLogin", { platform: p.id });
+        // 12 秒兜底：探测挂起时退回 overview 的登录态，绝不让单卡卡死列表
+        det = await Promise.race([
+          send("detectLogin", { platform: p.id }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("检测超时")), 12000)),
+        ]);
       } catch (err) { /* 保底用 overview 的登录态 */ }
 
       head.innerHTML = `<h2>${p.name}</h2>
