@@ -235,11 +235,9 @@ function renderChannelBox(draft) {
       let chip = "";
       if (a) {
         const nick = a.nickname ? '（' + esc(a.nickname) + '）' : "";
-        if (a.is_default && a.enabled !== false) {
-          chip = '<span class="tag tag-green" title="' + nick + '">就绪·默认发布</span> ';
-        } else if (a.enabled !== false) {
-          chip = '<span class="tag tag-orange" title="' + nick
-            + '">已登录·未设默认发布</span> ';
+        const tip = a.is_default ? '已设默认发布' + nick : '回退启用账号' + nick;
+        if (a.enabled !== false) {
+          chip = '<span class="tag tag-green" title="' + tip + '">就绪</span> ';
         } else {
           chip = '<span class="tag tag-red">已停用</span> ';
         }
