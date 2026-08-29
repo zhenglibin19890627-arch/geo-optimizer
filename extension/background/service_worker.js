@@ -2,7 +2,8 @@
 
 import "./rpc.js";
 import * as store from "./store.js";
-import { listPlatforms, checkLogin, getPlatform } from "./platforms/registry.js";
+import { listPlatforms, checkLogin, getPlatform, PLATFORMS } from "./platforms/registry.js";
+import { fetchNickname } from "./platforms/profile.js";
 import { runJob } from "./publish.js";
 
 // options/popup 页通过 chrome.runtime.sendMessage 调用内部动作
@@ -33,6 +34,12 @@ async function handleUiAction(msg) {
         });
       }
       return out;
+    }
+    case "detectLogin": {
+      const platform = getPlatform(msg.platform);
+      const loggedIn = await checkLogin(msg.platform);
+      const nickname = loggedIn ? await fetchNickname(msg.platform) : null;
+      return { loggedIn, nickname, loginUrl: platform.loginUrl };
     }
     case "addAccount": {
       getPlatform(msg.platform);

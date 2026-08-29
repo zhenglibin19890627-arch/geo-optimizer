@@ -8,6 +8,7 @@ const PLATFORMS = {
     name: "知乎",
     support: { markdown: true, html: true, latex: false },
     editorUrl: "https://zhuanlan.zhihu.com/write",
+    loginUrl: "https://www.zhihu.com/signin?next=%2F",
     // 登录判定：z_c0 为知乎登录凭证 cookie（.zhihu.com 域）
     loginCookies: [{ domain: "zhihu.com", name: "z_c0" }],
   },
@@ -16,6 +17,7 @@ const PLATFORMS = {
     name: "搜狐号",
     support: { markdown: true, html: true, latex: false },
     editorUrl: "https://mp.sohu.com/main/home/index",
+    loginUrl: "https://mp.sohu.com/login",
     // 搜狐 mp 登录 cookie 名以真机核对为准，先探测 mp.sohu.com 域任意 cookie
     loginCookies: [{ domain: "sohu.com", name: "*" }],
   },
@@ -24,6 +26,7 @@ const PLATFORMS = {
     name: "今日头条",
     support: { markdown: true, html: true, latex: false },
     editorUrl: "https://mp.toutiao.com/profile_v4/graphic/publish",
+    loginUrl: "https://mp.toutiao.com/login/",
     // 头条 mp 登录态常见 cookie：sid_tt / sessionid（.toutiao.com 域）
     loginCookies: [{ domain: "toutiao.com", name: "sid_tt" }, { domain: "toutiao.com", name: "sessionid" }],
   },

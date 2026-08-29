@@ -1,15 +1,16 @@
-// 账号管理页：检测各平台登录态、添加/启用/删除账号、设置默认发布账号
+// 账号管理页：检测各平台登录态（显示真实昵称）、未登录可一键去登录、添加/启用/删除账号
 
-async function send(action, extra) {
-  const res = await chrome.runtime.sendMessage({ channel: "geo-ext", action, ...extra });
-  if (!res || !res.ok) throw new Error(res ? res.error : "扩展后台无响应（service worker 未运行？）");
-  return res.data;
+function send(action, extra) {
+  return chrome.runtime.sendMessage({ channel: "geo-ext", action, ...extra }).then((res) => {
+    if (!res || !res.ok) throw new Error(res ? res.error : "扩展后台无响应（service worker 未运行？）");
+    return res.data;
+  });
 }
 
 async function render() {
   let platforms;
   try {
-    platforms = await send("overview");
+    [platforms] = await Promise.all([send("overview")]);
   } catch (err) {
     const root = document.getElementById("platforms");
     root.innerHTML = '<div class="card">加载失败：' + (err.message || err) + "</div>";
@@ -24,60 +25,87 @@ async function render() {
     card.className = "card";
     const head = document.createElement("div");
     head.className = "card-head";
-    head.innerHTML = `<h2>${p.name}</h2>
-      <span class="badge ${p.loggedIn ? "ok" : "no"}">${p.loggedIn ? "已登录" : "未登录"}</span>
-      <button class="primary check">检测登录</button>`;
     card.appendChild(head);
 
     const list = document.createElement("ul");
     list.className = "accounts";
-    if (!p.accounts.length) {
-      const tip = document.createElement("li");
-      tip.className = "empty";
-      tip.textContent = p.loggedIn
-        ? "检测到登录态，点「添加账号」纳入发布管理。"
-        : "尚未登录：请先在该平台官网登录，再点「检测登录」。";
-      list.appendChild(tip);
-    }
-    for (const account of p.accounts) {
-      const node = tpl.content.cloneNode(true);
-      node.querySelector(".nick").textContent = account.nickname;
-      const enabled = node.querySelector(".enabled");
-      enabled.checked = account.enabled;
-      enabled.addEventListener("change", () =>
-        send("updateAccount", { accountId: account.id, patch: { enabled: enabled.checked } }));
-      const def = node.querySelector(".default");
-      def.name = "default-" + p.id;
-      def.checked = account.isDefault;
-      def.addEventListener("change", () =>
-        send("setDefaultPublish", { platform: p.id, accountId: account.id }));
-      node.querySelector(".del").addEventListener("click", async () => {
-        await send("removeAccount", { accountId: account.id });
-        render();
-      });
-      list.appendChild(node);
-    }
     card.appendChild(list);
 
-    head.querySelector(".check").addEventListener("click", async (e) => {
-      e.target.disabled = true;
-      const after = await send("overview");
-      const me = after.find((x) => x.id === p.id);
-      e.target.textContent = me.loggedIn ? "已登录 ✓" : "未登录";
-      render();
-    });
+    const hint = document.createElement("div");
+    hint.className = "hint";
+    card.appendChild(hint);
 
-    if (p.loggedIn) {
-      const add = document.createElement("button");
-      add.textContent = p.accounts.length ? "再添加一个账号" : "添加账号";
-      add.addEventListener("click", async () => {
-        const nickname = prompt("给这个账号起个备注名（可留空）：", p.name + " 账号");
-        await send("addAccount", { platform: p.id, nickname: nickname || undefined });
-        render();
+    async function refresh() {
+      head.textContent = "";
+      hint.textContent = "";
+      let det = { loggedIn: p.loggedIn, nickname: null, loginUrl: "" };
+      try {
+        det = await send("detectLogin", { platform: p.id });
+      } catch (err) { /* 保底用 overview 的登录态 */ }
+
+      head.innerHTML = `<h2>${p.name}</h2>
+        <span class="badge ${det.loggedIn ? "ok" : "no"}">${
+          det.loggedIn ? "已登录" + (det.nickname ? " · " + det.nickname : "") : "未登录"
+        }</span>`;
+
+      const check = document.createElement("button");
+      check.className = "primary";
+      check.textContent = "检测登录";
+      check.addEventListener("click", async () => {
+        check.disabled = true;
+        check.textContent = "检测中…";
+        await refresh();
       });
-      head.appendChild(add);
+      head.appendChild(check);
+
+      if (det.loggedIn) {
+        const add = document.createElement("button");
+        add.textContent = p.accounts.length ? "再添加一个账号" : "添加账号";
+        add.addEventListener("click", async () => {
+          const nickname = prompt("账号备注名（可留空）：", det.nickname || p.name + " 账号");
+          await send("addAccount", { platform: p.id, nickname: nickname || undefined });
+          render();
+        });
+        head.appendChild(add);
+      } else {
+        const go = document.createElement("button");
+        go.textContent = "去登录";
+        go.addEventListener("click", () => {
+          chrome.tabs.create({ url: det.loginUrl });
+          hint.textContent = "已打开登录页：登录完成后回到本页点「检测登录」。";
+        });
+        head.appendChild(go);
+        hint.textContent = "在该平台官网登录后，点「检测登录」即可添加账号。";
+      }
+
+      list.textContent = "";
+      if (!p.accounts.length) {
+        const tip = document.createElement("li");
+        tip.className = "empty";
+        tip.textContent = det.loggedIn ? "检测到登录态，点「添加账号」纳入发布管理。" : "暂无账号。";
+        list.appendChild(tip);
+      }
+      for (const account of p.accounts) {
+        const node = tpl.content.cloneNode(true);
+        node.querySelector(".nick").textContent = account.nickname;
+        const enabled = node.querySelector(".enabled");
+        enabled.checked = account.enabled;
+        enabled.addEventListener("change", () =>
+          send("updateAccount", { accountId: account.id, patch: { enabled: enabled.checked } }));
+        const def = node.querySelector(".default");
+        def.name = "default-" + p.id;
+        def.checked = account.isDefault;
+        def.addEventListener("change", () =>
+          send("setDefaultPublish", { platform: p.id, accountId: account.id }));
+        node.querySelector(".del").addEventListener("click", async () => {
+          await send("removeAccount", { accountId: account.id });
+          render();
+        });
+        list.appendChild(node);
+      }
     }
 
+    await refresh();
     root.appendChild(card);
   }
 }
