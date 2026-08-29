@@ -159,7 +159,7 @@ def extract_keywords(doc_id: int, brand_id: int, count: int = 10) -> list:
         '- 严格输出 JSON 数组，如 ["关键词一","关键词二"]，不要任何解释或 markdown 包裹\n\n'
         f"【文章标题】{title}\n【文章内容】\n{content[:6000]}")
     try:
-        text = llm_client.chat(prompt, temperature=0.2, timeout=90, system=system)
+        text = llm_client.chat(prompt, temperature=0.2, timeout=150, system=system)
     except AnalysisError as e:
         raise KnowledgeError(e.message)
     # 容错解析：剥掉 markdown 代码块围栏后找 JSON 数组
@@ -173,7 +173,13 @@ def extract_keywords(doc_id: int, brand_id: int, count: int = 10) -> list:
         except (ValueError, TypeError):
             words = []
     if not words:
-        raise KnowledgeError("AI 没能解析出关键词数组，请稍后再试")
+        # 兜底：AI 没输出合法 JSON 时，按分隔符强行切词
+        import re
+        stripped = re.sub(r'^[\[\]{}"\s:，,。]*|["\[\]}\s]+$', "", cleaned)
+        words = [w.strip(' "\'、，。') for w in re.split(r'[、,，\n；;]', stripped)]
+        words = [w for w in words if 2 <= len(w) <= 12 and not w.startswith(("以下", "关键词", "提取"))]
+    if not words:
+        raise KnowledgeError("AI 返回的内容无法解析出关键词（原文前 80 字：" + cleaned[:80] + "），请再点一次重试")
     with database.session_scope() as s:
         row = s.get(database.KnowledgeDoc, doc_id)
         if row:
