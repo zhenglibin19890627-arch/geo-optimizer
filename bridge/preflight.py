@@ -92,15 +92,35 @@ def main():
         online = (body.get("data") or {}).get("agent_online")
         check("分发桥心跳新鲜（扩展已拉起宿主）", online is True,
               "在线" if online else "尚无心跳：请先在浏览器加载扩展并重启浏览器")
+        # 各平台发布就绪度（来自宿主心跳捎带的账号快照）
+        try:
+            with urlreq.urlopen(base + "/api/distribution/overview?brand_id=1",
+                                timeout=5) as resp:
+                ov = json.loads(resp.read().decode("utf-8")).get("data") or {}
+            accounts = ((ov.get("agent") or {}).get("accounts")) or []
+            if accounts:
+                for a in accounts:
+                    if a.get("is_default") and a.get("enabled", True):
+                        mark, note = OK, "就绪（默认发布）"
+                    elif a.get("enabled", True):
+                        mark, note = WARN, "已登录但未设默认发布——去扩展设置里补设"
+                    else:
+                        mark, note = BAD, "已停用"
+                    print(f"{mark} 平台 {a.get('platform')} "
+                          f"{a.get('nickname') or ''} —— {note}")
+            else:
+                print(f"{WARN} 平台账号快照为空（宿主换代后心跳会带来；"
+                      f"需重启浏览器更新宿主）")
+        except Exception:
+            pass
     except Exception as e:
         check("GEO 服务可达", False, f"{e}（GEO 系统没启动？python app.py）")
 
-    # 4. 操作指引
-    print("\n下一步（仅首次需要）：")
-    print("  1. Chrome/Edge → 扩展管理 → 开发者模式 → 加载已解压的扩展程序")
-    print("     选择 C:\\Users\\zlb19\\Desktop\\GEO\\weiqi-main\\weiqi-main")
-    print("  2. 完全重启浏览器（宿主会随扩展自动启动，本脚本再跑一遍应全绿）")
-    print("  3. GEO 分发页审阅稿件 → 勾选平台 → 一键分发")
+    # 4. 操作指引（扩展已安装并在线时的常态指引）
+    print("\n下一步：")
+    print("  1. 若上方账号快照为空：完全重启浏览器（宿主换代后开始上报）")
+    print("  2. 扩展设置页为知乎/搜狐/头条设置「默认发布账号」（就绪的关键）")
+    print("  3. GEO 分发页 → 审阅稿件 → 勾选平台 → 分发")
     print("  日志：data/bridge.log")
     print("=" * 60)
 
