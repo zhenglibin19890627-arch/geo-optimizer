@@ -168,11 +168,25 @@ export async function publish({ post, log }) {
         const dlgs = Array.from(document.querySelectorAll(
           '[class*="alert-dialog"], .modal, [class*="dialog"], [class*="Dialog"], .el-dialog')).filter(visible);
         for (const d of dlgs) {
-          // "确定"未必是 button/a 标签——任意标签内最内层文字匹配
+          // "确定"未必是 button/a 标签——任意标签内最内层文字匹配，再沿祖先找可点容器
           const all = Array.from(d.querySelectorAll("*")).filter((b) =>
             visible(b) && /^(确定|确认|发布)$/.test((b.textContent || "").trim()));
           const inner = all.filter((b) => !all.some((c) => c !== b && b.contains(c)));
-          if (inner.length) { inner[inner.length - 1].click(); }
+          if (!inner.length) continue;
+          let target = inner[inner.length - 1];
+          let p = target.parentElement;
+          while (p && p !== d) {
+            const cls = String(p.className || "");
+            if (p.tagName === "BUTTON" || p.tagName === "A" || /btn|button/i.test(cls)) { target = p; break; }
+            p = p.parentElement;
+          }
+          const r = target.getBoundingClientRect();
+          const o = { bubbles: true, cancelable: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+          try { target.dispatchEvent(new PointerEvent("pointerdown", o)); } catch (e) {}
+          target.dispatchEvent(new MouseEvent("mousedown", o));
+          try { target.dispatchEvent(new PointerEvent("pointerup", o)); } catch (e) {}
+          target.dispatchEvent(new MouseEvent("mouseup", o));
+          target.dispatchEvent(new MouseEvent("click", o));
         }
       `);
     }

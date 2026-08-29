@@ -115,7 +115,9 @@ export async function publish({ post, log }) {
         'button, .btn, [role="button"], a.btn, input[type="submit"]'))
         .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
       const primary = btns().find((b) => /byte-btn-primary|btn-primary/.test(String(b.className))
-        && /发布|发表|确认/.test((b.textContent || "").trim()));
+        && /发布|发表|确认/.test((b.textContent || "").trim())
+        && !b.disabled && !/disabled/i.test(String(b.className))
+        && b.getAttribute("aria-disabled") !== "true");
       if (primary) { fireReal(primary); return "primary:" + String(primary.className).slice(0, 40); }
       const byClass = document.querySelector(
         'button[class*="publish"], .btn[class*="publish"], [role="button"][class*="publish"]');
