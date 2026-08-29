@@ -1,5 +1,7 @@
-// 今日头条适配器：mp.toutiao.com 图文创作
-// 编辑器为 ProseMirror；首版走“打开发布页 → 注入 → 发布”流程，选择器待真机联调核对。
+// 今日头条适配器：mp.toutiao.com 图文创作（ProseMirror 编辑器）
+// 流程：打开发布页 → 登录校验 → 注入标题/正文（多策略+填充验证）→ 发布按钮级联
+// → 提交确认与验证；无法确认提交时降级为人工发布指引（不误发）。
+// 标题候选含 ProseMirror 首行（头条新版标题在编辑器内）与独立输入框两种形态。
 
 import { renderMarkdown } from "../render.js";
 import { evalInTab, waitForTabComplete, waitForConditionInTab } from "./dom.js";
@@ -26,14 +28,116 @@ export async function publish({ post, log }) {
     );
     if (!editorReady) throw new Error("编辑器未找到（页面改版，需核对接入点）");
 
-    await log("注入标题与正文（首版联调）");
-    await evalInTab(tab.id, `
-      const titleEl = document.querySelector('textarea[placeholder*="标题"], input[placeholder*="标题"], .article-input input');
-      if (titleEl) geoSetNativeValue(titleEl, ${JSON.stringify(post.title)});
-      geoPasteHtml('.ProseMirror, [contenteditable="true"]', ${JSON.stringify(html)});
-      return true;
+    await log("注入标题与正文（多策略+填充验证）");
+    const filled = await evalInTab(tab.id, `
+      const TITLE = ${JSON.stringify(post.title)};
+      const HTML = ${JSON.stringify(html)};
+      // 标题：独立输入框（textarea/input）或 ProseMirror 文档首段（新版内嵌标题）
+      const titleEl = document.querySelector(
+        'textarea[placeholder*="标题"], input[placeholder*="标题"], .article-input input, .cef-title-editor input, [class*="title"] input, [class*="title"] textarea');
+      if (titleEl) {
+        geoSetNativeValue(titleEl, TITLE);
+      } else {
+        const pm = document.querySelector('.ProseMirror');
+        const first = pm && (pm.querySelector('h1, .title, [data-title]') || pm.firstElementChild);
+        if (first && /^(标题|请输入标题)/.test((first.textContent || "").trim())) {
+          geoSetNativeValue(first, TITLE);
+        }
+      }
+      const editor = document.querySelector('.ProseMirror, [contenteditable="true"]');
+      if (!editor) return { ok: false, reason: "编辑器元素未找到" };
+      const targetLen = HTML.replace(/<[^>]+>/g, "").replace(/\\s+/g, "").length;
+      const filledLen = () => (editor.textContent || "").replace(/\\s+/g, "").length;
+      const clearEditor = () => {
+        try { editor.focus(); } catch (e) {}
+        editor.innerHTML = "";
+        editor.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      const firePaste = () => {
+        try {
+          const dt = new DataTransfer();
+          dt.setData("text/html", HTML);
+          const ev = new ClipboardEvent("paste", { bubbles: true, cancelable: true });
+          Object.defineProperty(ev, "clipboardData", { get: () => dt });
+          editor.dispatchEvent(ev);
+          return true;
+        } catch (e) { return false; }
+      };
+      const strategies = [
+        // 1. ProseMirror 对 paste 事件响应最好
+        () => { clearEditor(); editor.focus(); return firePaste(); },
+        // 2. execCommand insertHTML
+        () => {
+          clearEditor(); editor.focus();
+          const ok = document.execCommand("insertHTML", false, HTML);
+          if (!ok) editor.innerHTML = HTML;
+          editor.dispatchEvent(new Event("input", { bubbles: true }));
+          return true;
+        },
+      ];
+      let used = -1;
+      for (let i = 0; i < strategies.length; i++) {
+        try { strategies[i](); } catch (e) { continue; }
+        await new Promise((r) => setTimeout(r, 600));
+        if (filledLen() >= Math.min(targetLen, Math.max(1, Math.floor(targetLen * 0.5)))) {
+          used = i; break;
+        }
+      }
+      return {
+        ok: used >= 0,
+        strategy: used,
+        reason: used < 0 ? "注入后字符数校验未过（target=" + targetLen + " got=" + filledLen() + "）" : "",
+        titleFilled: !!titleEl,
+        targetLen,
+      };
     `);
-    throw new Error("头条发布流程待真机联调：已定位编辑器，发布按钮提交逻辑将在联调中补齐（本条不会发布任何内容）");
+    if (!filled || !filled.ok) {
+      throw new Error("头条正文注入未通过校验：" + ((filled && filled.reason) || "页面无响应")
+        + "——未发布任何内容，请人工检查");
+    }
+    await log("注入完成（策略#" + filled.strategy + "，标题" + (filled.titleFilled ? "✓" : "✗") + "），触发发布");
+    await new Promise((r) => setTimeout(r, 800));
+
+    // ---- 发布按钮：类名候选 → 精确文本 → 包含文本（排除定时/预览/草稿） ----
+    const clicked = await evalInTab(tab.id, `
+      const btns = () => Array.from(document.querySelectorAll(
+        'button, .btn, [role="button"], a.btn, input[type="submit"]'))
+        .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+      const byClass = document.querySelector(
+        '[class*="publish-btn"], [class*="btn-publish"], .submit-btn, .btn-submit');
+      if (byClass && !byClass.disabled) { byClass.click(); return "class"; }
+      const exact = btns().find((b) => ["发布", "发表", "发布文章"].includes((b.textContent || "").trim()));
+      if (exact) { exact.click(); return "text-exact"; }
+      const partial = btns().find((b) => /发布|发表/.test((b.textContent || "").trim())
+        && !/定时|预览|存草稿|草稿/.test((b.textContent || "").trim()));
+      if (partial) { partial.click(); return "text-partial"; }
+      return "";
+    `);
+
+    // ---- 提交确认：处理确认弹窗，等待离开发布页或出现成功提示 ----
+    await new Promise((r) => setTimeout(r, 1500));
+    await evalInTab(tab.id, `
+      const dlg = document.querySelector(
+        '.modal button.primary, .el-dialog button.primary, [class*="dialog"] button.primary, [class*="modal"] button.primary');
+      if (dlg) { dlg.click(); }
+    `);
+    const confirmed = await waitForConditionInTab(
+      tab.id,
+      `!location.pathname.includes('graphic/publish')
+        || /发布成功|发表成功|成功发布/.test((document.body.textContent || ""))
+        || !!document.querySelector('[class*="toast-success"], [class*="success-toast"], [class*="message-success"]')`,
+      20000,
+      1000,
+    );
+
+    if (confirmed) {
+      const url = await evalInTab(tab.id, `return location.href;`);
+      return { url };
+    }
+    throw new Error(
+      "内容已注入编辑器，但发布提交未能自动确认"
+      + (clicked ? "（已点击「" + clicked + "」按钮但未见成功反馈）" : "（未找到发布按钮）")
+      + "——请到头条创作平台人工确认发布，未发出任何误内容");
   } finally {
     chrome.tabs.remove(tab.id).catch(() => {});
   }
