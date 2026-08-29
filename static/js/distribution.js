@@ -490,5 +490,43 @@ loadDrafts();
     });
   });
 
+  window.loadKnowledgeDocs = loadDocs;
   loadDocs();
+})();
+
+// —— 知识库文件上传（.md/.txt/.pdf/.docx/.xlsx，单个 ≤ 20MB）——
+(function () {
+  function el(id) { return document.getElementById(id); }
+  var input = el("kb-file-input");
+  el("kb-upload-btn").addEventListener("click", function () { input.click(); });
+  input.addEventListener("change", function () {
+    var files = Array.prototype.slice.call(input.files || []);
+    if (!files.length) return;
+    var btn = el("kb-upload-btn");
+    btn.disabled = true; btn.textContent = "解析上传中…";
+    var done = 0, results = [];
+    var finish = function () {
+      btn.disabled = false; btn.textContent = "📎 上传文档/表格";
+      input.value = "";
+      if (typeof window.loadKnowledgeDocs === "function") window.loadKnowledgeDocs();
+      showToast(results.join("；") || "上传完成", failedCount() ? "error" : "success");
+    };
+    var failedCount = function () { return results.filter(function (r) { return r.indexOf("失败") >= 0; }).length; };
+    files.forEach(function (f) {
+      if (f.size > 20 * 1024 * 1024) { results.push(f.name + " 失败（超过 20MB）"); if (++done === files.length) finish(); return; }
+      var fd = new FormData();
+      fd.append("file", f);
+      fetch("/api/knowledge/docs/upload", { method: "POST", body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          results.push(j.ok ? (f.name + " 已入库") : (f.name + " 失败（" + (j.message || "未知") + "）"));
+          if (++done === files.length) finish();
+        })
+        .catch(function () {
+          results.push(f.name + " 失败（网络错误）");
+          if (++done === files.length) finish();
+        });
+    });
+  });
+  function loadDocsLocal() { if (typeof window.loadKnowledgeDocs === "function") window.loadKnowledgeDocs(); }
 })();

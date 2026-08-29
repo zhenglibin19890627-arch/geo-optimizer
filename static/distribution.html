@@ -42,7 +42,12 @@
           <div class="card-title">知识库 · 备选创作路径（选文档 → 提关键词 → 生成稿件）</div>
           <button class="btn" id="kb-add-btn">新增文档</button>
         </div>
-        <div class="small-note" id="kb-note">把公司资料、产品说明、过往佳作等存入知识库；生成时勾选若干篇作为参考资料，AI 提取“蒸馏词”融入标题，按需结合用户指令产出草稿。生成后进入稿件库，审阅后分发。</div>
+        <div class="small-note" id="kb-note">把公司资料、产品说明、过往佳作等存入知识库；生成时勾选若干篇作为参考资料，AI 提取“蒸馏词”融入标题，按需结合用户指令产出草稿。生成后进入稿件库，审阅后分发。<b>支持上传 .md / .txt / .pdf / .docx / .xlsx（单个 ≤ 20MB）</b>。</div>
+        <div style="margin:8px 0;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" id="kb-upload-btn">📎 上传文档/表格</button>
+          <input type="file" id="kb-file-input" multiple accept=".md,.markdown,.txt,.pdf,.docx,.xlsx,.xls" style="display:none">
+          <span class="small-note">点击选择文件，可多选；解析后自动入库存为文档</span>
+        </div>
         <div id="kb-doc-list" style="margin:8px 0"></div>
         <div class="card hidden" id="kb-edit-card" style="background:#fafafa">
           <div class="field">

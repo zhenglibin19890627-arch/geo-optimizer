@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-"""知识库 API：文档 CRUD + 关键词提取 + 基于知识库生成分发稿件。"""
-from flask import Blueprint
+"""知识库 API：文档 CRUD/上传 + 关键词提取 + 基于知识库生成分发稿件。"""
+from flask import Blueprint, request
 
 from geo.core import knowledge
 from geo.core.knowledge import KnowledgeError
@@ -8,6 +8,21 @@ from geo.models import db as database
 from geo.web import ApiError, current_brand_id, get_json, ok
 
 bp = Blueprint("api_knowledge", __name__)
+
+
+@bp.route("/knowledge/docs/upload", methods=["POST"])
+def upload_doc():
+    """上传文档/表格到知识库：支持 .md/.txt/.pdf/.docx/.xlsx，单个 ≤ 20MB。"""
+    brand_id = current_brand_id()
+    file = request.files.get("file")
+    if file is None or not file.filename:
+        raise ApiError("请选择要上传的文件")
+    data = file.read()
+    try:
+        doc_id = knowledge.save_uploaded_file(brand_id, file.filename, data)
+    except KnowledgeError as e:
+        raise ApiError(e.message)
+    return ok({"doc_id": doc_id}, f"《{file.filename}》已解析入库")
 
 
 @bp.route("/knowledge/docs", methods=["GET"])

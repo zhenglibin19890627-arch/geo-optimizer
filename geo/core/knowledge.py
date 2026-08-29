@@ -23,6 +23,78 @@ def _parse_keywords(raw: str):
         return []
 
 
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 与 weiqi 口径一致：单个文件 ≤ 20MB
+SUPPORTED_EXTS = ".md .markdown .txt .pdf .docx .doc .xlsx .xls".split()
+
+
+def _pdf_to_text(data: bytes) -> str:
+    import io
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(data))
+    pages = []
+    for page in reader.pages:
+        try:
+            pages.append(page.extract_text() or "")
+        except Exception:
+            pages.append("")
+    return "\n\n".join(p for p in pages if p.strip())
+
+
+def _docx_to_text(data: bytes) -> str:
+    import io
+    import docx  # python-docx
+    document = docx.Document(io.BytesIO(data))
+    lines = [p.text for p in document.paragraphs if p.text.strip()]
+    for table in document.tables:  # 表格按行转竖线分隔文本
+        for row in table.rows:
+            cells = [c.text.strip() for c in row.cells]
+            if any(cells):
+                lines.append(" | ".join(cells))
+    return "\n".join(lines)
+
+
+def _xlsx_to_text(data: bytes) -> str:
+    import io
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    parts = []
+    for sheet in wb.worksheets:
+        lines = [f"## 工作表：{sheet.title}"]
+        for row in sheet.iter_rows(values_only=True):
+            cells = ["" if v is None else str(v).strip() for v in row]
+            if any(cells):
+                lines.append(" | ".join(cells))
+        if len(lines) > 1:
+            parts.append("\n".join(lines))
+    return "\n\n".join(parts)
+
+
+def parse_uploaded_file(filename: str, data: bytes) -> str:
+    """按扩展名解析上传文件为纯文本（供知识库存储与 AI 参考）。"""
+    lower = (filename or "").lower()
+    if lower.endswith((".md", ".markdown", ".txt")):
+        return data.decode("utf-8", errors="replace")
+    if lower.endswith(".pdf"):
+        return _pdf_to_text(data)
+    if lower.endswith(".docx"):
+        return _docx_to_text(data)
+    if lower.endswith((".xlsx", ".xls")):
+        if lower.endswith(".xls"):
+            raise KnowledgeError("旧版 .xls 请先用 Excel 另存为 .xlsx 再上传")
+        return _xlsx_to_text(data)
+    raise KnowledgeError("暂不支持该格式：支持 " + " / ".join(SUPPORTED_EXTS))
+
+
+def save_uploaded_file(brand_id: int, filename: str, data: bytes) -> int:
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise KnowledgeError("文件太大（单个 ≤ 20MB）")
+    text = parse_uploaded_file(filename, data)
+    if not text.strip():
+        raise KnowledgeError("文件里没有解析出文字内容（可能是扫描版 PDF 或空文件）")
+    title = filename.rsplit(".", 1)[0] if "." in filename else filename
+    return create_doc(brand_id, title, text)
+
+
 def list_docs(brand_id: int) -> list:
     with database.session_scope() as s:
         rows = (s.query(database.KnowledgeDoc)
