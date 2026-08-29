@@ -33,6 +33,6 @@ export async function detectLogin(platformId) {
       return { loggedIn: false, nickname: null };
     }
   }
-  const loggedIn = await cookieCheck(platformId);
+  const loggedIn = await checkLogin(platformId);
   return { loggedIn, nickname: null };
 }
