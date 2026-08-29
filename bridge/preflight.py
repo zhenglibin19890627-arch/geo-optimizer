@@ -20,7 +20,7 @@ from bridge.geo_bridge_host import resolve_geo_base  # noqa: E402
 
 MANIFEST_DIR = os.path.join(os.environ.get("LOCALAPPDATA",
                                            os.path.expanduser("~")), "GEO", "bridge")
-HOST_NAME = "org.synccaster.bridge"
+HOST_NAME = "com.geo.bridge"
 REG_ROOTS = {
     "Chrome": r"Software\Google\Chrome\NativeMessagingHosts",
     "Edge": r"Software\Microsoft\Edge\NativeMessagingHosts",

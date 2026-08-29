@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>GEO 发布助手 · 账号管理</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <header>
+    <h1>GEO 多平台发布助手</h1>
+    <p class="sub">在下方平台登录官网后点「检测登录」，检测通过即可添加账号。发布时使用浏览器里的登录态，本扩展不保存账号密码。</p>
+  </header>
+  <main id="platforms"></main>
+  <template id="account-row">
+    <li class="account">
+      <span class="nick"></span>
+      <label class="chk"><input type="checkbox" class="enabled"> 启用</label>
+      <label class="chk"><input type="radio" class="default" name="default"> 默认发布</label>
+      <button class="del">删除</button>
+    </li>
+  </template>
+  <script src="options.js"></script>
+</body>
+</html>

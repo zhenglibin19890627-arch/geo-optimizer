@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "GEO 多平台发布助手",
+  "version": "0.1.0",
+  "description": "GEO 优化系统的多平台内容发布扩展：账号管理、稿件发布、落地页回传。",
+  "permissions": [
+    "nativeMessaging",
+    "storage",
+    "cookies",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.zhihu.com/*",
+    "https://*.sohu.com/*",
+    "https://*.toutiao.com/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background/service_worker.js",
+    "type": "module"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "GEO 发布助手"
+  }
+}

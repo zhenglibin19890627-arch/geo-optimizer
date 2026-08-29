@@ -30,7 +30,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib import request as urlreq
 
-HOST_NAME = "org.synccaster.bridge"
+HOST_NAME = "com.geo.bridge"
 HTTP_BRIDGE_PORT = 39123  # 扩展内置的 agent-bridge 探活端口（/v1/health）
 JOB_STATE_PUBLISHED = "published"
 JOB_STATE_FAILED = "failed"

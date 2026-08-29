@@ -18,7 +18,7 @@ import os
 import subprocess
 import sys
 
-HOST_NAME = "org.synccaster.bridge"
+HOST_NAME = "com.geo.bridge"
 MANIFEST_DIR = os.path.join(os.environ.get("LOCALAPPDATA",
                                            os.path.expanduser("~")), "GEO", "bridge")
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -115,13 +115,17 @@ def unregister(browsers: list) -> bool:
 
 
 def main():
+    global HOST_NAME
     ap = argparse.ArgumentParser(description="注册 GEO 分发桥原生宿主")
     ap.add_argument("--ext-id", action="append", dest="ext_ids",
                     help="发布扩展的 32 位 ID（可重复传入多个）")
+    ap.add_argument("--host-name", default=HOST_NAME,
+                    help="宿主名（默认 com.geo.bridge；兼容旧名可显式传 org.synccaster.bridge）")
     ap.add_argument("--browser", choices=["chrome", "edge", "both"], default="both")
     ap.add_argument("--print", dest="dry_run", action="store_true", help="只打印不写入")
     ap.add_argument("--unregister", action="store_true", help="清理注册与文件")
     args = ap.parse_args()
+    HOST_NAME = args.host_name.strip()
     browsers = list(REG_ROOTS) if args.browser == "both" else [args.browser]
     if args.unregister:
         unregister(browsers)

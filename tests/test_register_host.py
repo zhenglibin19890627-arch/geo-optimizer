@@ -22,7 +22,7 @@ def test_扩展ID校验():
 
 def test_manifest结构():
     m = build_manifest(["a" * 32])
-    assert m["name"] == HOST_NAME == "org.synccaster.bridge"
+    assert m["name"] == HOST_NAME == "com.geo.bridge"
     assert m["type"] == "stdio"
     assert m["allowed_origins"] == ["chrome-extension://" + "a" * 32 + "/"]
     assert m["path"].endswith("geo_bridge_host.bat")

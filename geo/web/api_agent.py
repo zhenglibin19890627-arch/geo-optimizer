@@ -20,7 +20,7 @@ bp = Blueprint("api_agent", __name__)
 # 任务状态机里允许宿主写入的目标状态（对外 dispatched，库内 dispatching）
 _ALLOWED_STATES = ("dispatched", "published", "failed")
 # 宿主 版本协商（无强制，仅记录）
-_VERSION_RE = re.compile(r"^[\w.\-]{0,40}$")
+_VERSION_RE = re.compile(r"^[\w./\-]{0,60}$")
 
 
 def _check_agent_token():

@@ -1,0 +1,18 @@
+body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; max-width: 760px; margin: 0 auto; padding: 20px; color: #333; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+.sub { color: #777; font-size: 13px; line-height: 1.6; }
+.card { border: 1px solid #e5e5e5; border-radius: 10px; padding: 14px 16px; margin: 14px 0; }
+.card-head { display: flex; align-items: center; gap: 10px; }
+.card-head h2 { font-size: 16px; margin: 0; flex: 1; }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 10px; }
+.badge.ok { background: #e6f7e9; color: #1a7f37; }
+.badge.no { background: #f2f2f2; color: #888; }
+button { cursor: pointer; border: 1px solid #d0d0d0; background: #fff; border-radius: 6px; padding: 4px 12px; font-size: 13px; }
+button.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+button:disabled { opacity: .5; cursor: default; }
+ul.accounts { list-style: none; padding: 0; margin: 10px 0 0; }
+.account { display: flex; align-items: center; gap: 14px; padding: 6px 0; border-top: 1px dashed #eee; font-size: 14px; }
+.nick { flex: 1; }
+.chk { display: flex; align-items: center; gap: 4px; font-size: 13px; color: #555; }
+.hint { color: #999; font-size: 13px; margin-top: 8px; }
+.empty { color: #999; font-size: 13px; }
