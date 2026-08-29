@@ -208,7 +208,12 @@ def manual_publish(task_id: int):
         if not row or row.brand_id != brand_id:
             raise ApiError("这条分发任务不存在")
         if row.status == "published":
-            raise ApiError("这条渠道已经是已发布状态")
+            # 幂等：重复点「手动已发」视为补填/更新链接，不报错
+            if platform_url and platform_url != (row.platform_url or ""):
+                row.platform_url = platform_url
+                row.updated_at = now
+                return ok({"task_id": task_id}, "该渠道已记录过，发布链接已更新")
+            return ok({"task_id": task_id}, "该渠道已经是已发布状态，无需重复记录")
         row.status = "published"
         if platform_url:
             row.platform_url = platform_url
