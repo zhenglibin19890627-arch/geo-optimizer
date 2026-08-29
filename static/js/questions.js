@@ -206,8 +206,9 @@ function addGroupTab(area, name, label, count, isUngrouped) {
   if (!isUngrouped) {
     const btn = document.createElement("span");
     btn.className = "gm-btn";
-    btn.textContent = "管理";
+    btn.textContent = "⚙️";
     btn.title = "管理这个分组：重命名或删除";
+    btn.setAttribute("aria-label", "管理分组");
     btn.addEventListener("click", function (e) {
       e.stopPropagation();
       openGroupMenu(btn, name);

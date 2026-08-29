@@ -1538,12 +1538,24 @@ a:hover {
   width: 18px;
   height: 18px;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1;
   color: var(--text-sub);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease;
+}
+
+/* 悬停分组标签时浮现小齿轮，列表平时更干净 */
+.group-tags .gt:hover .gm-btn,
+.group-tags .gt:focus-within .gm-btn,
+.group-tags .gt .gm-btn:hover {
+  opacity: 0.75;
+  visibility: visible;
 }
 
 .group-tags .gt .gm-btn:hover {
+  opacity: 1;
   background: var(--primary-light);
   color: var(--primary);
 }
