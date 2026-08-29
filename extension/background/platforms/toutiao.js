@@ -98,19 +98,19 @@ export async function publish({ post, log }) {
     await log("注入完成（策略#" + filled.strategy + "，标题" + (filled.titleFilled ? "✓" : "✗") + "），触发发布");
     await new Promise((r) => setTimeout(r, 800));
 
-    // ---- 发布按钮：可点击元素上的类名候选 → 精确文本 → 包含文本（排除定时/预览/草稿） ----
+    // ---- 发布按钮：优先主按钮（byte-btn-primary）上的发布文本，再类名/文本级联 ----
     const clicked = await evalInTab(tab.id, `
       const btns = () => Array.from(document.querySelectorAll(
         'button, .btn, [role="button"], a.btn, input[type="submit"]'))
         .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+      const primary = btns().find((b) => /byte-btn-primary|btn-primary/.test(String(b.className))
+        && /发布|发表|确认/.test((b.textContent || "").trim()));
+      if (primary) { primary.click(); return "primary:" + String(primary.className).slice(0, 40); }
       const byClass = document.querySelector(
-        'button[class*="publish"], .btn[class*="publish"], [role="button"][class*="publish"], button[class*="submit"], .btn[class*="submit"]');
-      if (byClass && !byClass.disabled) { byClass.click(); return "class:" + byClass.className; }
+        'button[class*="publish"], .btn[class*="publish"], [role="button"][class*="publish"]');
+      if (byClass && !byClass.disabled) { byClass.click(); return "class:" + String(byClass.className).slice(0, 40); }
       const exact = btns().find((b) => ["发布", "发表", "发布文章"].includes((b.textContent || "").trim()));
       if (exact) { exact.click(); return "text-exact"; }
-      const partial = btns().find((b) => /发布|发表/.test((b.textContent || "").trim())
-        && !/定时|预览|存草稿|草稿/.test((b.textContent || "").trim()));
-      if (partial) { partial.click(); return "text-partial"; }
       return "NONE::" + btns().slice(0, 15).map((b) =>
         ((b.textContent || "").trim().slice(0, 12) || "[无文本]") + "|"
         + String(b.className || "").slice(0, 40)).join(" ;; ");
@@ -120,19 +120,27 @@ export async function publish({ post, log }) {
         + " ——内容已注入，未发布任何内容");
     }
 
-    // ---- 提交确认：处理确认弹窗，等待离开发布页或出现成功提示 ----
-    await new Promise((r) => setTimeout(r, 1500));
-    await evalInTab(tab.id, `
-      const dlg = document.querySelector(
-        '.modal button.primary, .el-dialog button.primary, [class*="dialog"] button.primary, [class*="modal"] button.primary');
-      if (dlg) { dlg.click(); }
-    `);
+    // ---- 提交确认：字节系弹窗（byte-modal 等）内点确认/发布，多轮尝试；等待离开发布页或成功提示 ----
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 1800));
+      await evalInTab(tab.id, `
+        const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+        const dlgs = Array.from(document.querySelectorAll(
+          '.byte-modal, [class*="modal"], [class*="dialog"], [class*="Dialog"]')).filter(visible);
+        for (const d of dlgs) {
+          const btns = Array.from(d.querySelectorAll("button"))
+            .filter((b) => visible(b) && /确认|确定|发布|发表/.test((b.textContent || "").trim()));
+          const hit = btns.find((b) => /byte-btn-primary|btn-primary/.test(String(b.className))) || btns[0];
+          if (hit) { hit.click(); }
+        }
+      `);
+    }
     const confirmed = await waitForConditionInTab(
       tab.id,
       `!location.pathname.includes('graphic/publish')
         || /发布成功|发表成功|成功发布/.test((document.body.textContent || ""))
-        || !!document.querySelector('[class*="toast-success"], [class*="success-toast"], [class*="message-success"]')`,
-      20000,
+        || !!document.querySelector('[class*="toast-success"], [class*="success-toast"], [class*="message-success"], .byte-toast-success')`,
+      12000,
       1000,
     );
 
