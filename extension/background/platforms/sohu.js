@@ -168,9 +168,11 @@ export async function publish({ post, log }) {
         const dlgs = Array.from(document.querySelectorAll(
           '[class*="alert-dialog"], .modal, [class*="dialog"], [class*="Dialog"], .el-dialog')).filter(visible);
         for (const d of dlgs) {
-          const btns = Array.from(d.querySelectorAll("button, [role=button], a"))
-            .filter((b) => visible(b) && /^(确定|确认|发布)$/.test((b.textContent || "").trim()));
-          if (btns.length) { btns[btns.length - 1].click(); }
+          // "确定"未必是 button/a 标签——任意标签内最内层文字匹配
+          const all = Array.from(d.querySelectorAll("*")).filter((b) =>
+            visible(b) && /^(确定|确认|发布)$/.test((b.textContent || "").trim()));
+          const inner = all.filter((b) => !all.some((c) => c !== b && b.contains(c)));
+          if (inner.length) { inner[inner.length - 1].click(); }
         }
       `);
     }

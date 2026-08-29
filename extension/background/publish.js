@@ -17,6 +17,10 @@ export async function runJob(jobId) {
   const job = await store.getJob(jobId);
   if (!job || (job.state !== "pending" && job.state !== "running")) return;
   RUNNING.add(jobId);
+  // MV3 SW 空闲 30 秒会被回收（原生端口不保活），任务运行期间每 20 秒 ping 一次
+  const keepalive = setInterval(() => {
+    chrome.runtime.getPlatformInfo().catch(() => {});
+  }, 20000);
   try {
     for (const result of job.results) {
       const current = await store.getJob(jobId);
@@ -25,6 +29,7 @@ export async function runJob(jobId) {
       await runTarget(current, result);
     }
   } finally {
+    clearInterval(keepalive);
     RUNNING.delete(jobId);
   }
 }
