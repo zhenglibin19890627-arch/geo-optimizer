@@ -383,7 +383,7 @@ def test_钥匙列表永不含明文(client):
     r = client.get("/api/settings/keys")
     body = r.get_json()
     assert body["code"] == 0
-    assert len(body["data"]) == 6  # 5 家引擎 + analysis
+    assert len(body["data"]) == 7  # 5 家引擎 + analysis + create
     for item in body["data"]:
         assert "api_key" not in item  # 只有脱敏字段
         assert "api_key_masked" in item
