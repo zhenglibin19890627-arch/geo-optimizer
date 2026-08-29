@@ -255,8 +255,20 @@ def rewrite_from_url(brand_id: int, url: str, user_instruction: str = "",
     try:
         fetched = fetcher.fetch_page(url)
         content = str(fetched.get("text") or "")
-    except Exception as e:
-        raise KnowledgeError("网页抓取失败：" + str(e)[:120])
+    except Exception:
+        # 用户主动改写的单篇文章（如公众号 robots 限制）：直连抓取 + 剥标签提取正文
+        import re as _re
+        import requests as _requests
+        try:
+            html = _requests.get(
+                url, timeout=25,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+            ).text
+            html = _re.sub(r"<(script|style)[\s\S]*?</\1>", " ", html, flags=_re.I)
+            content = _re.sub(r"<[^>]+>", " ", html)
+            content = _re.sub(r"\s+", " ", content).strip()
+        except Exception as e:
+            raise KnowledgeError("网页抓取失败：" + str(e)[:120])
     if len(content.strip()) < 100:
         raise KnowledgeError("网页里没有提取到足够的正文（可能是动态渲染页面），请换一个链接")
 
