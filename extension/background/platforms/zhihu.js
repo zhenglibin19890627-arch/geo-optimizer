@@ -26,10 +26,20 @@ export async function publish({ post, log }) {
       geoPasteHtml('.public-DraftEditor-content, [data-contents] .DraftEditor-editorContainer', ${JSON.stringify(html)});
       return true;
     `);
-    await new Promise((r) => setTimeout(r, 1200)); // 等编辑器消化粘贴内容
+    await new Promise((r) => setTimeout(r, 1200)); // 等编辑器消化粘贴内容（知乎会自动存草稿）
 
     await log("触发发布");
-    await evalInTab(tab.id, `return geoClickButton("发布");`);
+    let clicked = false;
+    try {
+      clicked = await evalInTab(tab.id, `
+        const byClass = document.querySelector('.Button-publish, .PublishButton, button[class*="ublish"]');
+        if (byClass && !byClass.disabled) { byClass.click(); return "class"; }
+        const btn = Array.from(document.querySelectorAll("button"))
+          .find((b) => ["发布", "发布文章"].includes((b.textContent || "").trim()) && !b.disabled);
+        if (btn) { btn.click(); return "text"; }
+        return "";
+      `);
+    } catch (err) { clicked = false; }
 
     // 发布成功后页面跳转至文章落地页 /p/{id}
     const landed = await waitForConditionInTab(
@@ -38,10 +48,15 @@ export async function publish({ post, log }) {
       30000,
       800,
     );
-    if (!landed) throw new Error("发布后未跳转到落地页（可能有弹窗或校验提示）");
-
-    const url = await evalInTab(tab.id, `return location.origin + location.pathname;`);
-    return { url };
+    if (landed) {
+      const url = await evalInTab(tab.id, `return location.origin + location.pathname;`);
+      return { url };
+    }
+    // 自动发布未确认：内容已在编辑器且知乎自动保存草稿，降级为人工发布
+    throw new Error(
+      "内容已注入编辑器（知乎草稿箱已自动保存），但自动发布未确认"
+      + (clicked ? "（已点击发布但未检测到落地页跳转，请检查知乎后台）" : "（未找到发布按钮）")
+      + "——请到 zhuanlan.zhihu.com/write 人工确认发布");
   } finally {
     chrome.tabs.remove(tab.id).catch(() => {});
   }
