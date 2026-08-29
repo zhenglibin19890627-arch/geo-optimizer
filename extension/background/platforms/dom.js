@@ -29,15 +29,16 @@ function geoClickButton(text) {
 }
 `;
 
-// 在指定 tab 顺序执行页面函数（字符串形式，避免序列化限制）
+// 在指定 tab 的页面上下文顺序执行语句（helpers 先注入，语句再执行）
 export async function evalInTab(tabId, statements) {
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
-    func: new Function(
-      "statements",
-      `${PAGE_HELPERS_SOURCE}\nconst geoRun = new Function(statements);\nreturn geoRun();`,
-    ).bind(null, statements),
+    func: (code) => {
+      const geoRun = new Function(code);
+      return geoRun();
+    },
+    args: [PAGE_HELPERS_SOURCE + "\n" + statements],
   });
   return results && results[0] ? results[0].result : undefined;
 }
@@ -45,8 +46,9 @@ export async function evalInTab(tabId, statements) {
 export async function waitForTabComplete(tabId, timeoutMs = 30000) {
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => { cleanup(); reject(new Error("页面加载超时")); }, timeoutMs);
-    function listener(status) {
-      if (status.tabId === tabId && status.status === "complete") {
+    // onUpdated 回调签名：(tabId: number, changeInfo: {status...}, tab)
+    function listener(updatedTabId, changeInfo) {
+      if (updatedTabId === tabId && changeInfo && changeInfo.status === "complete") {
         cleanup(); resolve();
       }
     }
@@ -55,7 +57,9 @@ export async function waitForTabComplete(tabId, timeoutMs = 30000) {
       chrome.tabs.onUpdated.removeListener(listener);
     }
     chrome.tabs.onUpdated.addListener(listener);
-    chrome.tabs.get(tabId).then((tab) => { if (tab.status === "complete") { cleanup(); resolve(); } });
+    chrome.tabs.get(tabId).then((tab) => {
+      if (tab.status === "complete") { cleanup(); resolve(); }
+    }).catch(() => { cleanup(); reject(new Error("标签页已关闭")); });
   });
 }
 
