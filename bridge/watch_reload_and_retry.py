@@ -50,11 +50,23 @@ def main():
             continue
         print("检测到扩展重载（宿主重新拉起），8 秒后重试分发…", flush=True)
         time.sleep(8)
+        # 只重试失败态任务：避免已发布渠道被重复发布（重复文章事故教训）
+        retried = []
         for tid in TASK_IDS:
             try:
+                from geo.models import db as database
+                with database.session_scope() as s:
+                    row = s.get(database.DistributionChannelTask, tid)
+                    if row and row.status != "failed":
+                        print(f"跳过 #{tid} [{row.platform}]（状态 {row.status}，只重试失败任务）", flush=True)
+                        continue
                 requests.post(f"{BASE}/api/distribution/channels/{tid}/retry", timeout=10)
+                retried.append(tid)
             except Exception as e:
                 print("retry 失败:", e, flush=True)
+        if not retried:
+            print("没有失败态任务可重试。", flush=True)
+            return
         # 跟踪到终态
         sub_deadline = time.time() + 300
         last = ""

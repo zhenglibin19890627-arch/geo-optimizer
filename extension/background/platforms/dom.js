@@ -30,17 +30,26 @@ function geoClickButton(text) {
 `;
 
 // 在指定 tab 的页面上下文顺序执行语句（helpers 先注入，语句再执行）
+// 页面内异常会被捕获并原样抛回扩展侧，便于联调定位
 export async function evalInTab(tabId, statements) {
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
     func: (code) => {
-      const geoRun = new Function(code);
-      return geoRun();
+      try {
+        return { __geo: true, value: new Function(code)() };
+      } catch (err) {
+        return { __geo: true, error: String((err && err.message) || err) };
+      }
     },
     args: [PAGE_HELPERS_SOURCE + "\n" + statements],
   });
-  return results && results[0] ? results[0].result : undefined;
+  const r = results && results[0] ? results[0].result : undefined;
+  if (r && r.__geo) {
+    if (r.error) throw new Error("页面脚本执行失败: " + r.error);
+    return r.value;
+  }
+  return r;
 }
 
 export async function waitForTabComplete(tabId, timeoutMs = 30000) {
