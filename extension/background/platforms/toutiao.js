@@ -154,6 +154,23 @@ export async function publish({ post, log }) {
     if (!late.includes("graphic/publish")) {
       return { url: late };
     }
+    // 强信号检测：①新标签页里的头条文章页 ②页面关键词扫描（发布成功/失败/验证/封面）
+    const tabs = await chrome.tabs.query({});
+    const articleTab = tabs.find((t) =>
+      /toutiao\.com\/(article|a\d)/i.test(t.url || "")
+      || /toutiao\.com.*\/articles/i.test(t.url || ""));
+    if (articleTab && articleTab.id !== tab.id) {
+      return { url: articleTab.url };
+    }
+    const kw = await evalInTab(tab.id, `
+      const txt = (document.body.innerText || "").replace(/\\s+/g, " ");
+      const hits = txt.match(/发布成功|发布失败|发布中|验证|扫码|封面|不能为空|内容不含标题|请输入|审核中/g) || [];
+      const iframes = Array.from(document.querySelectorAll("iframe")).filter((f) => {
+        const r = f.getBoundingClientRect(); return r.width > 50 && r.height > 50;
+      }).length;
+      return "关键词[" + (hits.slice(0, 8).join(",") || "无") + "] iframe=" + iframes
+        + " || 标题=" + document.title.slice(0, 30);
+    `);
     // 仍未确认：带回现场信息（URL/页面标题/弹窗/提示文字/按钮）
     const scene = await evalInTab(tab.id, `
       const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
@@ -174,7 +191,7 @@ export async function publish({ post, log }) {
         + " || 按钮[" + btnInfo.join(" ;; ") + "]";
     `);
     throw new Error(
-      "头条发布提交未能自动确认（点击了「" + clicked + "」）。现场： " + scene.slice(0, 400)
+      "头条发布提交未能自动确认（点击了「" + clicked + "」）。现场： " + kw + " " + scene.slice(0, 300)
       + " ——内容已注入，未确认发出任何内容");
   } finally {
     chrome.tabs.remove(tab.id).catch(() => {});

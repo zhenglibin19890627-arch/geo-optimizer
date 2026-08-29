@@ -168,7 +168,7 @@ export async function publish({ post, log }) {
         const dlgs = Array.from(document.querySelectorAll(
           '[class*="alert-dialog"], .modal, [class*="dialog"], [class*="Dialog"], .el-dialog')).filter(visible);
         for (const d of dlgs) {
-          const btns = Array.from(d.querySelectorAll("button, [role=\"button\"], a"))
+          const btns = Array.from(d.querySelectorAll("button, [role=button], a"))
             .filter((b) => visible(b) && /^(确定|确认|发布)$/.test((b.textContent || "").trim()));
           if (btns.length) { btns[btns.length - 1].click(); }
         }
