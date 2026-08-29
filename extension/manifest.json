@@ -1,7 +1,7 @@
 ﻿{
   "manifest_version": 3,
   "name": "GEO 澶氬钩鍙板彂甯冨姪鎵?,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "GEO 浼樺寲绯荤粺鐨勫骞冲彴鍐呭鍙戝竷鎵╁睍锛氳处鍙风鐞嗐€佺浠跺彂甯冦€佽惤鍦伴〉鍥炰紶銆?,
   "permissions": [
     "nativeMessaging",

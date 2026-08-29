@@ -155,6 +155,35 @@ export async function publish({ post, log }) {
     // ---- 提交确认：若弹出确认框（如短文提醒），同样用 CDP 真实点击"确定/确认" ----
     for (let i = 0; i < 5; i++) {
       await new Promise((r) => setTimeout(r, 1200));
+      if (i === 0) {
+        // 发布设置里的「创作声明」是必选项：优先勾选「无需声明」，否则确认会被拦
+        const declPos = await elementCenter(tab.id, `
+          const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+          const area = Array.from(document.querySelectorAll(
+            '.modal, [class*="modal"], [class*="dialog"], [class*="Dialog"], [class*="drawer"], [class*="Drawer"], .el-dialog, [class*="setting"], [class*="publish"]'))
+            .filter(visible);
+          window.geoTarget = null;
+          for (const d of area) {
+            const hits = Array.from(d.querySelectorAll("label, span, div, li, input, p"))
+              .filter((e) => visible(e) && (e.textContent || "").trim() === "无需声明"
+                && e.children.length <= 2);
+            if (hits.length) { window.geoTarget = hits[hits.length - 1]; break; }
+          }
+          if (!window.geoTarget) {
+            // 兜底：页面全域找一次
+            const any = Array.from(document.querySelectorAll("label, span, div, li, input, p"))
+              .filter((e) => visible(e) && (e.textContent || "").trim() === "无需声明" && e.children.length <= 2);
+            if (any.length) window.geoTarget = any[any.length - 1];
+          }
+        `);
+        if (declPos) {
+          await log("创作声明：选择无需声明");
+          await realClick(tab.id, declPos.x, declPos.y);
+          await new Promise((r) => setTimeout(r, 800));
+        } else {
+          await log("未找到创作声明选项（可能已默认）");
+        }
+      }
       const dlgPos = await elementCenter(tab.id, `
         const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
         const dlgs = Array.from(document.querySelectorAll(
