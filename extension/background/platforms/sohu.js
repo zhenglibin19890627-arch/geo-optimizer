@@ -3,7 +3,7 @@
 // 注入策略参考 weiqi 对同一编辑器的行为观察，代码全部自研。
 
 import { renderMarkdown } from "../render.js";
-import { evalInTab, waitForTabComplete, waitForConditionInTab } from "./dom.js";
+import { evalInTab, waitForTabComplete, waitForConditionInTab, realClick, elementCenter } from "./dom.js";
 
 const EDITOR_URL = "https://mp.sohu.com/mpfe/v4/contentManagement/news/addarticle";
 
@@ -122,12 +122,12 @@ export async function publish({ post, log }) {
       throw new Error("搜狐号正文注入未通过校验：" + ((filled && filled.reason) || "页面无响应")
         + "——未发布任何内容，请人工检查");
     }
-    await log("注入完成（策略#" + filled.strategy + "，标题" + (filled.titleFilled ? "✓" : "✗") + "），触发发布");
+    await log("注入完成（策略#" + filled.strategy + "，标题" + (filled.titleFilled ? "✓" : "✗") + "），触发发布（CDP 真实点击）");
     await new Promise((r) => setTimeout(r, 800));
 
     // ---- 发布按钮：搜狐的发布按钮不是 <button> 标签——全文搜索任意标签中
-    // 文本恰为"发布/发表"的最内层可见元素，类名候选仅作辅助 ----
-    const clicked = await evalInTab(tab.id, `
+    // 文本恰为"发布/发表"的最内层可见元素，取坐标后用 CDP 真实点击（平台校验 isTrusted）----
+    const btnPos = await elementCenter(tab.id, `
       const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 40 && r.height > 10; };
       const all = Array.from(document.querySelectorAll("body *")).filter((el) => {
         if (!visible(el)) return false;
@@ -135,40 +135,30 @@ export async function publish({ post, log }) {
         return t === "发布" || t === "发表" || t === "发布文章";
       });
       const inner = all.filter((el) => !all.some((c) => c !== el && el.contains(c)));
-      if (inner.length) {
-        const pick = inner.find((el) => ["BUTTON", "A", "SPAN", "DIV"].includes(el.tagName)) || inner[0];
-        pick.click();
-        return "text:" + pick.tagName + "." + String(pick.className || "").slice(0, 40);
+      if (!inner.length) { window.geoTarget = null; return; }
+      let target = inner.find((el) => ["BUTTON", "A"].includes(el.tagName)) || inner[inner.length - 1];
+      let p = target.parentElement;
+      while (p && p !== document.body) {
+        const cls = String(p.className || "");
+        if (p.tagName === "BUTTON" || p.tagName === "A" || /btn|button/i.test(cls)) { target = p; break; }
+        p = p.parentElement;
       }
-      const byClass = document.querySelector(
-        '[class*="publish"]:not(button), a[class*="publish"], div[class*="publish"], span[class*="publish"]');
-      if (byClass && visible(byClass) && /发布|发表/.test(byClass.textContent || "")) {
-        byClass.click();
-        return "class:" + String(byClass.className).slice(0, 40);
-      }
-      // 未命中：带回现场可点击文本清单
-      const texts = Array.from(document.querySelectorAll("body *"))
-        .filter((el) => visible(el) && el.children.length === 0
-          && /^(发布|发表|确定|确认|提交|保存|预览|定时)/.test((el.textContent || "").trim()))
-        .slice(0, 15).map((el) => (el.textContent || "").trim().slice(0, 10)
-          + "|" + el.tagName + "." + String(el.className || "").slice(0, 30));
-      return "NONE::" + (texts.join(" ;; ") || "页面上没有匹配的可见文本元素");
+      window.geoTarget = target;
     `);
-    if (clicked.startsWith("NONE::")) {
-      throw new Error("搜狐号发布按钮未找到。现场候选文本元素： " + clicked.slice(6)
-        + " ——内容已注入并自动存草稿，未发布任何内容");
+    if (!btnPos) {
+      throw new Error("搜狐号发布按钮未找到——内容已注入并自动存草稿，未发布任何内容");
     }
+    await realClick(tab.id, btnPos.x, btnPos.y);
 
-    // ---- 提交确认：搜狐点击发布会弹 alert-dialog（如"确认发布文章么？...确定 取消"），
-    // 按文字找 确定/确认 按钮多轮点击；等待离开编辑器或出现成功提示 ----
+    // ---- 提交确认：若弹出确认框（如短文提醒），同样用 CDP 真实点击"确定/确认" ----
     for (let i = 0; i < 5; i++) {
       await new Promise((r) => setTimeout(r, 1200));
-      await evalInTab(tab.id, `
+      const dlgPos = await elementCenter(tab.id, `
         const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
         const dlgs = Array.from(document.querySelectorAll(
           '[class*="alert-dialog"], .modal, [class*="dialog"], [class*="Dialog"], .el-dialog')).filter(visible);
+        window.geoTarget = null;
         for (const d of dlgs) {
-          // "确定"未必是 button/a 标签——任意标签内最内层文字匹配，再沿祖先找可点容器
           const all = Array.from(d.querySelectorAll("*")).filter((b) =>
             visible(b) && /^(确定|确认|发布)$/.test((b.textContent || "").trim()));
           const inner = all.filter((b) => !all.some((c) => c !== b && b.contains(c)));
@@ -180,20 +170,11 @@ export async function publish({ post, log }) {
             if (p.tagName === "BUTTON" || p.tagName === "A" || /btn|button/i.test(cls)) { target = p; break; }
             p = p.parentElement;
           }
-          const r = target.getBoundingClientRect();
-          const o = { bubbles: true, cancelable: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
-          try { target.dispatchEvent(new PointerEvent("pointerdown", o)); } catch (e) {}
-          target.dispatchEvent(new MouseEvent("mousedown", o));
-          try { target.dispatchEvent(new PointerEvent("pointerup", o)); } catch (e) {}
-          target.dispatchEvent(new MouseEvent("mouseup", o));
-          target.dispatchEvent(new MouseEvent("click", o));
+          window.geoTarget = target;
+          break;
         }
-        // 键盘兜底：部分弹窗响应 Enter 确认
-        try {
-          const ev = new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true, cancelable: true });
-          (document.activeElement || document.body).dispatchEvent(ev);
-        } catch (e) {}
       `);
+      if (dlgPos) { await realClick(tab.id, dlgPos.x, dlgPos.y); }
     }
     const confirmed = await waitForConditionInTab(
       tab.id,
@@ -230,7 +211,7 @@ export async function publish({ post, log }) {
         + " || 发布元素[" + (pub.join(" ;; ") || "无") + "]";
     `);
     throw new Error(
-      "搜狐号发布提交未能自动确认（点击了「" + clicked + "」）。现场： " + scene.slice(0, 380)
+      "搜狐号发布提交未能自动确认（已用 CDP 真实点击发布与确认）。现场： " + scene.slice(0, 380)
       + " ——内容已注入并自动存草稿，未确认发出任何内容");
   } finally {
     chrome.tabs.remove(tab.id).catch(() => {});

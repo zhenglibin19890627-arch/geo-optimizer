@@ -79,3 +79,29 @@ export async function waitForConditionInTab(tabId, conditionJs, timeoutMs = 2000
   }
   return false;
 }
+
+// 真实点击：经 chrome.debugger CDP 注入浏览器级可信鼠标事件（isTrusted=true）。
+// 用于校验事件可信度的平台按钮（如发布按钮）。使用后立即 detach；
+// 调试期间浏览器顶部会短暂显示提示横幅，属正常现象。
+export async function realClick(tabId, x, y) {
+  await chrome.debugger.attach({ tabId }, "1.3");
+  try {
+    for (const type of ["mousePressed", "mouseReleased"]) {
+      await chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+        type, x: Math.round(x), y: Math.round(y), button: "left", clickCount: 1,
+      });
+    }
+  } finally {
+    await chrome.debugger.detach({ tabId }).catch(() => {});
+  }
+}
+
+// 取页面元素中心坐标（配合 realClick 使用）：statements 需把目标元素赋给 geoTarget
+export async function elementCenter(tabId, statements) {
+  return evalInTab(tabId, `
+    ${statements}
+    if (typeof geoTarget === "undefined" || !geoTarget) return null;
+    const geoRect = geoTarget.getBoundingClientRect();
+    return { x: geoRect.left + geoRect.width / 2, y: geoRect.top + geoRect.height / 2 };
+  `);
+}

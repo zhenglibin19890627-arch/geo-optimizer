@@ -9,7 +9,8 @@
     "cookies",
     "tabs",
     "scripting",
-    "alarms"
+    "alarms",
+    "debugger"
   ],
   "host_permissions": [
     "https://*.zhihu.com/*",

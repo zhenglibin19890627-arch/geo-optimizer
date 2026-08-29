@@ -4,7 +4,7 @@
 // 标题候选含 ProseMirror 首行（头条新版标题在编辑器内）与独立输入框两种形态。
 
 import { renderMarkdown } from "../render.js";
-import { evalInTab, waitForTabComplete, waitForConditionInTab } from "./dom.js";
+import { evalInTab, waitForTabComplete, waitForConditionInTab, realClick, elementCenter } from "./dom.js";
 
 const EDITOR_URL = "https://mp.toutiao.com/profile_v4/graphic/publish";
 
@@ -95,59 +95,45 @@ export async function publish({ post, log }) {
       throw new Error("头条正文注入未通过校验：" + ((filled && filled.reason) || "页面无响应")
         + "——未发布任何内容，请人工检查");
     }
-    await log("注入完成（策略#" + filled.strategy + "，标题" + (filled.titleFilled ? "✓" : "✗") + "），触发发布");
+    await log("注入完成（策略#" + filled.strategy + "，标题" + (filled.titleFilled ? "✓" : "✗") + "），触发发布（CDP 真实点击）");
     await new Promise((r) => setTimeout(r, 800));
 
-    // ---- 发布按钮：优先主按钮（byte-btn-primary），用完整指针事件序列模拟真实点击
-    //（字节系按钮框架监听 pointerdown/mousedown/up 全链路，单发 click 可能无效）----
-    const clicked = await evalInTab(tab.id, `
-      const fireReal = (el) => {
-        const r = el.getBoundingClientRect();
-        const x = r.left + r.width / 2, y = r.top + r.height / 2;
-        const o = { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y, button: 0 };
-        try { el.dispatchEvent(new PointerEvent("pointerdown", o)); } catch (e) {}
-        el.dispatchEvent(new MouseEvent("mousedown", o));
-        try { el.dispatchEvent(new PointerEvent("pointerup", o)); } catch (e) {}
-        el.dispatchEvent(new MouseEvent("mouseup", o));
-        el.dispatchEvent(new MouseEvent("click", o));
-      };
+    // ---- 发布按钮：优先主按钮（byte-btn-primary），坐标定位后 CDP 真实点击 ----
+    const btnPos = await elementCenter(tab.id, `
+      const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
       const btns = () => Array.from(document.querySelectorAll(
-        'button, .btn, [role="button"], a.btn, input[type="submit"]'))
-        .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
-      const primary = btns().find((b) => /byte-btn-primary|btn-primary/.test(String(b.className))
+        'button, .btn, [role="button"], a.btn, input[type="submit"]')).filter(visible);
+      let target = btns().find((b) => /byte-btn-primary|btn-primary/.test(String(b.className))
         && /发布|发表|确认/.test((b.textContent || "").trim())
-        && !b.disabled && !/disabled/i.test(String(b.className))
-        && b.getAttribute("aria-disabled") !== "true");
-      if (primary) { fireReal(primary); return "primary:" + String(primary.className).slice(0, 40); }
-      const byClass = document.querySelector(
-        'button[class*="publish"], .btn[class*="publish"], [role="button"][class*="publish"]');
-      if (byClass && !byClass.disabled) { fireReal(byClass); return "class:" + String(byClass.className).slice(0, 40); }
-      const exact = btns().find((b) => ["发布", "发表", "发布文章"].includes((b.textContent || "").trim()));
-      if (exact) { fireReal(exact); return "text-exact"; }
-      return "NONE::" + btns().slice(0, 15).map((b) =>
-        ((b.textContent || "").trim().slice(0, 12) || "[无文本]") + "|"
-        + String(b.className || "").slice(0, 40)).join(" ;; ");
+        && !b.disabled && !/disabled/i.test(String(b.className)));
+      if (!target) target = document.querySelector('button[class*="publish"], .btn[class*="publish"]');
+      if (!target) {
+        target = btns().find((b) => ["发布", "发表", "发布文章"].includes((b.textContent || "").trim()));
+      }
+      window.geoTarget = target || null;
     `);
-    if (clicked.startsWith("NONE::")) {
-      throw new Error("头条发布按钮未找到。页面可见按钮清单： " + clicked.slice(6)
-        + " ——内容已注入，未发布任何内容");
+    if (!btnPos) {
+      throw new Error("头条发布按钮未找到——内容已注入，未发布任何内容");
     }
+    await realClick(tab.id, btnPos.x, btnPos.y);
 
-    // ---- 提交确认：字节系弹窗/抽屉（byte-modal/byte-drawer 等）内点确认/发布，多轮尝试 ----
+    // ---- 提交确认：字节系弹窗/抽屉内的确认按钮，同样 CDP 真实点击，多轮尝试 ----
     for (let i = 0; i < 4; i++) {
       await new Promise((r) => setTimeout(r, 1800));
-      await evalInTab(tab.id, `
+      const dlgPos = await elementCenter(tab.id, `
         const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
         const panels = Array.from(document.querySelectorAll(
           '.byte-modal, .byte-drawer, [class*="modal"], [class*="drawer"], [class*="Drawer"], [class*="dialog"], [class*="Dialog"]'))
           .filter(visible);
+        window.geoTarget = null;
         for (const d of panels) {
           const btns = Array.from(d.querySelectorAll("button, [role=button]"))
             .filter((b) => visible(b) && /^(确认|确定|发布|发表)$/.test((b.textContent || "").trim()));
           const hit = btns.find((b) => /byte-btn-primary|btn-primary/.test(String(b.className))) || btns[btns.length - 1];
-          if (hit) { hit.click(); }
+          if (hit) { window.geoTarget = hit; break; }
         }
       `);
+      if (dlgPos) { await realClick(tab.id, dlgPos.x, dlgPos.y); }
     }
     const confirmed = await waitForConditionInTab(
       tab.id,
@@ -205,7 +191,7 @@ export async function publish({ post, log }) {
         + " || 按钮[" + btnInfo.join(" ;; ") + "]";
     `);
     throw new Error(
-      "头条发布提交未能自动确认（点击了「" + clicked + "」）。现场： " + kw + " " + scene.slice(0, 300)
+      "头条发布提交未能自动确认（已用 CDP 真实点击发布）。现场： " + kw + " " + scene.slice(0, 300)
       + " ——内容已注入，未确认发出任何内容");
   } finally {
     chrome.tabs.remove(tab.id).catch(() => {});
