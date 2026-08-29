@@ -49,7 +49,10 @@ export async function publish({ post, log }) {
       800,
     );
     if (landed) {
-      const url = await evalInTab(tab.id, `return location.origin + location.pathname;`);
+      const url = await evalInTab(
+        tab.id,
+        `return (location.origin + location.pathname).replace(/\\/edit$/, "");`,
+      );
       return { url };
     }
     // 自动发布未确认：内容已在编辑器且知乎自动保存草稿，降级为人工发布

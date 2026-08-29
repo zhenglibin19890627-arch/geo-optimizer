@@ -149,6 +149,14 @@ def report_status(task_id: int):
             row.platform_url = platform_url
             row.error_msg = ""
             row.published_at = now
+            # 任一渠道首次发布成功：稿件同步标记已发布（官网路径之外的渠道发布口径）
+            draft = s.get(database.DistributionDraft, row.draft_id) if row.draft_id else None
+            if draft and draft.status not in ("published",):
+                draft.status = "published"
+                draft.published_url = platform_url
+                draft.published_at = now
+                draft.error_msg = ""
+                draft.updated_at = now
         else:
             row.status = "failed"
             row.error_msg = error_msg or "扩展侧未返回失败原因"
