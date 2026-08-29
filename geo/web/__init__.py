@@ -36,8 +36,11 @@ def fail(message: str, code: int = 1):
 
 
 def get_json():
-    """取请求 JSON，非法则抛大白话错误。"""
-    data = request.get_json(silent=True)
+    """取请求 JSON，非法则抛大白话错误。
+
+    force=True：浏览器 fetch 字符串体默认 text/plain 头，强制按 JSON 解析，
+    兼容前端 geoApi 未显式设置 Content-Type 的历史调用。"""
+    data = request.get_json(force=True, silent=True)
     if data is None:
         raise ApiError("请求的内容格式不对，请刷新页面后再试一次")
     if not isinstance(data, dict):

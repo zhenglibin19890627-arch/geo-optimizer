@@ -54,6 +54,8 @@ async function geoApi(path, options) {
     if (body && typeof body === "object" && !(body instanceof FormData)) {
       if (body.brand_id === undefined) body.brand_id = getBrandId();
       options.body = JSON.stringify(body);
+      if (!options.headers) options.headers = {};
+      if (!options.headers["Content-Type"]) options.headers["Content-Type"] = "application/json";
     } else if (body === undefined || body === null) {
       options.body = JSON.stringify({ brand_id: getBrandId() });
     }
