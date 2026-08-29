@@ -191,11 +191,16 @@ def platform_articles_ingest():
     _check_agent_token()
     data = request.get_json(silent=True) or {}
     platform = str(data.get("platform") or "").strip()
-    if platform not in ("zhihu", "sohu", "toutiao"):
-        raise ApiError("platform 只允许 zhihu/sohu/toutiao")
     articles = data.get("articles") or []
+    error = str(data.get("error") or "").strip()
     now = datetime.now()
     added = 0
+    with database.session_scope() as s:
+        if error and not articles:
+            database.set_setting("article_sync_request", "")
+            database.set_setting("article_sync_result",
+                                  f"{platform}：同步失败——{error[:200]}")
+            return ok({"added": 0}, "同步失败已记录")
     with database.session_scope() as s:
         for a in articles:
             if not isinstance(a, dict):

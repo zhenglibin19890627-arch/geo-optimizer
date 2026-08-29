@@ -1,10 +1,4 @@
-import { checkLogin } from "./platforms/registry.js";
-
-function requireString(value, name) {
-  const v = String(value || "").trim();
-  if (!v) throw new Error(name + " 不能为空");
-  return v;
-}
+import { requireString } from "./actions.js";
 
 // 深度遍历 JSON：收集带 title + url 字段的对象（平台列表接口结构各异，宽松解析）
 function walk(node, out, depth) {
@@ -68,7 +62,7 @@ const FETCHERS = { zhihu: fetchZhihu, toutiao: fetchToutiao, sohu: fetchSohu };
 export async function syncArticles(payload) {
   const platform = requireString(payload.platform, "platform");
   if (!FETCHERS[platform]) throw new Error("不支持的平台: " + platform);
-  if (!(await checkLogin(platform))) throw new Error(platform + " 未登录，请先到账号管理登录");
+  // 不再用 cookie 猜测登录态（分区 cookie 会误判），直接请求，失败时错误会带响应片段
   const articles = await FETCHERS[platform]();
   return { platform, articles };
 }

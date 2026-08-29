@@ -384,7 +384,8 @@ def maybe_sync_articles(ext: ExtClient, geo: GeoClient, cfg: dict):
         log(f"同步失败（{platform}）：{e}")
         try:
             geo._call("POST", "/api/agent/platform-articles",
-                      {"platform": platform, "articles": []})
+                      {"platform": platform, "articles": [],
+                       "error": str(e)[:300]})
         except Exception:
             pass
 
