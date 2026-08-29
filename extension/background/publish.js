@@ -1,5 +1,12 @@
 // 发布任务执行器：按目标逐平台调用适配器，更新任务进度与结果
 
+import * as zhihu from "./platforms/zhihu.js";
+import * as sohu from "./platforms/sohu.js";
+import * as toutiao from "./platforms/toutiao.js";
+
+// MV3 service worker 禁止动态 import()，适配器必须静态导入
+const ADAPTERS = { zhihu, sohu, toutiao };
+
 import { getPlatform } from "./platforms/registry.js";
 import * as store from "./store.js";
 
@@ -50,8 +57,9 @@ async function runTarget(job, result) {
   });
 }
 
-// 适配器加载：每个平台一个模块，实现 publish({platform, account, post, log}) → {url}
-async function getAdapter(platformId) {
-  const module = await import(`./platforms/${platformId}.js`);
-  return module;
+// 适配器获取：静态表（MV3 SW 禁动态 import）
+function getAdapter(platformId) {
+  const adapter = ADAPTERS[platformId];
+  if (!adapter) throw store.rpcError("unsupported_platform", "未注册的适配器: " + platformId);
+  return adapter;
 }
