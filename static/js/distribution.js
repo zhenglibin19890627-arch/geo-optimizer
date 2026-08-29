@@ -312,14 +312,26 @@ function loadChannels(draftId) {
 /* ---------------- 稿件库 ---------------- */
 
 function loadDrafts() {
+  const statusFilter = (document.getElementById("draft-filter-status") || {}).value || "";
+  const limit = parseInt((document.getElementById("draft-filter-limit") || {}).value || "20", 10);
   geoApi("/api/distribution/drafts").then(function (items) {
     const list = document.getElementById("draft-list");
-    if (!items.length) {
-      list.innerHTML = '<div class="empty">还没有稿件，先在左侧生成简报和文章。</div>';
+    // 数据增长策略：状态筛选 + 时间倒序 + 条数上限（API 本身已按创建时间倒序）
+    let shown = items.filter(function (d) { return !statusFilter || d.status === statusFilter; });
+    const total = shown.length;
+    shown = shown.slice(0, limit);
+    const stats = document.getElementById("draft-stats");
+    if (stats) {
+      stats.textContent = "共 " + items.length + " 篇稿件"
+        + (statusFilter ? "，符合条件 " + total + " 篇" : "")
+        + (total > shown.length ? "，显示最近 " + shown.length + " 篇" : "");
+    }
+    if (!shown.length) {
+      list.innerHTML = '<div class="empty">没有符合条件的稿件。</div>';
       return;
     }
     list.innerHTML = "";
-    items.forEach(function (d) {
+    shown.forEach(function (d) {
       const cls = d.status === "published" ? "tag-green"
         : d.status === "failed" ? "tag-red" : "tag-gray";
       const label = d.status === "published" ? "已发布"
@@ -336,12 +348,13 @@ function loadDrafts() {
           + '" target="_blank" rel="noopener" class="small-note" style="text-decoration:none">简报溯源：第 '
           + esc(d.source_round_id) + " 轮监测 ↗</a>";
       } else if (d.brief) {
-        const hint = (d.brief.positioning || d.brief.angle || "").toString().slice(0, 30);
+        const hint = (d.brief.angle || "").toString().slice(0, 30);
         meta += '<span class="small-note">来自创作简报' + (hint ? "：" + esc(hint) : "") + "</span>";
       }
       div.innerHTML =
         '<span class="tag ' + cls + '">' + label + "</span>" +
         '<span style="flex:1;min-width:120px;cursor:pointer" class="draft-title">' + esc(d.title) + "</span>" +
+        '<span class="small-note">' + esc((d.created_at || "").slice(0, 16)) + "</span>" +
         meta +
         '<button class="btn" style="padding:2px 8px" data-act="del">删除</button>';
       div.querySelector(".draft-title").addEventListener("click", function () {
@@ -360,11 +373,49 @@ function loadDrafts() {
         }, { danger: true });
       });
       list.appendChild(div);
+      // 平台明细子行：每篇稿件在各平台的发布状态与链接（懒加载，逐条填充）
+      const sub = document.createElement("div");
+      sub.style.cssText = "padding:0 0 6px 28px;border-bottom:1px solid var(--border,#f0f0f0)";
+      sub.textContent = "";
+      sub.innerHTML = '<div class="small-note" style="color:#999">平台明细加载中…</div>';
+      list.appendChild(sub);
+      geoApi("/api/distribution/drafts/" + d.id + "/channels").then(function (ch) {
+        if (!ch.length) { sub.innerHTML = ""; return; }
+        sub.innerHTML = ch.map(function (t) {
+          const c = t.status === "published" ? "tag-green"
+            : t.status === "failed" ? "tag-red"
+            : t.status === "dispatching" ? "tag-orange" : "tag-gray";
+          const lb = { published: "已发布", failed: "失败", dispatching: "分发中", pending: "待分发" }[t.status] || t.status;
+          let html = '<div style="display:flex;align-items:center;gap:8px;padding:2px 0;flex-wrap:wrap">'
+            + '<span class="tag ' + c + '" style="font-size:11px">' + lb + "</span>"
+            + "<span class='small-note'>" + esc(t.platform) + "</span>";
+          if (t.platform_url) {
+            html += '<a href="' + esc(t.platform_url) + '" target="_blank" rel="noopener" '
+              + 'class="small-note" style="text-decoration:none">打开 ↗</a>';
+          }
+          if (t.status === "failed") {
+            html += '<span class="small-note" style="color:#c0392b">' + esc((t.error_msg || "").slice(0, 80)) + "</span>"
+              + '<button class="btn" style="padding:1px 6px;font-size:12px" data-retry="' + t.id + '">重试</button>';
+          }
+          return html + "</div>";
+        }).join("");
+        sub.querySelectorAll("[data-retry]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            geoApi("/api/distribution/channels/" + btn.getAttribute("data-retry") + "/retry",
+                   { method: "POST", body: {} })
+              .then(function () { loadDrafts(); loadOverview(); })
+              .catch(function (m) { showToast(m || "重试失败", "error"); });
+          });
+        });
+      }).catch(function () { sub.innerHTML = ""; });
     });
   }).catch(function () {
     document.getElementById("draft-list").innerHTML = '<div class="empty">稿件库读取失败。</div>';
   });
 }
+
+document.getElementById("draft-filter-status").addEventListener("change", loadDrafts);
+document.getElementById("draft-filter-limit").addEventListener("change", loadDrafts);
 
 /* ---------------- 绑定 ---------------- */
 

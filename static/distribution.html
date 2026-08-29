@@ -108,14 +108,26 @@
       <div class="card">
         <div class="card-head">
           <div class="card-title">稿件库</div>
-          <div style="display:flex;gap:8px;align-items:center">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <span class="small-note">平台后台：</span>
-            <a href="https://zhuanlan.zhihu.com/write" target="_blank" rel="noopener" class="small-note">知乎 ↗</a>
-            <a href="https://mp.sohu.com/mpfe/v4/contentManagement/first/page" target="_blank" rel="noopener" class="small-note">搜狐号 ↗</a>
-            <a href="https://mp.toutiao.com/profile_v4/graphic/publish" target="_blank" rel="noopener" class="small-note">头条 ↗</a>
+            <a href="https://zhuanlan.zhihu.com/posts" target="_blank" rel="noopener" class="small-note">知乎文章管理 ↗</a>
+            <a href="https://mp.sohu.com/mpfe/v4/contentManagement/first/page" target="_blank" rel="noopener" class="small-note">搜狐号主页 ↗</a>
+            <a href="https://mp.toutiao.com/profile_v4/graphic/articles" target="_blank" rel="noopener" class="small-note">头条内容管理 ↗</a>
           </div>
         </div>
           <div class="small-note" id="draft-stats"></div>
+          <select class="input" id="draft-filter-status" style="width:auto;padding:2px 6px">
+            <option value="">全部状态</option>
+            <option value="published">已发布</option>
+            <option value="draft">待审阅</option>
+            <option value="failed">发布失败</option>
+          </select>
+          <select class="input" id="draft-filter-limit" style="width:auto;padding:2px 6px">
+            <option value="10">最近 10 篇</option>
+            <option value="20" selected>最近 20 篇</option>
+            <option value="50">最近 50 篇</option>
+            <option value="200">最近 200 篇</option>
+          </select>
         </div>
         <div class="small-note" id="channel-line" style="margin-bottom:6px"></div>
         <div id="draft-list"></div>
