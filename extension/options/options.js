@@ -115,7 +115,15 @@ async function render() {
       }
     }
 
-    await refresh();
+    try {
+      await refresh();
+    } catch (err) {
+      head.textContent = "";
+      const badge = document.createElement("span");
+      badge.className = "badge no";
+      badge.textContent = p.name + " 渲染出错：" + (err.message || err);
+      head.appendChild(badge);
+    }
     root.appendChild(card);
   }
 }
