@@ -30,14 +30,15 @@ function geoClickButton(text) {
 `;
 
 // 在指定 tab 的页面上下文顺序执行语句（helpers 先注入，语句再执行）
-// 页面内异常会被捕获并原样抛回扩展侧，便于联调定位
+// 语句以 async IIFE 包裹：页面脚本内可使用 await；异常原样抛回扩展侧
 export async function evalInTab(tabId, statements) {
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     world: "MAIN",
-    func: (code) => {
+    func: async (code) => {
       try {
-        return { __geo: true, value: new Function(code)() };
+        const run = new Function("return (async () => {\n" + code + "\n})()");
+        return { __geo: true, value: await run() };
       } catch (err) {
         return { __geo: true, error: String((err && err.message) || err) };
       }
