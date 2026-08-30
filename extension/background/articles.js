@@ -7,7 +7,9 @@ function walk(node, out, depth) {
   const title = String(node.title || node.article_title || node.display_title || "").trim();
   const url = String(node.url || node.article_url || node.open_url || node.url_string || "").trim();
   if (title && url && (url.startsWith("http") || url.startsWith("/"))) {
-    const t = node.created_time || node.create_time || node.publish_time || node.updated_at || node.created_at || "";
+    const t = node.created_time || node.create_time || node.publish_time
+      || node.updated_at || node.created_at || node.created || node.updated
+      || node.ctime || node.publish_at || node.published_at || "";
     const time = typeof t === "number" ? new Date(t < 1e12 ? t * 1000 : t).toISOString().slice(0, 10) : String(t).slice(0, 10);
     out.push({ title, url: url.startsWith("http") ? url : "https://www.toutiao.com" + url, publish_time: time });
   }

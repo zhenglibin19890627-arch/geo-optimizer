@@ -213,6 +213,10 @@ def platform_articles_ingest():
                       .filter(database.PlatformArticle.platform == platform,
                               database.PlatformArticle.url == url).first())
             if exists:
+                # 旧记录缺发布时间而本次有：补上
+                new_time = str(a.get("publish_time") or "")[:20]
+                if new_time and not (exists.publish_time or "").strip():
+                    exists.publish_time = new_time
                 continue
             s.add(database.PlatformArticle(
                 platform=platform, title=title[:300], url=url[:500],
