@@ -519,6 +519,15 @@ def publish_official(draft_id: int, brand_id: int) -> dict:
         row.status = "publishing"
         row.updated_at = datetime.now()
     url = cfg["base_url"] + cfg["publish_path"]
+    # 站点约定（与 weiqi 成功实现同款）：正文发 HTML，markdown 先转换；payload 含 title/category/author/summary/tags
+    clean_md = strip_links(payload.pop("content", ""))
+    try:
+        import markdown as _md
+        payload["content"] = _md.markdown(
+            clean_md, extensions=["tables", "fenced_code"])
+    except Exception:
+        payload["content"] = "<p>" + clean_md.replace(
+            "\n\n", "</p><p>").replace("\n", "<br/>") + "</p>"
     try:
         resp = requests_lib.post(url, json=payload, timeout=30,
                                  headers={"X-Api-Token": cfg["token"],
@@ -528,7 +537,7 @@ def publish_official(draft_id: int, brand_id: int) -> dict:
     except requests_lib.exceptions.RequestException as e:
         _mark_publish_failed(draft_id, f"连不上官网接口：{e}")
         raise EngineError("连不上官网接口，请检查网络后重试")
-    if resp.status_code != 200:
+    if not (200 <= resp.status_code < 300):
         detail = (resp.text or "")[:200]
         _mark_publish_failed(draft_id, f"官网接口返回 HTTP {resp.status_code}：{detail}")
         raise EngineError(f"官网接口返回 {resp.status_code}：{detail[:120] or '无响应体'}"
@@ -539,7 +548,8 @@ def publish_official(draft_id: int, brand_id: int) -> dict:
         data = resp.json() or {}
     except Exception:
         data = {}
-    if isinstance(data, dict) and data.get("code") not in (None, 0, "0"):
+    if isinstance(data, dict) and (data.get("success") is False
+                                   or data.get("code") not in (None, 0, "0")):
         msg = str(data.get("message") or data.get("error") or "官网拒绝了这次发布")[:200]
         _mark_publish_failed(draft_id, msg)
         raise EngineError(f"官网发布失败：{msg}")
