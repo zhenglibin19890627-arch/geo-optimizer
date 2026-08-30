@@ -323,7 +323,7 @@ function renderKeyTierRow(k) {
   }
 
   let keyHtml = "";
-  if (k.engine === "create") {
+  if (k.engine === "create" || k.engine === "analysis") {
     /* 创作模型复用所选厂商自己的钥匙，不单独填钥匙 */
     keyHtml = '<div class="kt-tier"><span class="small-note">钥匙复用所选厂商自己的钥匙（到上方对应厂商行填写即可），此处无需重复填写。</span></div>';
   } else {
