@@ -521,14 +521,18 @@ def publish_official(draft_id: int, brand_id: int) -> dict:
     try:
         resp = requests_lib.post(url, json=payload, timeout=30,
                                  headers={"X-Api-Token": cfg["token"],
-                                          "Content-Type": "application/json"})
+                                          "Content-Type": "application/json",
+                                          "Accept": "application/json",
+                                          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
     except requests_lib.exceptions.RequestException as e:
         _mark_publish_failed(draft_id, f"连不上官网接口：{e}")
         raise EngineError("连不上官网接口，请检查网络后重试")
     if resp.status_code != 200:
         detail = (resp.text or "")[:200]
         _mark_publish_failed(draft_id, f"官网接口返回 HTTP {resp.status_code}：{detail}")
-        raise EngineError(f"官网接口返回了 {resp.status_code}，请检查 Token 是否有效")
+        raise EngineError(f"官网接口返回 {resp.status_code}：{detail[:120] or '无响应体'}"
+                          "——请核对 Token 是否为站点校验的那个值、接口路径是否完整、"
+                          "以及站点防火墙是否放行")
     data = {}
     try:
         data = resp.json() or {}
