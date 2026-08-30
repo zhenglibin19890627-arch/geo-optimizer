@@ -152,11 +152,12 @@ def test_站点配置保存与回显(tmpdb, client):
     assert body["data"]["publish_path"] == "/api/posts/publish"  # 自动补斜杠
     assert body["data"]["configured"] is True
     assert body["data"]["token_masked"]  # 掩码非空
-    cfg = distribution.get_official_config()
+    # 回读：官网配置按品牌独立存储，用 GET 接口带上同一品牌
+    cfg = client.get("/api/distribution/config?brand_id=21").get_json()["data"]
     assert cfg["base_url"] == "https://cfg.example.com"
     assert cfg["category"] == "技术动态"
     assert cfg["author"] == "内容组"
-    assert cfg["token"] == "cfg-tok"
+    assert cfg["token_masked"]
 
     # 分类超长 → 大白话报错
     r = client.post("/api/distribution/config", json={
