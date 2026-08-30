@@ -196,12 +196,11 @@ def platform_articles_ingest():
     error = str(data.get("error") or "").strip()
     now = datetime.now()
     added = 0
-    with database.session_scope() as s:
-        if error and not articles:
-            database.set_setting("article_sync_request", "")
-            database.set_setting("article_sync_result",
-                                  f"{platform}：同步失败——{error[:200]}")
-            return ok({"added": 0}, "同步失败已记录")
+    if error and not articles:
+        database.set_setting("article_sync_request", "")
+        database.set_setting("article_sync_result",
+                              f"{platform}：同步失败——{error[:200]}")
+        return ok({"added": 0}, "同步失败已记录")
     with database.session_scope() as s:
         for a in articles:
             if not isinstance(a, dict):
@@ -220,8 +219,9 @@ def platform_articles_ingest():
                 publish_time=str(a.get("publish_time") or "")[:20],
                 imported_at=now))
             added += 1
-        database.set_setting("article_sync_request", "")
-        database.set_setting(
-            "article_sync_result",
-            f"{platform}:{added} 篇新入库（共收到 {len(articles)} 篇）")
+    # 设置写入放在文章事务提交之后：避免同请求内嵌套第二个连接写库造成 SQLite 锁等待
+    database.set_setting("article_sync_request", "")
+    database.set_setting(
+        "article_sync_result",
+        f"{platform}:{added} 篇新入库（共收到 {len(articles)} 篇）")
     return ok({"added": added, "received": len(articles)}, f"已入库 {added} 篇")
