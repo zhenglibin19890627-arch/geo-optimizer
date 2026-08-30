@@ -374,22 +374,25 @@ def publish(draft_id: int):
 
 @bp.route("/distribution/config", methods=["GET"])
 def get_official_config():
-    """官网发布配置（Token 掩码；站点完全由用户配置，无预置站点）。"""
+    """官网发布配置（按品牌独立；Token 掩码；站点完全由用户配置，无预置站点）。"""
     brand_id = current_brand_id()
-    cfg = distribution.get_official_config()
+    cfg = distribution.get_official_config(brand_id)
     from geo.web.api_config import _mask_key
     return ok({"base_url": cfg["base_url"], "publish_path": cfg["publish_path"],
                "category": cfg["category"], "author": cfg["author"],
                "configured": cfg["configured"],
+               "brand_id": brand_id,
                "token_masked": _mask_key(cfg["token"]),
                "official_domain": distribution.official_domain()}, "获取成功")
 
 
 @bp.route("/distribution/config", methods=["POST"])
 def save_official_config():
-    """保存官网接口配置（地址/路径/分类/作者；Token 留空 = 不修改）。"""
+    """保存官网接口配置（按品牌独立存储；地址/路径/分类/作者；Token 留空 = 不修改）。"""
     data = get_json()
+    brand_id = current_brand_id()
     from geo.web.api_config import _mask_key
+    suffix = f"_b{brand_id}" if brand_id else ""
     base_url = str(data.get("base_url") or "").strip().rstrip("/")
     publish_path = str(data.get("publish_path") or "").strip()
     category = str(data.get("category") or "").strip()
@@ -412,16 +415,16 @@ def save_official_config():
     if token:
         if len(token) > 200:
             raise ApiError("Token 太长了，请检查是否复制完整")
-        database.set_setting("site_api_token", token)
+        database.set_setting("site_api_token" + suffix, token)
     if base_url:
-        database.set_setting("site_base_url", base_url)
+        database.set_setting("site_base_url" + suffix, base_url)
     if publish_path:
-        database.set_setting("site_publish_path", publish_path)
+        database.set_setting("site_publish_path" + suffix, publish_path)
     if data.get("category") is not None and category:
-        database.set_setting("site_category", category)
+        database.set_setting("site_category" + suffix, category)
     if data.get("author") is not None:
-        database.set_setting("site_author", author)
-    cfg = distribution.get_official_config()
+        database.set_setting("site_author" + suffix, author)
+    cfg = distribution.get_official_config(brand_id)
     return ok({"base_url": cfg["base_url"], "publish_path": cfg["publish_path"],
                "category": cfg["category"], "author": cfg["author"],
                "configured": cfg["configured"],

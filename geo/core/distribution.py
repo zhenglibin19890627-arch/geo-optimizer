@@ -43,26 +43,33 @@ PLATFORM_DOMAINS = {"zhihu": "zhihu.com", "sohu": "sohu.com", "toutiao": "toutia
 AGENT_HEARTBEAT_TTL = 70
 
 
-# ---------------- 官网配置（settings 表存储，分发页可改） ----------------
+# ---------------- 官网配置（按品牌独立存储，分发页可改） ----------------
 
-def get_official_config() -> dict:
-    """站点发布配置（settings 表存储，分发页可改；不预置任何具体站点）。
+_OFFICIAL_FIELDS = ("site_base_url", "site_publish_path",
+                    "site_api_token", "site_category", "site_author")
 
-    兼容回退：早期版本用过 official_api_base/official_api_token 两个键，
-    新键缺失时回落旧键（仅回退用户保存过的值，不带任何默认站点）。
-    """
-    base_url = (database.get_setting("site_base_url", None)
+
+def get_official_config(brand_id: int = 0) -> dict:
+    """站点发布配置：按品牌独立存储（键带 _b{brand_id} 后缀），
+    该品牌没配置过的字段回落全局值（再回落早期 official_* 旧键）。"""
+    suffix = f"_b{int(brand_id or 0)}" if int(brand_id or 0) else ""
+
+    def _get(key: str):
+        val = database.get_setting(key + suffix, None)
+        if val not in (None, ""):
+            return val
+        return database.get_setting(key, None)
+
+    base_url = (_get("site_base_url")
                 or database.get_setting("official_api_base", None) or "")
     base_url = str(base_url).strip().rstrip("/")
-    token = str(database.get_setting("site_api_token", None)
+    token = str(_get("site_api_token")
                 or database.get_setting("official_api_token", None) or "").strip()
-    path = str(database.get_setting("site_publish_path", None)
-               or OFFICIAL_DEFAULT_PATH).strip()
+    path = str(_get("site_publish_path") or OFFICIAL_DEFAULT_PATH).strip()
     if not path.startswith("/"):
         path = "/" + path
-    category = str(database.get_setting("site_category", None)
-                   or OFFICIAL_DEFAULT_CATEGORY).strip()
-    author = str(database.get_setting("site_author", None) or "").strip()
+    category = str(_get("site_category") or OFFICIAL_DEFAULT_CATEGORY).strip()
+    author = str(_get("site_author") or "").strip()
     return {
         "base_url": base_url,
         "publish_path": path,
@@ -493,8 +500,8 @@ def generate_draft(brand_id: int, brief: dict = None, user_instruction: str = ""
 # ---------------- 官网直发 ----------------
 
 def publish_official(draft_id: int, brand_id: int) -> dict:
-    """把稿件发布到自有官网（同步调用；站点接口在分发页配置，无预置站点）。"""
-    cfg = get_official_config()
+    """把稿件发布到自有官网（同步调用；站点接口按品牌配置，无预置站点）。"""
+    cfg = get_official_config(brand_id)
     if not cfg["base_url"]:
         raise EngineError("还没配置官网接口地址，请在本页「官网发布配置」里填写")
     if not cfg["token"]:
