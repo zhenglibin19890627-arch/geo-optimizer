@@ -215,7 +215,7 @@ el("view-mask").addEventListener("click", function (e) {
 function loadPlatformArticles() {
   geoApi("/api/distribution/platform-articles").then(function (d) {
     const arts = d.articles || [];
-    const box = document.getElementById("pa-section");
+    const box = document.getElementById("pa-cards");
     const syncBtn = document.getElementById("pa-sync");
     if (d.last_sync) document.getElementById("pa-last").textContent = "上次同步：" + d.last_sync;
     if (syncBtn) {
