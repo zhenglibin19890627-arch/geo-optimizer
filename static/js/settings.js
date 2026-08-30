@@ -505,7 +505,7 @@ function schedModelOptions(k, mode) {
 function renderScheduleModels() {
   const area = document.getElementById("schedule-models");
   if (!area) return;
-  const engines = (setKeys || []).filter(function (k) { return k.engine !== "analysis"; });
+  const engines = (setKeys || []).filter(function (k) { return k.engine !== "analysis" && k.engine !== "create"; });
   if (!engines.length) {
     area.innerHTML = "";
     return;
