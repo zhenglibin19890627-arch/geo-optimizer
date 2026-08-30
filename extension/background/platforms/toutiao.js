@@ -122,26 +122,28 @@ export async function publish({ post, log }) {
     // ---- 提交确认：字节系弹窗/抽屉内的确认按钮，同样 CDP 真实点击，多轮尝试 ----
     for (let i = 0; i < 4; i++) {
       await new Promise((r) => setTimeout(r, 1800));
-      if (i === 0) {
-        // 发表设置抽屉里优先选「无封面」（测试稿无图，带封面会卡校验）
-        const coverPos = await elementCenter(tab.id, `
-          const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-          const panels = Array.from(document.querySelectorAll(
-            '.byte-modal, .byte-drawer, [class*="modal"], [class*="drawer"], [class*="Drawer"], [class*="dialog"], [class*="Dialog"]'))
-            .filter(visible);
-          window.geoTarget = null;
-          for (const d of panels) {
-            const hits = Array.from(d.querySelectorAll("label, span, div, li, input"))
-              .filter((e) => visible(e) && (e.textContent || "").trim() === "无封面"
-                && e.children.length <= 2);
-            if (hits.length) { window.geoTarget = hits[hits.length - 1]; break; }
+      // 每轮都尝试选「无封面」（抽屉可能晚出现；重复点同一单选无副作用）
+      const coverPos = await elementCenter(tab.id, `
+        const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+        window.geoTarget = null;
+        const scopes = Array.from(document.querySelectorAll(
+          '.byte-modal, .byte-drawer, [class*="modal"], [class*="drawer"], [class*="Drawer"], [class*="dialog"], [class*="Dialog"], [class*="popover"], [class*="Popover"], [class*="popup"], [class*="Popup"], body'));
+        for (const scope of scopes) {
+          const hits = Array.from(scope.querySelectorAll("label, span, div, li, p"))
+            .filter((e) => visible(e) && (e.textContent || "").includes("无封面")
+              && (e.textContent || "").trim().length <= 12 && e.children.length <= 3);
+          if (hits.length) {
+            let t = hits[hits.length - 1];
+            while (t.children.length === 1 && t.children[0].tagName === "SPAN") t = t.children[0];
+            window.geoTarget = t;
+            break;
           }
-        `);
-        if (coverPos) {
-          await log("发表设置：选择无封面");
-          await realClick(tab.id, coverPos.x, coverPos.y);
-          await new Promise((r) => setTimeout(r, 800));
         }
+      `);
+      if (coverPos) {
+        await log("发表设置：选择无封面");
+        await realClick(tab.id, coverPos.x, coverPos.y);
+        await new Promise((r) => setTimeout(r, 800));
       }
       const dlgPos = await elementCenter(tab.id, `
         const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
