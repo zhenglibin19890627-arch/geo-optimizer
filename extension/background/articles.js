@@ -15,7 +15,8 @@ function walk(node, out, depth) {
 }
 
 async function fetchJson(url) {
-  const r = await fetch(url, { credentials: "include" });
+  // 15 秒强制超时：避免某个候选接口挂起拖满宿主 90 秒等待
+  const r = await fetch(url, { credentials: "include", signal: AbortSignal.timeout(15000) });
   const text = await r.text();
   try { return JSON.parse(text); } catch (e) {
     throw new Error("非 JSON 响应（" + r.status + "）： " + text.slice(0, 150));
