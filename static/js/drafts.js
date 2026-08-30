@@ -233,20 +233,35 @@ function loadPlatformArticles() {
       box.innerHTML = '<div class="small-note" style="color:#bbb">还没有导入平台历史文章——选择平台点「同步」拉取账号已发布的全部文章。</div>';
       return;
     }
-    const platforms = [];
-    arts.forEach(function (a) { if (platforms.indexOf(a.platform) < 0) platforms.push(a.platform); });
-    let html = "";
-    platforms.forEach(function (p) {
-      html += '<div style="font-weight:700;margin:10px 0 4px">' + esc(p)
-        + ' <span class="small-note">（' + arts.filter(function (a) { return a.platform === p; }).length + ' 篇）</span></div>';
-      arts.filter(function (a) { return a.platform === p; }).forEach(function (a) {
-        html += '<div style="display:flex;gap:8px;padding:3px 0;font-size:13px;align-items:center">'
-          + '<span class="small-note" style="width:86px;flex-shrink:0">' + esc(a.publish_time || "") + "</span>"
-          + '<a href="' + esc(a.url) + '" target="_blank" rel="noopener" style="flex:1;text-decoration:none;color:var(--text-main,#1F2937)">'
-          + esc(a.title) + " ↗</a></div>";
-      });
+    // 按标题聚合：同一篇文章发在多个平台（如搜狐+头条）合并进同一卡片
+    const byTitle = {};
+    const groups = [];
+    arts.forEach(function (a) {
+      const key = String(a.title || "").replace(/\s+/g, "").toLowerCase();
+      if (!byTitle[key]) { byTitle[key] = []; groups.push(byTitle[key]); }
+      byTitle[key].push(a);
     });
-    box.innerHTML = html;
+    groups.sort(function (g1, g2) {
+      return String(g2[0].publish_time || "").localeCompare(String(g1[0].publish_time || ""));
+    });
+    box.innerHTML = groups.map(function (g) {
+      const chips = g.map(function (a) {
+        const cn = PLAT_CN[a.platform] || a.platform;
+        return '<a class="p-chip" href="' + esc(a.url) + '" target="_blank" rel="noopener" style="text-decoration:none">'
+          + '<span class="p-dot ok"></span>' + esc(cn)
+          + (a.publish_time ? " · " + esc(a.publish_time) : "") + " · 打开 ↗</a>";
+      }).join("");
+      const platLine = g.map(function (a) { return PLAT_CN[a.platform] || a.platform; }).join(" / ");
+      return '<div class="draft-card st-published">'
+        + '<div class="draft-head"><div style="flex:1;min-width:0">'
+        + '<div class="draft-title-main"><a href="' + esc(g[0].url) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">' + esc(g[0].title) + "</a></div>"
+        + '<div class="draft-meta"><span class="src-badge">平台历史</span>'
+        + "<span>发布于 " + esc(g[0].publish_time || "—") + "</span>"
+        + "<span>渠道：" + esc(platLine) + "</span></div>"
+        + "</div></div>"
+        + '<div class="platform-chips">' + chips + "</div>"
+        + "</div>";
+    }).join("");
   }).catch(function () {});
 }
 
