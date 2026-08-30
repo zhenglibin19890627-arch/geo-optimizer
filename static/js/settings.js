@@ -352,9 +352,12 @@ function renderKeyTierRow(k) {
       testKey(k.engine, testBtn);
     });
   }
-  row.querySelector("[data-key-save]").addEventListener("click", function () {
-    saveKey(k.engine, row.querySelector("[data-key-input]"), this);
-  });
+  const keySaveBtn = row.querySelector("[data-key-save]");
+  if (keySaveBtn) {
+    keySaveBtn.addEventListener("click", function () {
+      saveKey(k.engine, row.querySelector("[data-key-input]"), this);
+    });
+  }
 
   if (isAnalysis) {
     const tierSel = row.querySelector("[data-tier]");
