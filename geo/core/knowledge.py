@@ -6,6 +6,7 @@ import json
 
 from geo.analyzers import llm_client
 from geo.analyzers.llm_client import AnalysisError
+from geo.core.text_utils import strip_links
 from geo.models import db as database
 
 
@@ -213,7 +214,7 @@ def generate_draft(brand_id: int, doc_ids: list, keywords: list = None,
           + ("生成标题和正文" if generate_title else "生成正文") +
           (f"。{user_instruction.strip()}" if user_instruction.strip() else "。主题自由发挥，观点明确。") + "\n\n"
         "输出要求（严格 JSON 对象，不要任何解释、前后缀、markdown 包裹）：\n"
-        '{"title": "文章标题（8-25 字，简洁有力）", "body": "Markdown 正文（可用 # ## ### 分层，'
+        '{"title": "文章标题（8-25 字，简洁有力）", "body": "Markdown 正文（可用 # ## ### 分层；全文禁止出现任何网址、链接（http/https/www/裸域名都不行）'
         '从第一个段落或 # 标题开始，不含 title 字段内容；引号用中文引号）"}')
     try:
         text = llm_client.chat(prompt, temperature=0.7, timeout=180, system=system, purpose="create")
@@ -226,7 +227,7 @@ def generate_draft(brand_id: int, doc_ids: list, keywords: list = None,
     try:
         obj = json.loads(cleaned[start:end + 1])
         title = str(obj.get("title") or "").strip()
-        body = str(obj.get("body") or "").strip()
+        body = strip_links(str(obj.get("body") or "").strip())
     except (ValueError, TypeError):
         raise KnowledgeError("AI 返回内容无法解析为文章，请稍后再试")
     if not title or not body:
@@ -237,7 +238,7 @@ def generate_draft(brand_id: int, doc_ids: list, keywords: list = None,
     now = database.now()
     with database.session_scope() as s:
         draft = database.DistributionDraft(
-            brand_id=brand_id, title=title, body_md=body,
+            brand_id=brand_id, title=strip_links(title.strip())[:100], body_md=body,
             summary=body[:120], tags="、".join(keywords[:5]) if keywords else "",
             status="draft", created_at=now, updated_at=now)
         s.add(draft)
@@ -280,7 +281,7 @@ def rewrite_from_url(brand_id: int, url: str, user_instruction: str = "",
         "总结句与要点列表。\n"
         + (f"【改写要求】{user_instruction.strip()}\n" if user_instruction.strip() else "")
         + "输出要求（严格 JSON 对象，不要任何解释、前后缀、markdown 包裹）：\n"
-        '{"title": "新文章标题（8-25 字）", "body": "Markdown 正文"}\n\n'
+        '{"title": "新文章标题（8-25 字）", "body": "Markdown 正文（禁止出现任何网址或链接）"}\n\n'
         f"【参考文章正文】\n{content[:8000]}")
     try:
         text = llm_client.chat(prompt, temperature=0.6, timeout=180, system=system, purpose="create")
@@ -293,7 +294,7 @@ def rewrite_from_url(brand_id: int, url: str, user_instruction: str = "",
     try:
         obj = json.loads(cleaned[start:end + 1])
         title = str(obj.get("title") or "").strip()
-        body = str(obj.get("body") or "").strip()
+        body = strip_links(str(obj.get("body") or "").strip())
     except (ValueError, TypeError):
         raise KnowledgeError("AI 返回内容无法解析为文章，请稍后再试")
     if not title or len(body) < 100:
@@ -301,7 +302,7 @@ def rewrite_from_url(brand_id: int, url: str, user_instruction: str = "",
     now = database.now()
     with database.session_scope() as s:
         draft = database.DistributionDraft(
-            brand_id=brand_id, title=title[:100], body_md=body,
+            brand_id=brand_id, title=strip_links(title.strip())[:100], body_md=body,
             summary=body[:120], tags="链接改写",
             brief_json=None, source_round_id=None,
             status="draft", created_at=now, updated_at=now)

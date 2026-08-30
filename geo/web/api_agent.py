@@ -12,6 +12,7 @@ from datetime import datetime
 from flask import Blueprint, request
 
 from geo.core import distribution
+from geo.core.text_utils import strip_links
 from geo.models import db as database
 from geo.web import ApiError, ok
 
@@ -107,7 +108,7 @@ def claim_tasks():
                 "draft": {
                     "draft_id": draft.id,
                     "title": draft.title or "",
-                    "body_md": draft.body_md or "",
+                    "body_md": strip_links(draft.body_md or ""),
                     "summary": (draft.summary or "")[:distribution.SUMMARY_MAX_CHARS],
                     "tags": [t.strip() for t in (draft.tags or "").split(",") if t.strip()],
                 },

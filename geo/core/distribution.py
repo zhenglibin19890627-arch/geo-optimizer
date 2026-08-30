@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 import requests as requests_lib
 
 from geo.analyzers import llm_client, sources as sources_mod
+from geo.core.text_utils import strip_links
 from geo.engines.base import EngineError
 from geo.models import db as database
 
@@ -480,7 +481,7 @@ def generate_draft(brand_id: int, brief: dict = None, user_instruction: str = ""
 
     with database.session_scope() as s:
         row = database.DistributionDraft(
-            brand_id=brand_id, title=title, body_md=body,
+            brand_id=brand_id, title=title, body_md=strip_links(body),
             summary=summary, tags=tags,
             brief_json=database.jdumps(brief), source_round_id=source_round_id,
             status="draft", updated_at=datetime.now())
@@ -509,7 +510,7 @@ def publish_official(draft_id: int, brand_id: int) -> dict:
         brand = database.get_brand(brand_id)
         payload = {
             "title": row.title.strip(),
-            "content": row.body_md,
+            "content": strip_links(row.body_md),
             "category": cfg["category"],
             "author": cfg["author"] or (brand.get("brand_name") or ""),
             "summary": (row.summary or "")[:SUMMARY_MAX_CHARS],
