@@ -36,10 +36,24 @@ async function fetchZhihu() {
 }
 
 async function fetchToutiao() {
-  const list = await fetchJson("https://mp.toutiao.com/api/article/list/list?page=0&pageSize=20");
-  const out = [];
-  walk(list, out, 0);
-  return out;
+  const candidates = [
+    "https://mp.toutiao.com/api/article/list/list?page=0&pageSize=20",
+    "https://mp.toutiao.com/api/article/list/list/?page=0&pageSize=20",
+    "https://mp.toutiao.com/api/pc/article/list?page=0&pageSize=20",
+    "https://mp.toutiao.com/api/article/list?page=0&pageSize=20",
+    "https://mp.toutiao.com/api/pc/content/list?page=0&pageSize=20&state=published",
+  ];
+  let lastErr = "";
+  for (const u of candidates) {
+    try {
+      const list = await fetchJson(u);
+      const out = [];
+      walk(list, out, 0);
+      if (out.length) return out;
+      lastErr = u + " → 响应可解析但未找到文章字段： " + JSON.stringify(list).slice(0, 120);
+    } catch (e) { lastErr = u + " → " + e.message; }
+  }
+  throw new Error("全部候选接口失败；最后一条： " + lastErr);
 }
 
 async function fetchSohu() {
