@@ -28,11 +28,13 @@
   .stat-num { font-size: 22px; font-weight: 700; line-height: 1.1; }
   .stat-label { font-size: 12px; color: var(--text-sub, #6B7280); margin-top: 2px; }
   .toolbar {
-    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    display: flex; gap: 8px; align-items: center; flex-wrap: nowrap;
     background: var(--card, #fff); border: 1px solid var(--border, #E2E8F0);
     border-radius: 10px; padding: 10px 12px; margin-bottom: 14px;
   }
-  .toolbar .input, .toolbar select.input { padding: 5px 9px; font-size: 13px; }
+  .toolbar .input, .toolbar select.input { padding: 5px 9px; font-size: 13px; min-width: 0; }
+  .toolbar select.input { flex-shrink: 1; width: auto; }
+  .toolbar .input[type="date"] { width: 132px; flex-shrink: 1; }
   .draft-card {
     background: var(--card, #fff); border: 1px solid var(--border, #E2E8F0); border-radius: 10px;
     padding: 14px 16px 12px 18px; margin-bottom: 12px; position: relative; overflow: hidden;
@@ -118,7 +120,7 @@
   </div>
 
   <div class="toolbar">
-    <input class="input" id="d-search" placeholder="🔍 搜索标题 / 摘要…" style="flex:1;min-width:180px">
+    <input class="input" id="d-search" placeholder="🔍 搜索标题 / 摘要…" style="flex:1;min-width:100px">
     <select class="input" id="d-status">
       <option value="">全部状态</option>
       <option value="published">已发布</option>
