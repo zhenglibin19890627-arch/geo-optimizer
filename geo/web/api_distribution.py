@@ -284,6 +284,20 @@ def trigger_articles_sync():
     return ok({"platform": platform}, "已发起同步请求，等待分发桥与扩展执行（约几秒到十几秒）")
 
 
+@bp.route("/distribution/published-urls", methods=["GET"])
+def published_urls():
+    """所有已发布渠道的文章链接：平台历史卡片据此去重（已由稿件卡展示的不重复展示）。"""
+    brand_id = current_brand_id()
+    with database.session_scope() as s:
+        rows = (s.query(database.DistributionChannelTask)
+                .filter(database.DistributionChannelTask.brand_id == brand_id,
+                        database.DistributionChannelTask.status == "published",
+                        database.DistributionChannelTask.platform_url != "")
+                .all())
+        urls = sorted({(r.platform_url or "").strip() for r in rows} - {""})
+    return ok({"urls": urls}, "获取成功")
+
+
 @bp.route("/distribution/platform-articles", methods=["GET"])
 def list_platform_articles():
     brand_id = current_brand_id()

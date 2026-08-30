@@ -213,8 +213,15 @@ el("view-mask").addEventListener("click", function (e) {
 });
 
 function loadPlatformArticles() {
-  geoApi("/api/distribution/platform-articles").then(function (d) {
-    const arts = d.articles || [];
+  // 已发布稿件卡的链接集合：历史文章里相同的链接不重复展示
+  const publishedSet = geoApi("/api/distribution/published-urls").then(function (d) {
+    return new Set((d.urls || []).map(function (u) {
+      return String(u || "").trim().replace(/\/+$/, "");
+    }));
+  }).catch(function () { return new Set(); });
+  Promise.all([geoApi("/api/distribution/platform-articles"), publishedSet]).then(function (res) {
+    const arts = res[0].articles || [];
+    const pubSet = res[1];
     const box = document.getElementById("pa-cards");
     const syncBtn = document.getElementById("pa-sync");
     if (d.last_sync) document.getElementById("pa-last").textContent = "上次同步：" + d.last_sync;
@@ -233,10 +240,13 @@ function loadPlatformArticles() {
       box.innerHTML = '<div class="small-note" style="color:#bbb">还没有导入平台历史文章——选择平台点「同步」拉取账号已发布的全部文章。</div>';
       return;
     }
-    // 按标题聚合：同一篇文章发在多个平台（如搜狐+头条）合并进同一卡片
+    // 按标题聚合：同一篇文章发在多个平台（如搜狐+头条）合并进同一卡片；
+    // 已由稿件卡展示的链接（发布渠道回写过的）剔除，避免重复
+    const norm = function (u) { return String(u || "").trim().replace(/\/+$/, ""); };
     const byTitle = {};
     const groups = [];
     arts.forEach(function (a) {
+      if (pubSet.has(norm(a.url))) return;
       const key = String(a.title || "").replace(/\s+/g, "").toLowerCase();
       if (!byTitle[key]) { byTitle[key] = []; groups.push(byTitle[key]); }
       byTitle[key].push(a);
