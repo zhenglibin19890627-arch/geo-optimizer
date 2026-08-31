@@ -241,13 +241,17 @@ function loadPlatformArticles() {
       return;
     }
     // 按标题聚合：同一篇文章发在多个平台（如搜狐+头条）合并进同一卡片；
-    // 已由稿件卡展示的链接（发布渠道回写过的）剔除，避免重复
+    // 已由稿件卡展示的链接（发布渠道回写过的）剔除，避免重复；
+    // 标题与现有稿件相同的（系统发布过的）也不再重复展示
     const norm = function (u) { return String(u || "").trim().replace(/\/+$/, ""); };
+    const normTitle = function (t) { return String(t || "").replace(/\s+/g, "").toLowerCase(); };
+    const existingTitles = new Set(allDrafts.map(function (x) { return normTitle(x.title); }));
     const byTitle = {};
     const groups = [];
     arts.forEach(function (a) {
       if (pubSet.has(norm(a.url))) return;
-      const key = String(a.title || "").replace(/\s+/g, "").toLowerCase();
+      if (existingTitles.has(normTitle(a.title))) return;
+      const key = normTitle(a.title);
       if (!byTitle[key]) { byTitle[key] = []; groups.push(byTitle[key]); }
       byTitle[key].push(a);
     });
