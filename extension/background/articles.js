@@ -151,6 +151,12 @@ export async function syncArticles(payload) {
   const platform = requireString(payload.platform, "platform");
   if (!FETCHERS[platform]) throw new Error("不支持的平台: " + platform);
   // 不再用 cookie 猜测登录态（分区 cookie 会误判），直接请求，失败时错误会带响应片段
-  const articles = await FETCHERS[platform]();
+  // [v3] 版本戳：报错带此前缀说明扩展代码已是最新（排查缓存/重载问题用）
+  try {
+    const articles = await FETCHERS[platform]();
+    return { platform, articles };
+  } catch (e) {
+    throw new Error("[v3] " + e.message);
+  }
   return { platform, articles };
 }
