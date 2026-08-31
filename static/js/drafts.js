@@ -272,7 +272,16 @@ function loadPlatformArticles() {
         + '<div class="platform-chips">' + chips + "</div>"
         + "</div>";
     }).join("");
-  }).catch(function () {});
+  }).catch(function (m) {
+    // 失败可见化：不再静默，直接在页面显示原因并恢复同步按钮
+    const box2 = document.getElementById("pa-cards");
+    if (box2) {
+      box2.innerHTML = '<div class="small-note" style="color:var(--danger,#DC2626)">平台历史文章加载失败：'
+        + esc(String(m || "未知错误")) + "</div>";
+    }
+    const sb2 = document.getElementById("pa-sync");
+    if (sb2) sb2.disabled = false;
+  });
 }
 
 loadAll();
