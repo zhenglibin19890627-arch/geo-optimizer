@@ -5,6 +5,7 @@
 initNav("drafts");
 
 var allDrafts = [];      // 全量稿件（接口已按创建时间倒序）
+var historyGroups = [];  // 平台历史文章（按标题聚合后的组，最新在前）
 var channelCache = {};   // draft_id -> 渠道任务列表
 
 function el(id) { return document.getElementById(id); }
@@ -47,15 +48,56 @@ function renderList() {
     }
     return true;
   });
-  el("d-count").textContent = "符合条件 " + shown.length + " / " + allDrafts.length + " 篇";
+  // 统一时间线：稿件卡 + 平台历史卡合并，按时间倒序混排
+  var kwClean = kw.replace(/\s+/g, "");
+  var items = [];
+  shown.forEach(function (d) {
+    items.push({ date: (d.created_at || "").slice(0, 16), draft: d });
+  });
+  historyGroups.forEach(function (g) {
+    if (status && status !== "published") return; // 历史文章都是已发布
+    const day = String(g[0].publish_time || "").slice(0, 10);
+    if (kwClean && normTitle(g[0].title).indexOf(kwClean) < 0) return;
+    if (range) {
+      if (range.start && day && day < range.start) return;
+      if (range.end && day && day > range.end) return;
+    }
+    items.push({ date: String(g[0].publish_time || ""), hist: g });
+  });
+  items.sort(function (a, b) { return String(b.date || "").localeCompare(String(a.date || "")); });
+  el("d-count").textContent = "共 " + items.length
+    + " 篇（本系统 " + shown.length + " + 平台历史 " + historyGroups.length + "）";
   var list = el("draft-list");
-  if (!shown.length) {
+  if (!items.length) {
     list.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:#9CA3AF">'
-      + (allDrafts.length ? "没有符合条件的稿件。" : "还没有稿件——去「内容分发」生成第一篇。") + "</div>";
+      + (allDrafts.length || historyGroups.length ? "没有符合条件的内容。" : "还没有稿件——去「内容分发」生成第一篇，或在下方同步平台历史文章。") + "</div>";
     return;
   }
   list.innerHTML = "";
-  shown.forEach(function (d) {
+  items.forEach(function (it) {
+    if (!it.draft) {
+      const g = it.hist;
+      const chips = g.map(function (a) {
+        const cn = PLAT_CN[a.platform] || a.platform;
+        return '<a class="p-chip" href="' + esc(a.url) + '" target="_blank" rel="noopener" style="text-decoration:none">'
+          + '<span class="p-dot ok"></span>' + esc(cn)
+          + (a.publish_time ? " · " + esc(a.publish_time) : "") + " · 打开 ↗</a>";
+      }).join("");
+      const platLine = g.map(function (a) { return PLAT_CN[a.platform] || a.platform; }).join(" / ");
+      const hcard = document.createElement("div");
+      hcard.className = "draft-card st-published";
+      hcard.innerHTML =
+        '<div class="draft-head"><div style="flex:1;min-width:0">'
+        + '<div class="draft-title-main"><a href="' + esc(g[0].url) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">' + esc(g[0].title) + "</a></div>"
+        + '<div class="draft-meta"><span>' + esc((g[0].publish_time || "").slice(0, 16)) + "</span>"
+        + '<span class="src-badge">平台历史</span>'
+        + "<span>渠道：" + esc(platLine) + "</span></div>"
+        + "</div></div>"
+        + '<div class="platform-chips">' + chips + "</div>";
+      list.appendChild(hcard);
+      return;
+    }
+    var d = it.draft;
     var card = document.createElement("div");
     card.className = "draft-card st-" + d.status;
     var srcHtml = "";
@@ -236,10 +278,7 @@ function loadPlatformArticles() {
         setTimeout(function () { location.reload(); }, 12000);
       });
     }
-    if (!arts.length) {
-      box.innerHTML = '<div class="small-note" style="color:#bbb">还没有导入平台历史文章——选择平台点「同步」拉取账号已发布的全部文章。</div>';
-      return;
-    }
+    historyGroups = [];  // 无历史数据
     // 按标题聚合：同一篇文章发在多个平台（如搜狐+头条）合并进同一卡片；
     // 已由稿件卡展示的链接（发布渠道回写过的）剔除，避免重复；
     // 标题与现有稿件相同的（系统发布过的）也不再重复展示
@@ -264,31 +303,11 @@ function loadPlatformArticles() {
       if (!t2) return -1;
       return t2.localeCompare(t1);
     });
-    box.innerHTML = groups.map(function (g) {
-      const chips = g.map(function (a) {
-        const cn = PLAT_CN[a.platform] || a.platform;
-        return '<a class="p-chip" href="' + esc(a.url) + '" target="_blank" rel="noopener" style="text-decoration:none">'
-          + '<span class="p-dot ok"></span>' + esc(cn)
-          + (a.publish_time ? " · " + esc(a.publish_time) : "") + " · 打开 ↗</a>";
-      }).join("");
-      const platLine = g.map(function (a) { return PLAT_CN[a.platform] || a.platform; }).join(" / ");
-      return '<div class="draft-card st-published">'
-        + '<div class="draft-head"><div style="flex:1;min-width:0">'
-        + '<div class="draft-title-main"><a href="' + esc(g[0].url) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none">' + esc(g[0].title) + "</a></div>"
-        + '<div class="draft-meta"><span class="src-badge">平台历史</span>'
-        + "<span>发布于 " + esc(g[0].publish_time || "—") + "</span>"
-        + "<span>渠道：" + esc(platLine) + "</span></div>"
-        + "</div></div>"
-        + '<div class="platform-chips">' + chips + "</div>"
-        + "</div>";
-    }).join("");
+    historyGroups = groups;
+    renderDrafts();  // 合并进统一时间线
   }).catch(function (m) {
-    // 失败可见化：不再静默，直接在页面显示原因并恢复同步按钮
-    const box2 = document.getElementById("pa-cards");
-    if (box2) {
-      box2.innerHTML = '<div class="small-note" style="color:var(--danger,#DC2626)">平台历史文章加载失败：'
-        + esc(String(m || "未知错误")) + "</div>";
-    }
+    // 失败可见化：恢复按钮并提示（不打断稿件列表）
+    showToast("平台历史文章加载失败：" + String(m || "未知错误"), "error");
     const sb2 = document.getElementById("pa-sync");
     if (sb2) sb2.disabled = false;
   });
