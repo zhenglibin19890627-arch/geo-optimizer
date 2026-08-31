@@ -53,7 +53,50 @@ async function fetchToutiao() {
       lastErr = u + " → 响应可解析但未找到文章字段： " + JSON.stringify(list).slice(0, 120);
     } catch (e) { lastErr = u + " → " + e.message; }
   }
-  throw new Error("全部候选接口失败；最后一条： " + lastErr);
+  // 接口全部失效：退而读取内容管理页 DOM（与人工查看一致，最稳）
+  try {
+    return await fetchToutiaoByPage();
+  } catch (e2) {
+    throw new Error(lastErr + "；页面抓取也失败： " + e2.message);
+  }
+}
+
+async function fetchToutiaoByPage() {
+  const pageUrl = "https://mp.toutiao.com/profile_v4/graphic/articles";
+  let tabId;
+  const tabs = await chrome.tabs.query({ url: "https://mp.toutiao.com/*" });
+  if (tabs.length) {
+    tabId = tabs[0].id;
+  } else {
+    const tab = await chrome.tabs.create({ url: pageUrl, active: false });
+    tabId = tab.id;
+    await new Promise((r) => setTimeout(r, 7000));  // 等页面加载出列表
+  }
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const seen = {};
+      const out = [];
+      document.querySelectorAll("a").forEach((a) => {
+        const href = a.href || "";
+        if (!/toutiao\.com\/(article|pgc-detail)\/|pgc_id=/.test(href)) return;
+        const title = (a.textContent || "").replace(/\s+/g, " ").trim();
+        if (!title || title.length < 6 || seen[href]) return;
+        seen[href] = 1;
+        const box = a.closest("li,article,section,div[class*='item'],div[class*='card']") || a.parentElement;
+        const txt = (box && box.textContent) || "";
+        const tm = txt.match(/\d{4}-\d{2}-\d{2}/);
+        out.push({ title: title.slice(0, 120), url: href.split("?")[0], publish_time: tm ? tm[0] : "" });
+      });
+      return out;
+    },
+  });
+  const items = (results && results[0] && results[0].result) || [];
+  if (!items.length) {
+    throw new Error("内容管理页未解析出文章——请确认已登录头条号、内容管理页能正常打开（可先手动打开 "
+      + pageUrl + " 再重试）");
+  }
+  return items;
 }
 
 async function fetchSohu() {
