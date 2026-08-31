@@ -304,7 +304,7 @@ function loadPlatformArticles() {
       return t2.localeCompare(t1);
     });
     historyGroups = groups;
-    renderDrafts();  // 合并进统一时间线
+    renderList();  // 合并进统一时间线
   }).catch(function (m) {
     // 失败可见化：恢复按钮并提示（不打断稿件列表）
     showToast("平台历史文章加载失败：" + String(m || "未知错误"), "error");
