@@ -255,8 +255,14 @@ function loadPlatformArticles() {
       if (!byTitle[key]) { byTitle[key] = []; groups.push(byTitle[key]); }
       byTitle[key].push(a);
     });
+    // 按发布时间排序：离得近的（最新的）放前面；无时间的排最后
     groups.sort(function (g1, g2) {
-      return String(g2[0].publish_time || "").localeCompare(String(g1[0].publish_time || ""));
+      const t1 = String(g1[0].publish_time || "");
+      const t2 = String(g2[0].publish_time || "");
+      if (!t1 && !t2) return 0;
+      if (!t1) return 1;
+      if (!t2) return -1;
+      return t2.localeCompare(t1);
     });
     box.innerHTML = groups.map(function (g) {
       const chips = g.map(function (a) {
