@@ -70,31 +70,59 @@ async function fetchToutiaoByPage() {
   } else {
     const tab = await chrome.tabs.create({ url: pageUrl, active: false });
     tabId = tab.id;
-    await new Promise((r) => setTimeout(r, 7000));  // 等页面加载出列表
   }
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      const seen = {};
-      const out = [];
-      document.querySelectorAll("a").forEach((a) => {
-        const href = a.href || "";
-        if (!/toutiao\.com\/(article|pgc-detail)\/|pgc_id=/.test(href)) return;
-        const title = (a.textContent || "").replace(/\s+/g, " ").trim();
-        if (!title || title.length < 6 || seen[href]) return;
-        seen[href] = 1;
-        const box = a.closest("li,article,section,div[class*='item'],div[class*='card']") || a.parentElement;
-        const txt = (box && box.textContent) || "";
-        const tm = txt.match(/\d{4}-\d{2}-\d{2}/);
-        out.push({ title: title.slice(0, 120), url: href.split("?")[0], publish_time: tm ? tm[0] : "" });
+  // 轮询抓取：页面慢就多等几轮（最长约 24 秒）
+  let items = [];
+  for (let i = 0; i < 8; i++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    try {
+      const results = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => {
+          const seen = {};
+          const out = [];
+          // 途径一：<a> 链接里的文章（标题在链接文字或标题属性里）
+          document.querySelectorAll("a").forEach((a) => {
+            const href = a.href || "";
+            if (!/toutiao\.com\/(article|pgc-detail|news)\/|pgc_id=/.test(href)) return;
+            const title = (a.getAttribute("title") || a.textContent || "")
+              .replace(/\s+/g, " ").trim();
+            if (!title || title.length < 6 || seen[href]) return;
+            seen[href] = 1;
+            const box = a.closest("li,article,section,div[class*='item'],div[class*='card']") || a.parentElement;
+            const txt = (box && box.textContent) || "";
+            const tm = txt.match(/\d{4}-\d{2}-\d{2}/);
+            out.push({ title: title.slice(0, 120), url: href.split("?")[0], publish_time: tm ? tm[0] : "" });
+          });
+          // 途径二：SPA 内嵌 JSON 里的 article_id + title（页面结构再变也能拿到）
+          if (out.length < 3) {
+            const html = document.documentElement.innerHTML;
+            const re = /"article_id":\s*"?(\d{12,25})"?[\s\S]{0,400}?"title":\s*"((?:[^"\\]|\\.){6,140})"/g;
+            let m;
+            while ((m = re.exec(html)) !== null) {
+              const id = m[1];
+              const url = "https://www.toutiao.com/article/" + id;
+              if (seen[url]) continue;
+              let title = m[2];
+              try { title = JSON.parse('"' + title + '"'); } catch (e) { /* 保持原样 */ }
+              title = String(title).replace(/\s+/g, " ").trim();
+              if (!title) continue;
+              seen[url] = 1;
+              out.push({ title: title.slice(0, 120), url, publish_time: "" });
+            }
+          }
+          return out;
+        },
       });
-      return out;
-    },
-  });
-  const items = (results && results[0] && results[0].result) || [];
+      items = (results && results[0] && results[0].result) || [];
+      if (items.length) break;
+    } catch (e) {
+      if (i === 7) throw new Error("无法注入内容管理页： " + e.message);
+    }
+  }
   if (!items.length) {
-    throw new Error("内容管理页未解析出文章——请确认已登录头条号、内容管理页能正常打开（可先手动打开 "
-      + pageUrl + " 再重试）");
+    throw new Error("内容管理页未解析出文章——请先手动打开 " + pageUrl
+      + " 确认已登录且能看到文章列表，再点同步重试");
   }
   return items;
 }
