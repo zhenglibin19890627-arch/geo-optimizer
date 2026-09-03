@@ -238,7 +238,7 @@ def generate_draft(brand_id: int, doc_ids: list, keywords: list = None,
     now = database.now()
     with database.session_scope() as s:
         draft = database.DistributionDraft(
-            brand_id=brand_id, title=strip_links(title.strip())[:100], body_md=body,
+            brand_id=brand_id, title=strip_links(title.strip())[:30], body_md=body,
             summary=body[:120], tags="、".join(keywords[:5]) if keywords else "",
             status="draft", created_at=now, updated_at=now)
         s.add(draft)
@@ -302,7 +302,7 @@ def rewrite_from_url(brand_id: int, url: str, user_instruction: str = "",
     now = database.now()
     with database.session_scope() as s:
         draft = database.DistributionDraft(
-            brand_id=brand_id, title=strip_links(title.strip())[:100], body_md=body,
+            brand_id=brand_id, title=strip_links(title.strip())[:30], body_md=body,
             summary=body[:120], tags="链接改写",
             brief_json=None, source_round_id=None,
             status="draft", created_at=now, updated_at=now)

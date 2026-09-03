@@ -32,7 +32,7 @@ export async function publish({ post, log }) {
 
     await log("注入标题与正文（多策略+填充验证）");
     const filled = await evalInTab(tab.id, `
-      const TITLE = ${JSON.stringify(post.title)};
+      const TITLE = ${JSON.stringify((post.title || "").slice(0, 30))};
       const HTML = ${JSON.stringify(html)};
       // 标题：独立输入框（textarea/input）或 ProseMirror 文档首段（新版内嵌标题）
       const titleEl = document.querySelector(
@@ -120,32 +120,29 @@ export async function publish({ post, log }) {
     await realClick(tab.id, btnPos.x, btnPos.y);
 
     // ---- 提交确认：字节系弹窗/抽屉内的确认按钮，同样 CDP 真实点击，多轮尝试 ----
+    let coverLogged = false;
     for (let i = 0; i < 4; i++) {
       await new Promise((r) => setTimeout(r, 1800));
-      // 每轮都尝试选「无封面」（抽屉可能晚出现；重复点同一单选无副作用）
+      // 每轮都尝试选「无封面」（抽屉可能晚出现）。「无封面」是单选项：
+      // geoOptionTarget 优先点 radio 本体，点后回读 .checked 验证。
       const coverPos = await elementCenter(tab.id, `
-        const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-        window.geoTarget = null;
-        const scopes = Array.from(document.querySelectorAll(
-          '.byte-modal, .byte-drawer, [class*="modal"], [class*="drawer"], [class*="Drawer"], [class*="dialog"], [class*="Dialog"], [class*="popover"], [class*="Popover"], [class*="popup"], [class*="Popup"], body'));
-        for (const scope of scopes) {
-          const hits = Array.from(scope.querySelectorAll("label, span, div, li, p"))
-            .filter((e) => visible(e) && (e.textContent || "").includes("无封面")
-              && (e.textContent || "").trim().length <= 12 && e.children.length <= 3);
-          if (hits.length) {
-            let t = hits[hits.length - 1];
-            while (t.children.length === 1 && t.children[0].tagName === "SPAN") t = t.children[0];
-            window.geoTarget = t;
-            break;
-          }
-        }
+        window.geoCoverDone = window.geoCoverDone === true;
+        if (!window.geoCoverDone) geoOptionTarget("无封面", 12);
       `);
       if (coverPos) {
-        await log("发表设置：选择无封面");
+        if (!coverLogged) { await log("发表设置：点选「无封面」"); coverLogged = true; }
         await realClick(tab.id, coverPos.x, coverPos.y);
-        await new Promise((r) => setTimeout(r, 800));
+        await new Promise((r) => setTimeout(r, 600));
+        const st = await evalInTab(tab.id, `
+          if (window.geoOptionInput) {
+            window.geoCoverDone = !!window.geoOptionInput.checked;
+            return window.geoCoverDone ? "checked" : "not-checked";
+          }
+          return "no-input";
+        `);
+        if (st === "checked") await log("发表设置：已确认选中「无封面」");
       }
-      const dlgPos = await elementCenter(tab.id, `
+      let dlgPos = await elementCenter(tab.id, `
         const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
         const panels = Array.from(document.querySelectorAll(
           '.byte-modal, .byte-drawer, [class*="modal"], [class*="drawer"], [class*="Drawer"], [class*="dialog"], [class*="Dialog"]'))
@@ -153,12 +150,30 @@ export async function publish({ post, log }) {
         window.geoTarget = null;
         for (const d of panels) {
           const btns = Array.from(d.querySelectorAll("button, [role=button]"))
-            .filter((b) => visible(b) && /^(确认|确定|发布|发表)$/.test((b.textContent || "").trim()));
+            .filter((b) => visible(b) && /^(确认发布|立即发布|确认|确定|发布|发表)$/.test((b.textContent || "").trim()));
           const hit = btns.find((b) => /byte-btn-primary|btn-primary/.test(String(b.className))) || btns[btns.length - 1];
           if (hit) { window.geoTarget = hit; break; }
         }
       `);
-      if (dlgPos) { await realClick(tab.id, dlgPos.x, dlgPos.y); }
+      if (!dlgPos) {
+        // 浮层容器类名没匹配上时的兜底：全文按精确文本找确认类按钮。
+        // 「预览并发布」不是精确匹配，不会被误点。
+        dlgPos = await elementCenter(tab.id, `
+          const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 40 && r.height > 10; };
+          window.geoTarget = null;
+          const cands = Array.from(document.querySelectorAll("button, [role=button], .btn"))
+            .filter((b) => visible(b)
+              && /^(确认发布|立即发布|确认|确定|发布|发表)$/.test((b.textContent || "").trim()));
+          if (!cands.length) return;
+          const hit = cands.find((b) => /primary/i.test(String(b.className)))
+            || cands[cands.length - 1];
+          window.geoTarget = hit;
+        `);
+      }
+      if (dlgPos) {
+        if (i === 0) await log("提交确认：点击确认按钮");
+        await realClick(tab.id, dlgPos.x, dlgPos.y);
+      }
     }
     const confirmed = await waitForConditionInTab(
       tab.id,
@@ -219,7 +234,6 @@ export async function publish({ post, log }) {
     `);
     throw new Error(
       "头条发布未能自动确认——编辑器标签页已保留，请手动完成发布（内容已注入，检查右侧「发表设置」后点右上角「发布」即可）。现场： " + kw + " " + scene.slice(0, 300));
-  } finally {
-    if (published) chrome.tabs.remove(tab.id).catch(() => {});
   }
+  // 无论发布成功与否都不关闭标签页：保留现场供人工核对
 }

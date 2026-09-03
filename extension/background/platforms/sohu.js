@@ -32,7 +32,7 @@ export async function publish({ post, log }) {
 
     await log("注入标题、摘要与正文（四级策略+填充验证）");
     const filled = await evalInTab(tab.id, `
-      const TITLE = ${JSON.stringify(post.title)};
+      const TITLE = ${JSON.stringify((post.title || "").slice(0, 30))};
       const SUMMARY = ${JSON.stringify(post.summary || "")};
       const HTML = ${JSON.stringify(html)};
       // ---- 标题与摘要：原生赋值 + 事件 ----
@@ -153,39 +153,38 @@ export async function publish({ post, log }) {
     await realClick(tab.id, btnPos.x, btnPos.y);
 
     // ---- 提交确认：若弹出确认框（如短文提醒），同样用 CDP 真实点击"确定/确认" ----
+    let declLogged = false;
     for (let i = 0; i < 5; i++) {
       await new Promise((r) => setTimeout(r, 1200));
-      // 每轮都尝试选「无需声明」（声明面板可能晚于弹窗出现；重复点同一单选无副作用）
+      // 每轮都尝试选「无须声明」（声明是必选项：不选发不出去，平台只会自动存草稿）。
+      // 它是单选项：geoOptionTarget 优先点 radio 本体，点后回读 .checked 验证。
       const declPos = await elementCenter(tab.id, `
-        const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-        window.geoTarget = null;
-        const scopes = Array.from(document.querySelectorAll(
-          '.modal, [class*="modal"], [class*="dialog"], [class*="Dialog"], [class*="drawer"], [class*="Drawer"], .el-dialog, [class*="setting"], [class*="publish"], [class*="popover"], [class*="popup"], body'));
-        for (const scope of scopes) {
-          const hits = Array.from(scope.querySelectorAll("label, span, div, li, input, p"))
-            .filter((e) => visible(e) && (e.textContent || "").includes("无需声明")
-              && (e.textContent || "").trim().length <= 14 && e.children.length <= 3);
-          if (hits.length) {
-            let t = hits[hits.length - 1];
-            while (t.children.length === 1 && t.children[0].tagName === "SPAN") t = t.children[0];
-            window.geoTarget = t;
-            break;
-          }
-        }
+        window.geoDeclDone = window.geoDeclDone === true;
+        if (!window.geoDeclDone) geoOptionTarget("无[需须]声明", 14);
       `);
       if (declPos) {
-        if (i === 0) await log("创作声明：选择无需声明");
+        if (!declLogged) { await log("创作声明：点选「无须声明」（平台必选）"); declLogged = true; }
         await realClick(tab.id, declPos.x, declPos.y);
-        await new Promise((r) => setTimeout(r, 800));
+        await new Promise((r) => setTimeout(r, 600));
+        const st = await evalInTab(tab.id, `
+          if (window.geoOptionInput) {
+            window.geoDeclDone = !!window.geoOptionInput.checked;
+            return window.geoDeclDone ? "checked" : "not-checked";
+          }
+          return "no-input";
+        `);
+        if (st === "checked") await log("创作声明：已确认选中「无须声明」");
+        await new Promise((r) => setTimeout(r, 400));
       }
-      const dlgPos = await elementCenter(tab.id, `
+      let dlgPos = await elementCenter(tab.id, `
         const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
         const dlgs = Array.from(document.querySelectorAll(
-          '[class*="alert-dialog"], .modal, [class*="dialog"], [class*="Dialog"], .el-dialog')).filter(visible);
+          '[class*="alert-dialog"], .modal, [class*="modal"], [class*="dialog"], [class*="Dialog"], '
+          + '[class*="drawer"], [class*="Drawer"], [class*="mask"], [class*="layer"], [class*="pop"], .el-dialog')).filter(visible);
         window.geoTarget = null;
         for (const d of dlgs) {
           const all = Array.from(d.querySelectorAll("*")).filter((b) =>
-            visible(b) && /^(确定|确认|发布)$/.test((b.textContent || "").trim()));
+            visible(b) && /^(确定|确认|确认发布|立即发布|发布)$/.test((b.textContent || "").trim()));
           const inner = all.filter((b) => !all.some((c) => c !== b && b.contains(c)));
           if (!inner.length) continue;
           let target = inner[inner.length - 1];
@@ -199,23 +198,50 @@ export async function publish({ post, log }) {
           break;
         }
       `);
-      if (dlgPos) { await realClick(tab.id, dlgPos.x, dlgPos.y); }
+      if (!dlgPos) {
+        // 浮层容器类名没匹配上时的兜底：全文按精确文本找确认类按钮
+        // （「存草稿」「定时发布」「预览」都不会精确等于这些词，不会误点）
+        dlgPos = await elementCenter(tab.id, `
+          const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 40 && r.height > 10; };
+          window.geoTarget = null;
+          const cands = Array.from(document.querySelectorAll("button, [role=button], .btn, a"))
+            .filter((b) => visible(b)
+              && /^(确定|确认|确认发布|立即发布|发布)$/.test((b.textContent || "").trim()));
+          if (!cands.length) return;
+          const hit = cands.find((b) => /primary|danger/i.test(String(b.className)))
+            || cands[cands.length - 1];
+          window.geoTarget = hit;
+        `);
+      }
+      if (dlgPos) {
+        if (i === 0) await log("提交确认：点击确认按钮");
+        await realClick(tab.id, dlgPos.x, dlgPos.y);
+      }
     }
+    // ---- 成功判定（强证据）：页面出现成功提示才算数；只是离开编辑器不算——
+    // 声明没选/发布被拦时，搜狐会把内容自动存进草稿箱并可能跳回管理页 ----
     const confirmed = await waitForConditionInTab(
       tab.id,
-      `!location.pathname.includes('addarticle')
-        || /发布成功|发表成功|成功发布|已发布|审核中/.test((document.body.textContent || ""))
+      `/发布成功|发表成功|成功发布|已提交|审核中/.test((document.body.textContent || ""))
         || !!document.querySelector('[class*="toast-success"], [class*="success-toast"], [class*="message-success"]')`,
-      20000,
+      15000,
       1000,
     );
+    let url = await evalInTab(tab.id, `return location.href;`);
+    if (!confirmed && !url.includes("addarticle")) {
+      // 离开了编辑器但没见到成功提示：管理页里能找到这篇标题才算发布成功
+      const key = (post.title || "").replace(/\s+/g, "").slice(0, 10);
+      const found = key && await waitForConditionInTab(
+        tab.id,
+        `(document.body.innerText || "").replace(/\\s+/g, "").includes(${JSON.stringify(key)})`,
+        12000,
+        1500,
+      );
+      if (found) confirmed = true;
+    }
 
     if (confirmed) {
       published = true;
-      const url = await evalInTab(
-        tab.id,
-        `return location.href;`,
-      );
       return { url };
     }
     // 未确认成功：带回现场信息（URL/弹窗/提示文字/发布元素状态）
@@ -237,8 +263,8 @@ export async function publish({ post, log }) {
         + " || 发布元素[" + (pub.join(" ;; ") || "无") + "]";
     `);
     throw new Error(
-      "搜狐号发布未能自动确认——编辑器标签页已保留，请手动完成发布（内容已注入并自动存草稿，直接点右上角「发布」即可）。现场： " + scene.slice(0, 300));
-  } finally {
-    if (published) chrome.tabs.remove(tab.id).catch(() => {});
+      "搜狐号发布未能自动确认——很可能只存进了草稿箱（创作声明必须选「无须声明」才发得出去）。"
+      + "标签页已保留，请到草稿箱/管理页手动完成发布，成功后在稿件库对该渠道点「手动已发」。现场： " + scene.slice(0, 300));
   }
+  // 无论发布成功与否都不关闭标签页：保留现场供人工核对
 }

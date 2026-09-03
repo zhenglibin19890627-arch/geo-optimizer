@@ -364,32 +364,6 @@ def collect_accounts(ext: ExtClient, cfg: dict):
         return None
 
 
-def maybe_sync_articles(ext: ExtClient, geo: GeoClient, cfg: dict):
-    """轮询到同步请求时：让扩展拉取该平台账号历史文章，回传 GEO 入库。"""
-    try:
-        pend = geo._call("GET", "/api/agent/articles-sync/pending") or {}
-    except Exception:
-        return
-    platform = str((pend.get("data") or {}).get("platform") or "").strip()
-    if not platform:
-        return
-    log(f"同步平台历史文章：{platform}")
-    try:
-        result = ext.request("sync_articles", {"platform": platform}, timeout=90.0) or {}
-        articles = result.get("articles") or []
-        res = geo._call("POST", "/api/agent/platform-articles",
-                        {"platform": platform, "articles": articles})
-        log(f"同步完成：{(res or {}).get('message', '')}")
-    except Exception as e:
-        log(f"同步失败（{platform}）：{e}")
-        try:
-            geo._call("POST", "/api/agent/platform-articles",
-                      {"platform": platform, "articles": [],
-                       "error": str(e)[:300]})
-        except Exception:
-            pass
-
-
 def main_loop(ext: ExtClient, geo: GeoClient, cfg: dict, max_tasks: int = 0):
     """max_tasks>0 时跑够就返回（测试用）；0 = 常驻直到扩展断开。"""
     server = start_http_bridge()
@@ -417,7 +391,6 @@ def main_loop(ext: ExtClient, geo: GeoClient, cfg: dict, max_tasks: int = 0):
                 if max_tasks and done >= max_tasks:
                     return
             if not tasks:
-                maybe_sync_articles(ext, geo, cfg)
                 time.sleep(cfg["idle"])
     finally:
         ext.close()

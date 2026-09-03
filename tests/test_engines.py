@@ -175,6 +175,71 @@ def test_yuanbao联网档挂SearchPro信源(monkeypatch):
     assert res.sources == [{"title": "t", "url": "https://example.com/x"}]
 
 
+def test_yuanbao联网档带web_search工具并解析信源(monkeypatch):
+    """2026-08-22：与混元官网同款——tools 携带内置 web_search 工具，
+    响应顶层 search_info.search_results 由 base 公共解析收进 sources。"""
+    from geo.engines import base as base_mod
+    from geo.engines.yuanbao import YuanbaoAdapter
+    captured = {}
+
+    class FakeResp:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {
+                "choices": [{"message": {"role": "assistant", "content": "回答 [1]"}}],
+                "search_info": {"search_results": [
+                    {"title": "示例网", "url": "https://example.com/a"}]},
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+            }
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        captured["payload"] = json
+        return FakeResp()
+
+    monkeypatch.setattr(base_mod.requests, "post", fake_post)
+    a = YuanbaoAdapter()
+    a.cfg = {"api_key": "sk-x", "base_url": "https://tokenhub.tencentmaas.com/v1",
+             "model": "hy3"}
+    res = a.chat([{"role": "user", "content": "龙泉市公司"}], web_search=True)
+    assert captured["payload"]["tools"] == [{"type": "web_search"}]
+    assert "enable_enhancement" not in captured["payload"]
+    assert res.sources and res.sources[0]["url"] == "https://example.com/a"
+
+
+def test_yuanbao网关拒tools回落增强参数(monkeypatch):
+    """网关不认 web_search 工具（通用 4xx 错误）时，自动回落
+    enable_enhancement 功能增强参数再试一次，不把错误抛给用户。"""
+    from geo.engines import base as base_mod
+    from geo.engines.yuanbao import YuanbaoAdapter
+    payloads = []
+
+    class FakeResp:
+        def __init__(self, status):
+            self.status_code = status
+            self.text = "tools unsupported" if status == 400 else ""
+
+        def json(self):
+            return {"choices": [{"message": {"role": "assistant", "content": "回答"}}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1}}
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        payloads.append(json)
+        return FakeResp(400 if len(payloads) == 1 else 200)
+
+    monkeypatch.setattr(base_mod.requests, "post", fake_post)
+    monkeypatch.setattr(base_mod.time, "sleep", lambda s: None)
+    a = YuanbaoAdapter()
+    a.cfg = {"api_key": "sk-x", "base_url": "https://tokenhub.tencentmaas.com/v1",
+             "model": "hy3"}
+    res = a.chat([{"role": "user", "content": "问题"}], web_search=True)
+    assert payloads[0]["tools"] == [{"type": "web_search"}]
+    assert payloads[1]["enable_enhancement"] is True
+    assert "tools" not in payloads[1]
+    assert res.text == "回答"
+
+
 def test_联网档四家引擎齐全():
     # DeepSeek（Responses API）+ 豆包（Responses API）+ 通义千问 + 腾讯元宝
     for code in ("deepseek", "doubao", "qwen", "yuanbao"):

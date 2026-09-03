@@ -27,6 +27,54 @@ function geoClickButton(text) {
   target.click();
   return true;
 }
+
+// 定位「可勾选的声明/封面选项」（如 无须声明、无封面）：这些是 radio/checkbox 单选项，
+// 只点文字不一定联动选中——优先点选 input 本体，input 被样式隐藏时回落点文字。
+// 找到后把目标赋给 geoTarget（配合 elementCenter/realClick），input 存到 geoOptionInput
+// 供点击后回读 .checked 验证选中状态。reSource 是选项文案的正则来源串，maxLen 限全文长度。
+function geoOptionTarget(reSource, maxLen) {
+  const re = new RegExp(reSource);
+  const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  window.geoTarget = null;
+  window.geoOptionInput = null;
+  const scopes = Array.from(document.querySelectorAll(
+    '.byte-modal, .byte-drawer, .el-dialog, .modal, [class*="modal"], [class*="dialog"], '
+    + '[class*="Dialog"], [class*="drawer"], [class*="Drawer"], [class*="popover"], '
+    + '[class*="popup"], [class*="setting"], body'));
+  for (const scope of scopes) {
+    const hits = Array.from(scope.querySelectorAll("label, span, div, li, p"))
+      .filter((e) => visible(e) && re.test(e.textContent || "")
+        && (e.textContent || "").trim().length <= maxLen && e.children.length <= 3);
+    if (!hits.length) continue;
+    let t = hits[hits.length - 1];
+    while (t.children.length === 1 && t.children[0].tagName === "SPAN") t = t.children[0];
+    // 从文字向上找选项容器，容器里匹配同款文案的单选/勾选框即为目标
+    let box = t;
+    for (let up = 0; up < 5 && box && box !== document.body; up++) {
+      const inputs = Array.from(box.querySelectorAll('input[type="radio"], input[type="checkbox"]'));
+      const match = inputs.find((ip) => {
+        let o = ip.parentElement, g = 0;
+        while (o && o !== box && g < 4) {
+          const txt = (o.textContent || "").trim();
+          if (re.test(txt) && txt.length <= maxLen) return true;
+          o = o.parentElement; g++;
+        }
+        return false;
+      });
+      if (match) {
+        const r = match.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+          window.geoTarget = match;
+          window.geoOptionInput = match;
+          return;
+        }
+      }
+      box = box.parentElement;
+    }
+    window.geoTarget = t;  // 没找到独立 input：点文字（label 联动或容器托管选中）
+    return;
+  }
+}
 `;
 
 // 在指定 tab 的页面上下文顺序执行语句（helpers 先注入，语句再执行）

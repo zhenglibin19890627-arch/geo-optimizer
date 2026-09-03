@@ -8,16 +8,12 @@ import { detectLogin } from "./platforms/login_detect.js";
 import { runJob } from "./publish.js";
 import { renderMarkdown } from "./render.js";
 import { MANIFEST_VERSION } from "./version.js";
-import { syncArticles } from "./articles.js";
 
 export async function handleAction(msg) {
   const payload = msg.payload || {};
   switch (msg.action) {
     case "health":
       return { status: "ok", version: MANIFEST_VERSION, connected: true };
-
-    case "sync_articles":
-      return syncArticles(payload);
 
     case "list_platforms":
       return listPlatforms();

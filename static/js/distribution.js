@@ -117,11 +117,27 @@ function generateArticle() {
 
 /* ---------------- 编辑器（生成/审阅共用） ---------------- */
 
+/* 收集编辑器当前内容；分发/发布/建议/优化前都先保存，保证发出去的就是看到的 */
+function collectEditorDraft() {
+  return {
+    title: document.getElementById("ed-title").value.slice(0, 30),
+    body_md: document.getElementById("ed-body").value,
+    summary: document.getElementById("ed-summary").value,
+    tags: document.getElementById("ed-tags").value,
+  };
+}
+
+function saveEditorDraft(draftId) {
+  if (!document.getElementById("ed-title")) return Promise.resolve();
+  return geoApi("/api/distribution/drafts/" + draftId,
+                { method: "PUT", body: collectEditorDraft() });
+}
+
 function renderEditor(draft, showPublish) {
   const area = document.getElementById("gen-editor-area");
   area.innerHTML =
-    '<div class="field"><label class="field-label">标题</label>' +
-    '<input class="input" id="ed-title" value="' + esc(draft.title) + '"></div>' +
+    '<div class="field"><label class="field-label">标题（30 字内）</label>' +
+    '<input class="input" id="ed-title" maxlength="30" value="' + esc(draft.title) + '"></div>' +
     '<div class="field"><label class="field-label">正文（Markdown，可编辑）</label>' +
     '<textarea class="textarea" id="ed-body" style="min-height:280px">' + esc(draft.body_md) + "</textarea></div>" +
     '<div class="field"><label class="field-label">摘要（150 字内，发布用）</label>' +
@@ -142,22 +158,20 @@ function renderEditor(draft, showPublish) {
     const btn = this, box = document.getElementById("advice-box");
     btn.disabled = true; btn.textContent = "分析中…（约 30 秒）";
     // 先保存最新编辑，保证建议针对当前内容
-    geoApi("/api/distribution/drafts/" + draft.id, {
-      method: "PUT",
-      body: {
-        title: document.getElementById("ed-title").value,
-        body_md: document.getElementById("ed-body").value,
-        summary: document.getElementById("ed-summary").value,
-        tags: document.getElementById("ed-tags").value,
-      },
-    }).then(function () {
-      return geoApi("/api/distribution/drafts/" + draft.id + "/advice", { method: "POST", body: {} });
+    saveEditorDraft(draft.id).then(function () {
+      return geoApi("/api/distribution/drafts/" + draft.id + "/advice",
+                    { method: "POST", body: { allow_links: linksAllowedForDraft() } });
     }).then(function (res) {
       btn.disabled = false; btn.textContent = "GEO 优化建议";
       box.classList.remove("hidden");
       const sc = res.score || {};
+      const noLink = !linksAllowedForDraft();
       let html = '<div style="font-weight:700;margin-bottom:6px">GEO 友好度：'
         + esc(String(sc.score != null ? sc.score : "-")) + " / 100</div>";
+      if (noLink) {
+        html += '<div class="small-note">已按「目标平台不允许外链」口径评分：'
+          + '无外链得满分，稿子里有外链会被提示发布前移除。</div>';
+      }
       (res.suggestions || []).forEach(function (s) {
         const pc = s.priority === "高" ? "#DC2626" : s.priority === "低" ? "#6B7280" : "#F59E0B";
         html += '<div style="margin:8px 0"><span style="color:' + pc + ';font-weight:700">['
@@ -167,7 +181,11 @@ function renderEditor(draft, showPublish) {
       if (!(res.suggestions || []).length) {
         html += '<div class="small-note">AI 这次没能给出建议，请稍后再试。</div>';
       }
+      html += '<div class="mt-8"><button class="btn btn-primary" id="ed-optimize">按建议一键优化（重写全文）</button> '
+        + '<span class="small-note">重写后回到编辑器，确认满意再点「保存修改」</span></div>'
+        + '<div class="mt-8 hidden" id="opt-result"></div>';
       box.innerHTML = html;
+      bindOptimize(draft);
     }).catch(function (m) {
       btn.disabled = false; btn.textContent = "GEO 优化建议";
       showToast(m || "分析失败", "error");
@@ -175,15 +193,7 @@ function renderEditor(draft, showPublish) {
   });
 
   document.getElementById("ed-save").addEventListener("click", function () {
-    geoApi("/api/distribution/drafts/" + draft.id, {
-      method: "PUT",
-      body: {
-        title: document.getElementById("ed-title").value,
-        body_md: document.getElementById("ed-body").value,
-        summary: document.getElementById("ed-summary").value,
-        tags: document.getElementById("ed-tags").value,
-      },
-    }).then(function () {
+    saveEditorDraft(draft.id).then(function () {
       showToast("稿件已保存", "success");
       loadOverview();
     }).catch(function (m) { showToast(m || "保存失败", "error"); });
@@ -194,15 +204,7 @@ function renderEditor(draft, showPublish) {
     pub.addEventListener("click", function () {
       pub.disabled = true;
       /* 发布前先保存最新编辑内容，保证发出去的就是看到的 */
-      geoApi("/api/distribution/drafts/" + draft.id, {
-        method: "PUT",
-        body: {
-          title: document.getElementById("ed-title").value,
-          body_md: document.getElementById("ed-body").value,
-          summary: document.getElementById("ed-summary").value,
-          tags: document.getElementById("ed-tags").value,
-        },
-      }).then(function () {
+      saveEditorDraft(draft.id).then(function () {
         return geoApi("/api/distribution/drafts/" + draft.id + "/publish", { method: "POST", body: {} });
       }).then(function (res) {
         document.getElementById("ed-msg").textContent =
@@ -217,6 +219,98 @@ function renderEditor(draft, showPublish) {
       });
     });
   }
+}
+
+/* ---------------- 一键 GEO 优化（打完分之后的针对性重写） ---------------- */
+
+/* 勾了不允许外链的平台（如搜狐/头条）→ 评分与优化按「无外链」口径；
+   没勾或只勾官网/知乎 → 维持原口径（外链是加分项）。政策来自 overview 接口。 */
+function linksAllowedForDraft() {
+  const box = document.getElementById("mp-checks");
+  if (!box) return true;
+  const checked = Array.prototype.slice.call(box.querySelectorAll("input:checked"))
+    .map(function (i) { return i.value; })
+    .filter(function (v) { return v !== "site"; });
+  if (!checked.length) return true;
+  const byId = {};
+  ((overviewCache && overviewCache.platforms) || []).forEach(function (p) {
+    byId[p.id] = p;
+  });
+  return !checked.some(function (id) {
+    return byId[id] && byId[id].allow_links === false;
+  });
+}
+
+/* 按建议重写全文：新稿回填编辑器但不自动保存，人工确认后才生效。 */
+function bindOptimize(draft) {
+  const btn = document.getElementById("ed-optimize");
+  if (!btn) return;
+  const origLabel = btn.textContent;
+  btn.addEventListener("click", function () {
+    const box = document.getElementById("opt-result");
+    const prev = {
+      title: document.getElementById("ed-title").value,
+      body: document.getElementById("ed-body").value,
+    };
+    btn.disabled = true; btn.textContent = "优化中…（约 2~3 分钟，请勿关闭页面）";
+    // 先保存最新编辑，保证优化针对当前内容（与「优化建议」按钮同口径）
+    saveEditorDraft(draft.id).then(function () {
+      return geoApi("/api/distribution/drafts/" + draft.id + "/optimize",
+                    { method: "POST", body: { allow_links: linksAllowedForDraft() } });
+    }).then(function (res) {
+      document.getElementById("ed-title").value = res.title || "";
+      document.getElementById("ed-body").value = res.body_md || "";
+      btn.disabled = false; btn.textContent = "再优化一轮";
+      box.classList.remove("hidden");
+      box.innerHTML = renderOptResult(res, prev);
+      const undo = document.getElementById("opt-undo");
+      if (undo) undo.addEventListener("click", function () {
+        document.getElementById("ed-title").value = prev.title;
+        document.getElementById("ed-body").value = prev.body;
+        box.classList.add("hidden");
+        box.innerHTML = "";
+        btn.textContent = origLabel;
+        showToast("已撤销本次优化", "success");
+      });
+    }).catch(function (m) {
+      btn.disabled = false; btn.textContent = origLabel;
+      showToast(m || "优化失败，请稍后再试", "error");
+    });
+  });
+}
+
+/* 优化结果：总分前后对比 + 分项变化 + 改动说明 + 撤销按钮。 */
+function renderOptResult(res, prev) {
+  const sb = res.score_before || {}, sa = res.score_after || {};
+  const beforeMap = {};
+  (sb.breakdown || []).forEach(function (p) { beforeMap[p.title] = p.score; });
+  let html = '<div style="font-weight:700;margin-bottom:6px">GEO 友好度：'
+    + esc(String(sb.score != null ? sb.score : "-")) + ' → <span style="color:#059669">'
+    + esc(String(sa.score != null ? sa.score : "-")) + "</span> / 100</div>";
+  html += '<div class="small-note">分项变化：</div>';
+  if ((sa.breakdown || []).length === 0) {
+    html += '<div class="small-note">这次没能算出分项，只看总分。</div>';
+  }
+  (sa.breakdown || []).forEach(function (p) {
+    const had = Object.prototype.hasOwnProperty.call(beforeMap, p.title);
+    const diff = had ? p.score - beforeMap[p.title] : p.score;
+    const color = diff > 0 ? "#059669" : diff < 0 ? "#DC2626" : "#6B7280";
+    html += '<div>· ' + esc(p.title) + "："
+      + (had ? beforeMap[p.title] : 0) + " → " + p.score
+      + ' <span style="color:' + color + '">' + (diff > 0 ? "+" : "") + diff + "</span>"
+      + (had ? "" : "（新增）") + "</div>";
+  });
+  html += '<div class="mt-8" style="font-weight:700">改了什么：</div>';
+  if (!(res.changes || []).length) {
+    html += '<div class="small-note">模型没有说明改动点。</div>';
+  }
+  (res.changes || []).forEach(function (c) {
+    html += '<div style="margin:6px 0"><b>' + esc(c.title) + "</b><br>"
+      + '<span class="small-note">' + esc(c.detail) + "</span></div>";
+  });
+  html += '<div class="small-note mt-8">新稿已填进上面的编辑器（尚未保存），检查满意请点「保存修改」。</div>';
+  html += '<button class="btn mt-8" id="opt-undo">撤销本次优化</button>';
+  return html;
 }
 
 /* ---------------- 多平台分发（二期） ---------------- */
@@ -271,8 +365,12 @@ function renderChannelBox(draft) {
     const checked = Array.prototype.slice.call(
       box.querySelectorAll("#mp-checks input:checked")).map(function (i) { return i.value; });
     if (!checked.length) { showToast("请先勾选平台", "error"); return; }
-    geoApi("/api/distribution/drafts/" + draft.id + "/channels", {
-      method: "POST", body: { platforms: checked },
+    /* 分发前先保存编辑器最新内容（含一键优化后未保存的改写稿），
+       保证发出去的就是看到的——任务只存稿件号，宿主领取时读数据库 */
+    saveEditorDraft(draft.id).then(function () {
+      return geoApi("/api/distribution/drafts/" + draft.id + "/channels", {
+        method: "POST", body: { platforms: checked },
+      });
     }).then(function (res) {
       showToast(res.message || "已排队", "success");
       loadChannels(draft.id);
@@ -356,6 +454,19 @@ document.getElementById("cfg-save").addEventListener("click", function () {
 });
 
 loadOverview();
+
+// 从稿件库「去编辑」跳转过来（#draft-<id>）：直接把这篇稿件打开进编辑器审阅
+(function () {
+  const m = String(location.hash || "").match(/^#draft-(\d+)$/);
+  if (!m) return;
+  geoApi("/api/distribution/drafts/" + m[1]).then(function (draft) {
+    document.getElementById("gen-card").classList.remove("hidden");
+    renderEditor(draft, true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }).catch(function (msg) {
+    showToast(msg || "没找到这篇稿件，可能已被删除", "error");
+  });
+})();
 
 // ================= 链接改写（第三种创作方式） =================
 (function () {

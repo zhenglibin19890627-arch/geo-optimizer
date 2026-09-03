@@ -49,7 +49,8 @@ def overview():
         "channel_stats": channel_stats,
         "agent_online": distribution.agent_online(),
         "agent": distribution.agent_status(),
-        "platforms": [{"id": k, "name": v}
+        "platforms": [{"id": k, "name": v,
+                       "allow_links": distribution.platform_allows_links(k)}
                       for k, v in distribution.SUPPORTED_PLATFORMS.items()],
     }, "获取成功")
 
@@ -273,47 +274,14 @@ def manual_publish(task_id: int):
     return ok({"task_id": task_id}, "已记录为手动发布成功")
 
 
-@bp.route("/distribution/platform-articles/sync", methods=["POST"])
-def trigger_articles_sync():
-    """请求宿主经扩展拉取某平台的账号历史文章（异步：宿主下一轮轮询执行）。"""
-    data = get_json()
-    platform = str(data.get("platform") or "").strip()
-    if platform not in ("zhihu", "sohu", "toutiao"):
-        raise ApiError("platform 只允许 zhihu/sohu/toutiao")
-    database.set_setting("article_sync_request", platform)
-    return ok({"platform": platform}, "已发起同步请求，等待分发桥与扩展执行（约几秒到十几秒）")
-
-
-@bp.route("/distribution/published-urls", methods=["GET"])
-def published_urls():
-    """所有已发布渠道的文章链接：平台历史卡片据此去重（已由稿件卡展示的不重复展示）。"""
-    brand_id = current_brand_id()
-    with database.session_scope() as s:
-        rows = (s.query(database.DistributionChannelTask)
-                .filter(database.DistributionChannelTask.brand_id == brand_id,
-                        database.DistributionChannelTask.status == "published",
-                        database.DistributionChannelTask.platform_url != "")
-                .all())
-        urls = sorted({(r.platform_url or "").strip() for r in rows} - {""})
-    return ok({"urls": urls}, "获取成功")
-
-
-@bp.route("/distribution/platform-articles", methods=["GET"])
-def list_platform_articles():
-    brand_id = current_brand_id()
-    with database.session_scope() as s:
-        rows = (s.query(database.PlatformArticle)
-                .filter(database.PlatformArticle.brand_id == brand_id)
-                .order_by(database.PlatformArticle.publish_time.desc(),
-                          database.PlatformArticle.id.desc()).limit(200).all())
-        return ok({"articles": [r.to_dict() for r in rows],
-                   "last_sync": str(database.get_setting("article_sync_result", "") or "")})
-
-
 @bp.route("/distribution/drafts/<int:draft_id>/advice", methods=["POST"])
 def draft_advice(draft_id: int):
-    """审阅环节的 GEO 优化建议：规则评分 + AI 建议（原内容优化页能力并入分发流程）。"""
+    """审阅环节的 GEO 优化建议：规则评分 + AI 建议（原内容优化页能力并入分发流程）。
+
+    allow_links（默认 True）：勾选了不允许外链的平台时前端传 False，
+    评分按「无外链依赖」口径。"""
     brand_id = current_brand_id()
+    allow_links = bool((request.get_json(silent=True) or {}).get("allow_links", True))
     with database.session_scope() as s:
         row = _draft_or_404(s, draft_id, brand_id)
         content = (row.title or "") + "\n\n" + (row.body_md or "")
@@ -324,12 +292,54 @@ def draft_advice(draft_id: int):
         keywords = [k.text for k in s.query(database.Keyword)
                     .filter(database.Keyword.brand_id == brand_id)
                     .filter(database.Keyword.enabled == True).all()]  # noqa: E712
-    score = content_advice.geo_score(content, brand.get("brand_name") or "我的品牌", keywords)
+    score = content_advice.geo_score(content, brand.get("brand_name") or "我的品牌",
+                                     keywords, allow_links=allow_links)
     try:
         suggestions = content_advice.generate_suggestions(content, brand, keywords)
     except Exception:
         suggestions = []
     return ok({"score": score, "suggestions": suggestions}, "优化建议已生成")
+
+
+@bp.route("/distribution/drafts/<int:draft_id>/optimize", methods=["POST"])
+def draft_optimize(draft_id: int):
+    """审阅环节的一键 GEO 优化：按优化维度重写稿件，并回显优化前后评分。
+
+    只重写不落库：新稿回填编辑器，人工确认后点「保存修改」才生效，保持审阅制。
+    """
+    brand_id = current_brand_id()
+    allow_links = bool((request.get_json(silent=True) or {}).get("allow_links", True))
+    with database.session_scope() as s:
+        row = _draft_or_404(s, draft_id, brand_id)
+        title = (row.title or "").strip()
+        body = (row.body_md or "").strip()
+    if not body:
+        raise ApiError("这篇稿件还没有正文，没法优化")
+    from geo.analyzers import content_advice
+    from geo.analyzers.llm_client import AnalysisError
+    brand = database.get_brand(brand_id)
+    keywords = []
+    with database.session_scope() as s:
+        keywords = [k.text for k in s.query(database.Keyword)
+                    .filter(database.Keyword.brand_id == brand_id)
+                    .filter(database.Keyword.enabled == True).all()]  # noqa: E712
+    brand_name = brand.get("brand_name") or "我的品牌"
+    score_before = content_advice.geo_score(title + "\n\n" + body, brand_name,
+                                            keywords, allow_links=allow_links)
+    try:
+        result = content_advice.apply_geo_optimization(title, body, brand, keywords,
+                                                       allow_links=allow_links)
+    except AnalysisError as e:
+        # 落一行日志便于排查（HTTP 仍是 200，访问日志里看不到失败原因）
+        print(f"[optimize] 稿件 {draft_id} 一键优化失败：{e.message}")
+        raise ApiError(e.message)
+    score_after = content_advice.geo_score(
+        result["title"] + "\n\n" + result["body_md"], brand_name, keywords,
+        allow_links=allow_links)
+    return ok({"title": result["title"], "body_md": result["body_md"],
+               "changes": result["changes"],
+               "score_before": score_before, "score_after": score_after},
+              "优化稿已生成，请确认后保存")
 
 
 @bp.route("/distribution/drafts/<int:draft_id>", methods=["PUT"])
@@ -343,8 +353,7 @@ def update_draft(draft_id: int):
     tags = str(data.get("tags") or "").strip()
     if not title:
         raise ApiError("标题不能为空")
-    if len(title) > 100:
-        raise ApiError("标题太长了（最多 100 字）")
+    title = title[:30]  # 平台标题上限 30 字：超长静默截断（编辑器输入框已限长）
     if not body_md:
         raise ApiError("正文不能为空")
     if len(body_md) > 100000:

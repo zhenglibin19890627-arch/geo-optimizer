@@ -7,6 +7,7 @@
 - 报告页信源排行「已布点」标注。
 """
 
+import json
 import os
 import tempfile
 from datetime import datetime
@@ -18,7 +19,7 @@ from sqlalchemy.orm import sessionmaker
 
 from geo.models import db as database
 from geo.models.migration import MIGRATION_VERSION
-from geo.analyzers import llm_client
+from geo.analyzers import content_advice, llm_client
 from geo.core import distribution
 
 
@@ -262,3 +263,145 @@ def test_信源排行已布点标注(tmpdb, client):
     by_domain = {i["domain"]: i for i in items}
     assert "zhihu.com" in by_domain
     assert by_domain["zhihu.com"]["deployed"] is True
+
+
+# ---------------- 一键 GEO 优化（打完分后的针对性重写） ----------------
+
+def test_一键优化返回改写与前后分(tmpdb, client, monkeypatch):
+    with database.session_scope() as s:
+        row = database.DistributionDraft(brand_id=21, title="待优化标题",
+                                         body_md="很短。", status="draft")
+        s.add(row)
+        s.flush()
+        did = row.id
+
+    # 模型返回的改写稿：长度/品牌名/结构/外链/联系方式/FAQ 各评分项全部命中
+    new_body = ("# 智能网关选购指南\n\n" + "闭环测试牌 智能网关 表现稳定。\n\n" * 200
+                + "常见问题（FAQ）\n\n如何选型？看接口与协议。\n\n结论：按场景选型。\n\n"
+                "参考 https://example.com/guide\n\n联系方式：400-000-0000")
+    payload = json.dumps({"title": "优化后的标题", "body_md": new_body,
+                          "changes": [{"title": "补充 FAQ 与结论",
+                                       "detail": "增加结构化小节"}]},
+                         ensure_ascii=False)
+    monkeypatch.setattr(llm_client, "chat", lambda *a, **k: payload)
+    r = client.post(f"/api/distribution/drafts/{did}/optimize", json={"brand_id": 21})
+    body = r.get_json()
+    assert body["code"] == 0, body
+    data = body["data"]
+    assert data["title"] == "优化后的标题"
+    assert "选购指南" in data["body_md"]
+    assert len(data["changes"]) == 1
+    assert data["score_before"]["score"] == 0          # 原稿啥评分项都不命中
+    assert data["score_after"]["score"] >= 70          # 改写稿各维度命中
+    assert data["score_after"]["score"] > data["score_before"]["score"]
+
+
+def test_一键优化_模型坏输出报大白话错误(tmpdb, client, monkeypatch):
+    with database.session_scope() as s:
+        row = database.DistributionDraft(brand_id=21, title="t", body_md="b",
+                                         status="draft")
+        s.add(row)
+        s.flush()
+        did = row.id
+    monkeypatch.setattr(llm_client, "chat", lambda *a, **k: "模型抽风输出没有JSON")
+    r = client.post(f"/api/distribution/drafts/{did}/optimize", json={"brand_id": 21})
+    body = r.get_json()
+    assert body["code"] == 1
+    assert "优化失败" in body["message"]
+
+
+def test_一键优化_空正文拦截(tmpdb, client, monkeypatch):
+    with database.session_scope() as s:
+        row = database.DistributionDraft(brand_id=21, title="只有标题", body_md="",
+                                         status="draft")
+        s.add(row)
+        s.flush()
+        did = row.id
+    monkeypatch.setattr(llm_client, "chat",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("不该调用模型")))
+    r = client.post(f"/api/distribution/drafts/{did}/optimize", json={"brand_id": 21})
+    body = r.get_json()
+    assert body["code"] == 1
+    assert "正文" in body["message"]
+
+
+def test_优化函数解析围栏JSON(tmpdb, monkeypatch):
+    monkeypatch.setattr(llm_client, "chat", lambda *a, **k:
+                        '```json\n{"title":"围栏标题","body_md":"围栏正文",'
+                        '"changes":[{"title":"改动","detail":"说明"}]}\n```')
+    out = content_advice.apply_geo_optimization("旧标题", "旧正文",
+                                                {"brand_name": "闭环测试牌"}, [])
+    assert out["title"] == "围栏标题"
+    assert out["body_md"] == "围栏正文"
+    assert out["changes"][0]["title"] == "改动"
+
+
+# ---------------- 外链口径随目标平台切换 ----------------
+
+def test_外链政策覆盖全部平台(tmpdb):
+    for pid in distribution.SUPPORTED_PLATFORMS:
+        assert pid in distribution.PLATFORM_LINK_POLICY
+
+
+def test_评分外链口径切换(tmpdb):
+    brand, kws = "闭环测试牌", []
+    with_link = "正文内容参考 https://example.com/a 汇总而成。"
+    # 默认口径：有外链加分
+    assert content_advice.geo_score(with_link, brand, kws)["score"] == 10
+    # 不允许外链：有外链 0 分 + 提示移除
+    r = content_advice.geo_score(with_link, brand, kws, allow_links=False)
+    item = [p for p in r["breakdown"] if "外链" in p["title"]][0]
+    assert item["score"] == 0 and "移除" in item["title"]
+    # 不允许外链：纯文字正文得该项 10 分
+    r2 = content_advice.geo_score("来源：某某百科，纯文字表述。", brand, kws,
+                                  allow_links=False)
+    item2 = [p for p in r2["breakdown"] if "无外部链接" in p["title"]]
+    assert item2 and item2[0]["score"] == 10
+
+
+def test_一键优化_外链口径传入提示词与评分(tmpdb, client, monkeypatch):
+    with database.session_scope() as s:
+        row = database.DistributionDraft(brand_id=21, title="t",
+                                         body_md="带链接 https://example.com/x 的正文。",
+                                         status="draft")
+        s.add(row)
+        s.flush()
+        did = row.id
+    seen = {}
+
+    def fake_chat(prompt, **kw):
+        seen["prompt"] = prompt
+        return json.dumps({"title": "t2", "body_md": "纯文字正文，无任何链接。",
+                           "changes": []}, ensure_ascii=False)
+
+    monkeypatch.setattr(llm_client, "chat", fake_chat)
+    r = client.post(f"/api/distribution/drafts/{did}/optimize",
+                    json={"brand_id": 21, "allow_links": False})
+    body = r.get_json()
+    assert body["code"] == 0, body
+    # 提示词明确告知平台不允许外链
+    assert "不允许外部链接" in seen["prompt"]
+    # 前后评分都用无外链口径：改前含链接该项 0 分
+    before_items = [p for p in body["data"]["score_before"]["breakdown"]
+                    if "外链" in p["title"]]
+    assert before_items and before_items[0]["score"] == 0
+    after_items = [p for p in body["data"]["score_after"]["breakdown"]
+                   if "无外部链接" in p["title"]]
+    assert after_items and after_items[0]["score"] == 10
+
+
+def test_advice接口接受外链口径参数(tmpdb, client, monkeypatch):
+    with database.session_scope() as s:
+        row = database.DistributionDraft(brand_id=21, title="t",
+                                         body_md="正文有 https://example.com 链接。",
+                                         status="draft")
+        s.add(row)
+        s.flush()
+        did = row.id
+    monkeypatch.setattr(llm_client, "chat", lambda *a, **k: "[]")
+    r = client.post(f"/api/distribution/drafts/{did}/advice",
+                    json={"brand_id": 21, "allow_links": False})
+    body = r.get_json()
+    assert body["code"] == 0, body
+    items = [p for p in body["data"]["score"]["breakdown"] if "外链" in p["title"]]
+    assert items and items[0]["score"] == 0

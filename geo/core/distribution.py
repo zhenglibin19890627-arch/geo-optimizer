@@ -37,6 +37,13 @@ SUMMARY_MAX_CHARS = 500
 # 首批平台：key 与发布扩展平台注册表的 id 一致，value 为展示名；
 # 扩展自身支持更多平台（约 19 个），后续按需扩充此清单即可。
 SUPPORTED_PLATFORMS = {"zhihu": "知乎", "sohu": "搜狐号", "toutiao": "今日头条"}
+# 平台外链政策：deny = 该平台不允许/不友好外部链接，稿件评分与一键优化
+# 按「无外链」口径处理（勾选了任一 deny 平台即生效；只发官网或知乎维持原口径）。
+PLATFORM_LINK_POLICY = {"zhihu": "allow", "sohu": "deny", "toutiao": "deny"}
+
+
+def platform_allows_links(platform_id: str) -> bool:
+    return PLATFORM_LINK_POLICY.get(str(platform_id or "").strip(), "allow") == "allow"
 # 平台主域：发布成功后并入「已布点」，信源排行按主域后缀匹配生效
 PLATFORM_DOMAINS = {"zhihu": "zhihu.com", "sohu": "sohu.com", "toutiao": "toutiao.com"}
 # 宿主心跳新鲜度（秒）：超过则分发页显示「扩展离线」
@@ -484,6 +491,7 @@ def generate_draft(brand_id: int, brief: dict = None, user_instruction: str = ""
         title = title or (topics[0].get("title") if topics else f"{self_name}品牌内容")
     if not title:
         title = topics[0].get("title") if topics else f"{self_name}品牌内容"
+    title = title[:30]  # 平台标题上限 30 字
     summary = summary[:SUMMARY_MAX_CHARS]
 
     with database.session_scope() as s:

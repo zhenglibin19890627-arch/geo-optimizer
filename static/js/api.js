@@ -123,11 +123,13 @@ function showToast(msg, type) {
   el.className = "toast" + (type ? " " + type : "");
   el.textContent = msg;
   wrap.appendChild(el);
+  /* 错误信息停留 8 秒（成功提示 3 秒即可），避免报错一闪而过看不清 */
+  const ttl = type === "error" ? 8000 : 3000;
   setTimeout(() => {
     el.style.opacity = "0";
     el.style.transition = "opacity 0.3s";
     setTimeout(() => el.remove(), 300);
-  }, 3000);
+  }, ttl);
 }
 
 /* ---------------- 确认弹窗 ---------------- */

@@ -1,10 +1,11 @@
-"""腾讯云联网搜索 API（SearchPro）：为元宝联网档提供结构化信源（2026-08-16）。
+"""腾讯云联网搜索 API（SearchPro）：元宝联网档的信源兜底（2026-08-22 起）。
 
-背景：元宝 TokenHub 的 chat/completions 接口即使带上 search_info/citation
-等参数，响应里也没有任何来源字段。按腾讯云官方文档
-（https://cloud.tencent.com/document/api/1806/121811）改用独立的「联网搜索API」：
-POST https://wsa.tencentcloudapi.com （Action=SearchPro，Version=2025-05-08，
-TC3-HMAC-SHA256 签名），返回 Pages（JSON 字符串数组：title/url/date/passage/site…），
+背景：元宝联网档首选与混元官网同款的内置 web_search 工具（tools 携带，
+服务端搜索并回 search_info 信源）；仅当该工具没回信源时，才按腾讯云官方
+文档（https://cloud.tencent.com/document/api/1806/121811）改用独立的
+「联网搜索API」补齐：POST https://wsa.tencentcloudapi.com
+（Action=SearchPro，Version=2025-05-08，TC3-HMAC-SHA256 签名），
+返回 Pages（JSON 字符串数组：title/url/date/passage/site…），
 归一化为系统标准信源 [{title,url,domain,category}]。
 
 凭据：需要腾讯云账号开通「联网搜索API」，并在 config.yaml engines.yuanbao 下填

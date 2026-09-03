@@ -24,7 +24,7 @@ export async function publish({ post, log }) {
     await evalInTab(tab.id, `
       const titleEl = document.querySelector('textarea[placeholder*="标题"], textarea');
       if (!titleEl) throw new Error("标题输入框未找到");
-      geoSetNativeValue(titleEl, ${JSON.stringify(post.title.slice(0, 100))});
+      geoSetNativeValue(titleEl, ${JSON.stringify(post.title.slice(0, 30))});
       geoPasteHtml('.public-DraftEditor-content, [data-contents] .DraftEditor-editorContainer', ${JSON.stringify(html)});
       return true;
     `);
@@ -43,10 +43,12 @@ export async function publish({ post, log }) {
       `);
     } catch (err) { clicked = false; }
 
-    // 发布成功后页面跳转至文章落地页 /p/{id}
+    // 发布成功后页面跳转至文章落地页 /p/{id}。
+    // 注意：知乎打开 /write 会自动恢复上次草稿，URL 变成 /p/{草稿id}/edit——
+    // 它也以 /p/ 开头！必须精确匹配「无 /edit 后缀」才算真正发布成功。
     const landed = await waitForConditionInTab(
       tab.id,
-      `location.pathname.startsWith('/p/')`,
+      `/^\\/p\\/\\d+\\/?$/.test(location.pathname)`,
       30000,
       800,
     );
@@ -58,12 +60,18 @@ export async function publish({ post, log }) {
       published = true;
       return { url };
     }
+    // 落在 /p/{id}/edit：只是草稿编辑页（知乎自动存草稿所致），发布并未完成
+    const draftPath = await evalInTab(tab.id, `return location.pathname;`);
+    if (/^\/p\/\d+\/edit/.test(draftPath)) {
+      throw new Error(
+        "知乎只保存了草稿、没有发布成功（页面停在草稿编辑页）——编辑器标签页已保留，"
+        + "请在页面里检查发布设置后手动点「发布」，成功后可在稿件库对该渠道点「手动已发」");
+    }
     // 自动发布未确认：内容已在编辑器且知乎自动保存草稿，降级为人工发布（保留编辑器页面）
     throw new Error(
       "内容已注入编辑器（知乎草稿箱已自动保存），自动发布未确认"
       + (clicked ? "（已点击发布但未检测到落地页跳转，请检查知乎后台）" : "（未找到发布按钮）")
       + "——编辑器标签页已保留，请手动完成发布");
-  } finally {
-    if (published) chrome.tabs.remove(tab.id).catch(() => {});
   }
+  // 无论发布成功与否都不关闭标签页：保留现场供人工核对
 }

@@ -87,11 +87,12 @@ engines:
     # TokenHub OpenAI 兼容接口地址（旧混元 OpenAPI 网关 api.hunyuan.cloud.tencent.com
     # 已不兼容 TokenHub 的 API Key，2026-08 起以 TokenHub 为准）
     base_url: "https://tokenhub.tencentmaas.com/v1"
-    # 联网提问走 enable_enhancement 功能增强（含搜索与引用）
+    # 联网提问与混元官网同款：chat/completions 携带内置 web_search 工具
+    # （服务端联网搜索并回 search_info 信源）；网关不认 tools 时自动回落
+    # enable_enhancement 功能增强参数
     supports_web_search: true
-    # 腾讯云「联网搜索API」（SearchPro）凭据（可选，2026-08-16）：
-    # TokenHub chat 接口不返回搜索来源，填上后元宝联网档会用 SearchPro
-    # 按同一问题拉取信源（需先在腾讯云开通「联网搜索API」，
+    # SearchPro 兜底（可选）：web_search 工具没回信源时，用腾讯云「联网搜索API」
+    # 按同一问题补信源（需先在腾讯云开通「联网搜索API」，
     # 文档 https://cloud.tencent.com/document/api/1806/121811）。
     # 注意：这是腾讯云 SecretId/SecretKey，不是 TokenHub 的 sk- 钥匙。
     wsa_secret_id: ""
