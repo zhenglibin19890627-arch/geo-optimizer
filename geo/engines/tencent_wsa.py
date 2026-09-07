@@ -66,8 +66,12 @@ def _tc3_authorization(secret_id: str, secret_key: str, payload_str: str,
             f"SignedHeaders={signed_headers}, Signature={signature}")
 
 
-def search(query: str, secret_id: str, secret_key: str, timeout: int = 20) -> list:
-    """SearchPro 联网搜索 → 标准信源列表 [{title,url,domain,category}]；失败抛 WsaError。"""
+def search_raw(query: str, secret_id: str, secret_key: str, timeout: int = 20) -> list:
+    """SearchPro 联网搜索 → 原始页面列表 [{title,url,passage,date,site},...]。
+
+    passage（网页摘录）只有这里返回——供元宝联网档检索增强注入提问上下文；
+    失败抛 WsaError，零结果返回 []。
+    """
     query = (query or "").strip()
     if not query:
         return []
@@ -95,7 +99,7 @@ def search(query: str, secret_id: str, secret_key: str, timeout: int = 20) -> li
     if body.get("Error"):
         err = body["Error"]
         raise WsaError(f"{err.get('Code') or '错误'}：{err.get('Message') or '未知原因'}")
-    raw = []
+    pages = []
     for page in body.get("Pages") or []:
         if isinstance(page, str):
             try:
@@ -104,8 +108,19 @@ def search(query: str, secret_id: str, secret_key: str, timeout: int = 20) -> li
                 continue
         if not isinstance(page, dict) or not page.get("url"):
             continue
-        raw.append({
+        pages.append({
             "url": str(page["url"]).strip(),
-            "title": str(page.get("title") or page.get("passage") or "").strip(),
+            "title": str(page.get("title") or "").strip(),
+            "passage": str(page.get("passage") or "").strip(),
+            "date": str(page.get("date") or "").strip(),
+            "site": str(page.get("site") or "").strip(),
         })
+    return pages
+
+
+def search(query: str, secret_id: str, secret_key: str, timeout: int = 20) -> list:
+    """SearchPro 联网搜索 → 标准信源列表 [{title,url,domain,category}]；失败抛 WsaError。"""
+    raw = [{"url": p["url"],
+            "title": p.get("title") or p.get("passage") or ""}
+           for p in search_raw(query, secret_id, secret_key, timeout)]
     return sources_mod.normalize_sources(raw)
