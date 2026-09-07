@@ -223,10 +223,14 @@ def test_yuanbao联网档零结果不裸答(monkeypatch):
         a.chat([{"role": "user", "content": "问题"}], web_search=True)
 
 
-def test_联网档四家引擎齐全():
-    # DeepSeek（Responses API）+ 豆包（Responses API）+ 通义千问 + 腾讯元宝
-    for code in ("deepseek", "doubao", "qwen", "yuanbao"):
+def test_联网档引擎口径():
+    # DeepSeek（Responses API）+ 豆包（Responses API）+ 通义千问 参与联网档；
+    # 元宝 2026-09-04 起暂不参与（TokenHub 无原生联网、SearchPro 未开通，
+    # 检索增强实现已就绪，启用方法见 geo/engines/yuanbao.py 类属性注释）
+    for code in ("deepseek", "doubao", "qwen"):
         assert get_web_adapter(code).supports_web_search is True
+    from geo.engines.yuanbao import YuanbaoAdapter
+    assert YuanbaoAdapter.supports_web_search is False
 
 
 def test_未知引擎报错():

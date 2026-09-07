@@ -34,7 +34,11 @@ class YuanbaoAdapter(EngineAdapter):
     display_name = "腾讯元宝（混元底座）"
     note = ("本数据来自腾讯云 TokenHub 平台（混元家族模型），与元宝 App 的回答口径可能存在差异；"
             "联网档为 SearchPro 检索增强口径（网关不支持模型原生联网，实测 2026-09-04）。")
-    supports_web_search = True
+    # 2026-09-04 用户决策：SearchPro 按量收费，暂不开通 → 元宝暂不参与联网档
+    # （常规提问档不受影响）。将来要启用：① 腾讯云开通「联网搜索API」（SearchPro）
+    # ② config.yaml engines.yuanbao 填 wsa_secret_id / wsa_secret_key
+    # ③ 把这里改回 True，重启服务即可（下面的检索增强实现已就绪，无需改代码）。
+    supports_web_search = False
 
     def chat(self, messages, temperature=None, jitter=False, timeout=60,
              web_search=False, model=None):
