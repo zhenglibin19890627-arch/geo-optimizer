@@ -76,12 +76,11 @@ def test_normalize_models_多模型保序去重():
     assert m["opencode"] == ["kimi-k3", "grok-4.5"]
 
 
-def test_normalize_models_非法档位报错():
-    import pytest
+def test_normalize_models_自由填写不再校验档位():
+    # 2026-09-04 起模型改为手填：任意型号原样放行（执行时由引擎 API 判定存在性）
     from geo.core.monitor_task import normalize_models
-    from geo.engines.base import EngineError
-    with pytest.raises(EngineError):
-        normalize_models(["opencode"], {"opencode": ["not-a-real-model"]})
+    m = normalize_models(["opencode"], {"opencode": ["not-a-real-model"]})
+    assert m["opencode"] == ["not-a-real-model"]
 
 
 def test_normalize_models_联网档默认用联网模型():
@@ -99,13 +98,11 @@ def test_normalize_models_联网档可显式选模型():
     assert m["qwen"] == [wm]
 
 
-def test_normalize_models_联网档白名单拦截实时翻译模型():
-    # 通义千问实时翻译模型不支持联网提问协议：联网档白名单只含 qwen3.7-max
-    import pytest
+def test_normalize_models_联网档自由填写任意型号():
+    # 2026-09-04 起联网档同样自由填写：不再有联网白名单拦截
     from geo.core.monitor_task import normalize_models
-    from geo.engines.base import EngineError
-    with pytest.raises(EngineError):
-        normalize_models(
-            ["qwen"], {"qwen": ["qwen3.5-livetranslate-flash-realtime"]}, web=True)
-    m = normalize_models(["qwen"], {"qwen": ["qwen3.7-max-2026-05-20"]}, web=True)
-    assert m["qwen"] == ["qwen3.7-max-2026-05-20"]
+    m = normalize_models(
+        ["qwen"], {"qwen": ["qwen3.5-livetranslate-flash-realtime"]}, web=True)
+    assert m["qwen"] == ["qwen3.5-livetranslate-flash-realtime"]
+    m2 = normalize_models(["qwen"], {"qwen": ["qwen3.7-max-2026-05-20"]}, web=True)
+    assert m2["qwen"] == ["qwen3.7-max-2026-05-20"]

@@ -10,7 +10,7 @@ import threading
 from datetime import datetime
 
 from geo import config
-from geo.core.model_selection import (SYSTEM_PROMPT, allowed_models, build_messages,
+from geo.core.model_selection import (SYSTEM_PROMPT, build_messages,
                                       filter_models, normalize_models)
 from geo.core.monitor_runner import _analysis_for, get_progress, run_monitor_task
 from geo.engines import base as engine_base, get_adapter

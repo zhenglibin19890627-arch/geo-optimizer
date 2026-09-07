@@ -1,7 +1,10 @@
-"""监测模型档位选择与提问消息构造（纯函数，无库写、无线程）。
+"""监测模型选择与提问消息构造（纯函数，无库写、无线程）。
 
-监测中心（严格校验抛错）、定时任务（宽松过滤回落）与执行循环
-（build_messages）共用同一套口径，避免三处各自实现产生漂移。
+2026-09-04 起：模型从「档位勾选」改为「自由填写」（前端输入框手填型号，
+逗号分隔可填多个），本模块只做清洗归一（去空白/去重/保序/超长截断），
+不再按配置档位白名单校验——型号是否存在由执行时各引擎 API 判定
+（报大白话错误）。监测中心、定时任务与执行循环（build_messages）
+共用同一套口径，避免多处各自实现产生漂移。
 """
 
 from geo.engines import base as engine_base, get_adapter, get_web_adapter
@@ -24,71 +27,38 @@ def build_messages(question_text: str) -> list:
     ]
 
 
-def allowed_models(code: str, web: bool = False) -> set:
-    """某引擎在当前配置下允许的模型档位集合（含当前档；联网档含联网白名单）。
-
-    从 normalize_models 的校验逻辑抽出，供 API 校验（严格抛错）与
-    定时任务读取（宽松过滤）两处复用，口径永远一致。
-    """
-    try:
-        adapter = get_adapter(code)
-    except Exception:
-        return set()
-    from geo.engines import adapter_meta
-    try:
-        meta = adapter_meta(code)
-    except Exception:
-        meta = {}
-    allowed = {o.get("name") for o in (meta.get("model_options") or [])
-               if isinstance(o, dict) and o.get("name")}
-    current = adapter.get_model()
-    if current:
-        allowed.add(current)
-    if web:
-        # 联网档白名单：配置了 web_model_options 则只允许该子集
-        # （如通义千问实时翻译模型不支持联网协议），否则回落全量档位
-        web_opts = {o.get("name") for o in (meta.get("web_model_options") or [])
-                    if isinstance(o, dict) and o.get("name")}
-        if web_opts:
-            allowed = web_opts
-        try:
-            wm = get_web_adapter(code).get_web_model()
-        except Exception:
-            wm = None
-        if wm:
-            allowed.add(wm)
-    return allowed
+def _clean_model_list(raw) -> list:
+    """单个引擎的模型清单清洗：字符串容错、去空白、超长截断、保序去重。"""
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    picked = [str(m).strip()[:100] for m in raw if str(m).strip()]
+    return list(dict.fromkeys(picked))
 
 
 def filter_models(engine_codes: list, models: dict, web: bool = False) -> dict:
-    """宽松过滤：把 {engine: [model,...]} 里当前配置不允许的项剔除（不抛错）。
+    """宽松清洗：把 {engine: [model,...]} 里空白/坏形状项剔除（不抛错）。
 
-    用于定时监测：设置页保存的模型选择可能在之后被改档/删档，定时执行时
-    按当前配置过滤；某家引擎过滤后为空则不出现在结果里（执行时回落当前档）。
+    用于定时监测：型号是手填的，没有"下架档位"概念，故原样放行——
+    型号写错由执行时引擎 API 报大白话错误；某家引擎清洗后为空则不出现在
+    结果里（调用方据此跳过该引擎，不发起空任务）。
     """
     result = {}
     for code in engine_codes or []:
-        raw = (models or {}).get(code) or []
-        if isinstance(raw, str):
-            raw = [raw]
-        if not isinstance(raw, list):
-            continue
-        allowed = allowed_models(code, web)
-        picked = [str(m).strip() for m in raw if str(m).strip() in allowed]
-        picked = list(dict.fromkeys(picked))
+        picked = _clean_model_list((models or {}).get(code))
         if picked:
             result[code] = picked
     return result
 
 
 def normalize_models(engine_codes: list, models: dict, web: bool = False) -> dict:
-    """把前端传来的 {engine: [model,...]} 校验归一为任务模型清单。
+    """把前端传来的 {engine: [model,...]} 归一为任务模型清单（自由填写口径）。
 
-    - models 缺省/为空 → 每家引擎用其当前档：常规档 [adapter.get_model()]，
-      联网档 [get_web_adapter(code).get_web_model()]；
-    - 只认 engine_codes 内的引擎；每家的模型名必须在设置页档位列表
-      （含当前档；联网档额外含联网档模型）里，否则抛大白话错误；
-    - 结果恒为 {code: [model, ...]}（去重、保序），供任务落库与执行循环使用。
+    - 型号由用户手填，不再按档位白名单校验；只做清洗（去空白/截断/去重保序）；
+    - 某引擎清单为空（前端留空）→ 回落当前档（联网档回落联网档模型）；
+    - 只认 engine_codes 内的引擎；
+    - 结果恒为 {code: [model, ...]}，供任务落库与执行循环使用。
     """
     result = {}
     for code in engine_codes or []:
@@ -96,10 +66,7 @@ def normalize_models(engine_codes: list, models: dict, web: bool = False) -> dic
             adapter = get_adapter(code)
         except Exception:
             continue
-        picked = (models or {}).get(code) or []
-        if isinstance(picked, str):
-            picked = [picked]
-        picked = [str(m).strip() for m in picked if str(m).strip()]
+        picked = _clean_model_list((models or {}).get(code))
         if not picked:
             if web:
                 try:
@@ -108,11 +75,5 @@ def normalize_models(engine_codes: list, models: dict, web: bool = False) -> dic
                     picked = [adapter.get_model()]
             else:
                 picked = [adapter.get_model()]
-        # 校验：只允许设置页档位列表里的模型（含当前档；联网档含联网档模型）
-        allowed = allowed_models(code, web)
-        for m in picked:
-            if m not in allowed:
-                raise engine_base.EngineError(
-                    f"{adapter.display_name}没有「{m}」这个档位，请从档位列表里选")
-        result[code] = list(dict.fromkeys(picked))
+        result[code] = picked
     return result

@@ -39,8 +39,9 @@ def _stored_schedule_models() -> dict:
 def _validate_schedule_models(raw) -> dict:
     """校验定时模型选择：{"normal": {engine: [model,...]}, "web": {...}}。
 
-    引擎必须存在；联网档引擎必须支持联网；模型名必须在当前档位
-    白名单里（与监测中心同一口径）。全空 = 各引擎跟随当前档。
+    引擎必须存在；联网档引擎必须支持联网；模型名自由填写（2026-09-04 起不再
+    按档位白名单校验，只清洗不拦截，型号是否存在由执行时引擎 API 判定）。
+    全空 = 各引擎跟随当前档。
     """
     result = {"normal": {}, "web": {}}
     if raw is None:
@@ -62,14 +63,10 @@ def _validate_schedule_models(raw) -> dict:
                 picked = [picked]
             if not isinstance(picked, list):
                 raise ApiError("模型选择格式不对，请刷新页面后再试")
-            picked = [str(m).strip() for m in picked if str(m).strip()]
-            allowed = monitor_task.allowed_models(code, web=(mode == "web"))
-            for m in picked:
-                if m not in allowed:
-                    raise ApiError(
-                        f"{adapter.display_name}没有「{m}」这个档位，请从档位列表里重新选择")
-            if picked:
-                result[mode][code] = list(dict.fromkeys(picked))
+            # 自由填写口径：只清洗（去空白/截断/去重），不按档位白名单拦截
+            cleaned = [str(m).strip()[:100] for m in picked if str(m).strip()]
+            if cleaned:
+                result[mode][code] = list(dict.fromkeys(cleaned))
     return result
 
 

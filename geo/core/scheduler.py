@@ -55,11 +55,11 @@ def effective_interval_days() -> int:
 
 
 def effective_schedule_models(mode: str) -> dict:
-    """定时监测的模型档位选择（设置页保存）：{engine: [model, ...]}。
+    """定时监测的模型填写（设置页保存）：{engine: [model, ...]}。
 
     存在 settings 表 schedule_models 键（JSON：{"normal": {...}, "web": {...}}）。
-    读取时按当前配置宽松过滤——之后改档/删档的模型自动剔除，
-    某家引擎为空则不出现（执行时回落该引擎当前档）。
+    读取时只做宽松清洗（型号自由填写，不校验档位白名单）——某家引擎清洗后
+    为空则不出现（该引擎不参加定时，其余执行时回落各自当前档）。
     """
     from geo.core import monitor_task
     raw = database.jloads(database.get_setting("schedule_models", None), {}) or {}
@@ -163,12 +163,12 @@ def run_scheduled_monitor(background: bool = True):
                         print(f"【定时监测】「{brand_name}」的引擎钥匙还没填，"
                               "跳过该模式。请到设置页填写钥匙。")
                     continue
-                # 2026-08-22 修复：设置页勾了定时模型档位时，没勾的引擎不能参加——
-                # 此前全量引擎传入 start_monitor_task，normalize_models 会给没勾的
-                # 引擎回落当前档，导致「明明只勾了豆包/千问/元宝，deepseek、
+                # 2026-08-22 修复：设置页填了定时模型时，没填的引擎不能参加——
+                # 此前全量引擎传入 start_monitor_task，normalize_models 会给没填的
+                # 引擎回落当前档，导致「明明只填了豆包/千问/元宝，deepseek、
                 # opencode 也被拉去跑」（钥匙失效的 deepseek 还整轮报错）。
                 # 区分两种「空」：没做过选择 → 全部启用引擎 + 当前档（原语义）；
-                # 做过选择但档位后来全部失效 → 跳过该模式（不能悄悄扩到全量引擎）。
+                # 做过选择但填写的型号清洗后全为空 → 跳过该模式（不能悄悄扩到全量引擎）。
                 sched_models = effective_schedule_models(mode)
                 raw_models = database.jloads(
                     database.get_setting("schedule_models", None), {}) or {}
@@ -178,7 +178,7 @@ def run_scheduled_monitor(background: bool = True):
                     engines = [c for c in engines if sched_models.get(c)]
                     if not engines:
                         print(f"【定时监测】「{brand_name}」{mode_labels[mode]}"
-                              "在设置页勾选的模型档位当前都不可用，跳过该模式。")
+                              "在设置页填写的模型型号清洗后为空，跳过该模式。")
                         continue
                 try:
                     task_id = monitor_task.start_monitor_task(

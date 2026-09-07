@@ -123,7 +123,7 @@ def _clear_models_setting():
     database.set_setting("schedule_models", None)
 
 
-def test_定时模型选择_过滤掉已下架档位(tmpdb, monkeypatch):
+def test_定时模型选择_手填型号原样放行(tmpdb, monkeypatch):
     from geo.core import scheduler
     _clear_models_setting()
     database.set_setting("schedule_models", database.jdumps({
@@ -131,8 +131,8 @@ def test_定时模型选择_过滤掉已下架档位(tmpdb, monkeypatch):
         "web": {},
     }))
     got = scheduler.effective_schedule_models("normal")
-    # ghost-tier 不在当前档位白名单里，宽松剔除而不是抛错
-    assert got.get("deepseek") == ["deepseek-v4-flash"]
+    # 2026-09-04 起自由填写：型号不再按档位白名单剔除（配置列表里没有的也放行）
+    assert got.get("deepseek") == ["deepseek-v4-flash", "ghost-tier"]
     assert scheduler.effective_schedule_models("web") == {}
 
 
@@ -145,18 +145,21 @@ def test_定时模型选择_空与坏数据回落(tmpdb):
     assert scheduler.effective_schedule_models("normal") == {}
 
 
-def test_filter_models_宽松过滤():
+def test_filter_models_宽松清洗():
+    # 2026-09-04 起自由填写：只清洗（去空白/去重），不按档位白名单剔除
     from geo.core.monitor_task import filter_models
     assert filter_models(
         ["deepseek", "qwen"],
         {"deepseek": ["deepseek-v4-flash", "ghost"], "qwen": []},
-    ) == {"deepseek": ["deepseek-v4-flash"]}
+    ) == {"deepseek": ["deepseek-v4-flash", "ghost"]}
     # 字符串形态容错 + 去重
     assert filter_models(
         ["deepseek"],
         {"deepseek": "deepseek-v4-flash"},
     ) == {"deepseek": ["deepseek-v4-flash"]}
-    assert filter_models(["deepseek"], {"deepseek": ["a", "a"]}) == {}
+    assert filter_models(["deepseek"], {"deepseek": ["a", "a"]}) == {"deepseek": ["a"]}
+    # 坏形状（非列表非字符串）→ 整引擎剔除
+    assert filter_models(["deepseek"], {"deepseek": {"bad": 1}}) == {}
 
 
 # ---------------- 定时模型选择 → 引擎收敛（2026-08-22 修复） ----------------
@@ -223,8 +226,9 @@ def test_定时模型全空时保持全量引擎当前档(tmpdb, monkeypatch):
     assert models is None  # 全空 → normalize_models 各家回落当前档
 
 
-def test_定时模型勾选全被过滤时空名单跳过(tmpdb, monkeypatch):
-    """勾选的档位后来全部下架 → 该模式跳过，不发起空任务。"""
+def test_定时模型手填型号只跑填写的引擎(tmpdb, monkeypatch):
+    """2026-09-04 起自由填写：填了 deepseek 一个手填型号 → 只跑 deepseek
+    （哪怕型号不在配置档位列表里也不拦截，不悄悄扩到没填的引擎）。"""
     from geo.core import scheduler
     _seed_sched_brand()
     _clear_models_setting()
@@ -234,4 +238,6 @@ def test_定时模型勾选全被过滤时空名单跳过(tmpdb, monkeypatch):
 
     scheduler.run_scheduled_monitor(background=False)
 
-    assert "normal" not in captured  # 没有发起任何任务
+    engines, models = captured["normal"]
+    assert engines == ["deepseek"]
+    assert models == {"deepseek": ["ghost-tier"]}

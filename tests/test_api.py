@@ -178,24 +178,37 @@ def test_发起监测无钥匙拦截(client, monkeypatch):
     assert r.get_json()["code"] == 1
 
 
-def test_发起监测模型选择校验(client):
-    # 不存在的档位 → 大白话拦截（校验发生在发起线程之前，零真实调用）
-    r = client.post("/api/monitor/start", json={
-        "brand_id": 1, "question_ids": [1], "engine_codes": ["opencode"],
-        "models": {"opencode": ["not-a-real-model"]}})
-    body = r.get_json()
-    assert body["code"] == 1
-    assert "档位" in body["message"]
+def test_发起监测手填型号自由填写(client, monkeypatch):
+    """2026-09-04 起模型自由填写：配置里没有的型号也能创建任务
+    （存在性由执行时引擎 API 判定；此处打桩，零真实调用）。"""
+    from geo.core import monitor_task as mt
 
+    class _SyncThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            self._target = target
+            self._args = args
 
-def test_发起监测联网档模型选择校验(client):
-    # 联网档同样支持多模型选择：非法档位拦截
+        def start(self):
+            self._target(*self._args)
+
+    monkeypatch.setattr(mt.threading, "Thread", _SyncThread)
+    monkeypatch.setattr(mt, "run_monitor_task", lambda tid: None)
+
     r = client.post("/api/monitor/start", json={
-        "brand_id": 1, "question_ids": [1], "engine_codes": ["qwen"],
-        "mode": "web", "models": {"qwen": ["not-a-real-model"]}})
+        "brand_id": 1, "question_ids": [1],
+        "modes": ["normal", "web"],
+        "models": {
+            "normal": {"opencode": ["not-a-real-model"]},
+            "web": {"qwen": ["not-a-real-model"]},
+        }})
     body = r.get_json()
-    assert body["code"] == 1
-    assert "档位" in body["message"]
+    assert body["code"] == 0, body
+    assert len(body["data"]["task_ids"]) == 2
+
+    # 清理：run_monitor_task 被打桩，任务停在 running，会卡住后续用例的发起
+    from geo.models import db as database
+    with database.session_scope() as s:
+        s.query(database.MonitorTask).update({"status": "failed"})
 
 
 def test_发起监测一轮多模式串行(client, monkeypatch):
@@ -355,10 +368,12 @@ def test_定时模型档位读写与校验(client):
     assert d["models"]["normal"]["deepseek"] == picked
     assert d["models"]["web"] == {}
 
-    # 非法档位拦截（大白话报错）
+    # 自由填写：配置里没有的型号也接受（2026-09-04 起不再校验档位）
     r = client.put("/api/schedule", json={
         "models": {"normal": {"deepseek": ["not-a-model"]}}})
-    assert r.get_json()["code"] == 1
+    assert r.get_json()["code"] == 0
+    d = client.get("/api/schedule").get_json()["data"]
+    assert d["models"]["normal"]["deepseek"] == ["not-a-model"]
 
     # 不支持联网的引擎（opencode 订阅 API 无联网工具）选联网模型拦截
     r = client.put("/api/schedule", json={

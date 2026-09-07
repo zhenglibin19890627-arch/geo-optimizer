@@ -13,7 +13,7 @@ const ENGINE_SITES = {
 let setKeys = [];
 let setBrands = [];
 let setBrandData = {};
-/* 定时模型档位选择（/api/schedule 下发的 models，保存后回填勾选状态） */
+/* 定时模型填写（/api/schedule 下发的 models，保存后回填输入框内容） */
 let schedModelsSelected = { normal: {}, web: {} };
 
 /* 顶栏「＋ 新建品牌」跳转：#brand-new → 自动打开新建品牌弹窗（B3） */
@@ -315,10 +315,10 @@ function renderKeyTierRow(k) {
       '<span class="small-note" data-tier-desc style="flex:1">' + esc(curDesc || "") + "</span>" +
       "</div>";
   } else {
-    /* 监测引擎：型号选择已移到监测中心（同 key 可多模型勾选） */
+    /* 监测引擎：型号选择已移到监测中心（同 key 可填多个型号，逗号分隔） */
     tierHtml =
       '<div class="kt-tier">' +
-      '<span class="small-note">模型档位在「监测中心」选择（同一把钥匙可同时勾选多个档位）</span>' +
+      '<span class="small-note">模型型号在「监测中心」填写（同一把钥匙可填多个，逗号分隔，留空=当前档）</span>' +
       "</div>";
   }
 
@@ -492,17 +492,12 @@ function loadSchedule() {
   }).catch(function () {});
 }
 
-/* ---------------- 定时模型档位选择（2026-08-18） ---------------- */
+/* ---------------- 定时模型填写（2026-09-04 起改为手填型号，留空=当前档） ---------------- */
 
-/* 某引擎某模式可选的档位：联网档优先 web_model_options（平台联网白名单），
-   与监测中心同一口径；返回 null 表示该引擎该模式没有可选档位 */
-function schedModelOptions(k, mode) {
-  if (mode === "web") {
-    if (!k.supports_web_search) return null;
-    const webOpts = k.web_model_options || [];
-    return webOpts.length ? webOpts : (k.model_options || []);
-  }
-  return k.model_options || [];
+/* 某引擎某模式的默认档提示；返回 null 表示该引擎该模式不可用（不渲染填写线） */
+function schedDefaultModel(k, mode) {
+  if (mode === "web" && !k.supports_web_search) return null;
+  return mode === "web" ? (k.web_model || k.model) : k.model;
 }
 
 function renderScheduleModels() {
@@ -529,43 +524,40 @@ function renderScheduleModels() {
     row.appendChild(head);
 
     ["normal", "web"].forEach(function (mode) {
-      const opts = schedModelOptions(k, mode);
-      if (!opts || !opts.length) return;
+      const def = schedDefaultModel(k, mode);
+      if (def === null) return;
       const line = document.createElement("div");
-      line.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:4px";
+      line.style.cssText = "display:flex;align-items:center;gap:6px;margin-left:4px";
       const label = document.createElement("span");
       label.className = "small-note";
       label.style.cssText = "font-size:12px;flex:none";
       label.textContent = mode === "normal" ? "常规：" : "联网：";
       line.appendChild(label);
       const picked = schedModelsSelected[mode][k.engine] || [];
-      opts.forEach(function (opt) {
-        const checked = picked.indexOf(opt.name) >= 0;
-        const lb = document.createElement("label");
-        lb.className = "checkbox-row";
-        lb.style.padding = "2px 4px";
-        lb.innerHTML =
-          '<input type="checkbox" class="sched-model" data-mode="' + mode +
-          '" data-ecode="' + esc(k.engine) + '" data-model="' + esc(opt.name) + '"' +
-          (checked ? " checked" : "") + ">" +
-          '<span class="label-text" style="font-size:12px">' + esc(opt.desc || opt.name) + "</span>";
-        line.appendChild(lb);
-      });
+      const input = document.createElement("input");
+      input.className = "input sched-model-input";
+      input.type = "text";
+      input.setAttribute("data-mode", mode);
+      input.setAttribute("data-ecode", esc(k.engine));
+      input.value = picked.join(", ");
+      input.placeholder = "留空=当前档（" + def + "），多个型号用逗号分隔";
+      input.style.cssText = "flex:1;min-width:220px;padding:3px 8px;font-size:12px";
+      line.appendChild(input);
       row.appendChild(line);
     });
     area.appendChild(row);
   });
 }
 
-/* 收集勾选结果：{normal: {engine: [...]}, web: {...}}；全不勾 = 空对象（跟随当前档） */
+/* 收集填写结果：{normal: {engine: [...]}, web: {...}}；全留空 = 空对象（跟随当前档） */
 function collectScheduleModels() {
   const out = { normal: {}, web: {} };
-  document.querySelectorAll("#schedule-models .sched-model:checked").forEach(function (b) {
-    const mode = b.getAttribute("data-mode");
-    const code = b.getAttribute("data-ecode");
-    const model = b.getAttribute("data-model");
-    if (!out[mode][code]) out[mode][code] = [];
-    out[mode][code].push(model);
+  document.querySelectorAll("#schedule-models .sched-model-input").forEach(function (input) {
+    const mode = input.getAttribute("data-mode");
+    const code = input.getAttribute("data-ecode");
+    const tokens = String(input.value || "")
+      .split(/[，,、;；\s]+/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (tokens.length) out[mode][code] = tokens;
   });
   return out;
 }
