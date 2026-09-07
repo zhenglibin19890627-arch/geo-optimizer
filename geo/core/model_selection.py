@@ -38,17 +38,21 @@ def _clean_model_list(raw) -> list:
 
 
 def filter_models(engine_codes: list, models: dict, web: bool = False) -> dict:
-    """宽松清洗：把 {engine: [model,...]} 里空白/坏形状项剔除（不抛错）。
+    """宽松清洗：{engine: [model,...]} → 保留形状正确的条目（含空列表）。
 
-    用于定时监测：型号是手填的，没有"下架档位"概念，故原样放行——
-    型号写错由执行时引擎 API 报大白话错误；某家引擎清洗后为空则不出现在
-    结果里（调用方据此跳过该引擎，不发起空任务）。
+    2026-09-04 起模型自由填写 + 每条线勾选参加：勾选参加但型号留空的引擎
+    保存为 []，本函数保留该条目（勾选即参加，执行时 normalize_models
+    回落该引擎当前档）；形状不对（非字符串/非列表）的引擎剔除。
     """
     result = {}
     for code in engine_codes or []:
-        picked = _clean_model_list((models or {}).get(code))
-        if picked:
-            result[code] = picked
+        raw = (models or {}).get(code)
+        if isinstance(raw, str):
+            raw = [raw]
+        if not isinstance(raw, list):
+            continue
+        result[code] = list(dict.fromkeys(
+            str(m).strip()[:100] for m in raw if str(m).strip()))
     return result
 
 

@@ -15,7 +15,10 @@ PLAIN_HINT = "定时监测需要保持本程序运行（可以最小化窗口，
 
 
 def _stored_schedule_models() -> dict:
-    """读回定时模型选择，恒为 {"normal": {...}, "web": {...}} 形状。"""
+    """读回定时模型选择，恒为 {"normal": {...}, "web": {...}} 形状。
+
+    勾选参加但型号留空的条目（[]）原样保留——设置页要能回显勾选状态。
+    """
     raw = database.jloads(database.get_setting("schedule_models", None), {}) or {}
     result = {"normal": {}, "web": {}}
     if isinstance(raw, dict):
@@ -29,9 +32,9 @@ def _stored_schedule_models() -> dict:
                     picked = [picked]
                 if not isinstance(picked, list):
                     continue
-                names = [str(m).strip() for m in picked if str(m).strip()]
-                if names:
-                    clean[str(code)] = list(dict.fromkeys(names))
+                names = list(dict.fromkeys(
+                    str(m).strip()[:100] for m in picked if str(m).strip()))
+                clean[str(code).strip()] = names
             result[mode] = clean
     return result
 
@@ -63,10 +66,10 @@ def _validate_schedule_models(raw) -> dict:
                 picked = [picked]
             if not isinstance(picked, list):
                 raise ApiError("模型选择格式不对，请刷新页面后再试")
-            # 自由填写口径：只清洗（去空白/截断/去重），不按档位白名单拦截
+            # 自由填写口径：只清洗（去空白/截断/去重），不按档位白名单拦截；
+            # 勾选参加但型号留空 → 存 []（定时执行时回落该引擎当前档）
             cleaned = [str(m).strip()[:100] for m in picked if str(m).strip()]
-            if cleaned:
-                result[mode][code] = list(dict.fromkeys(cleaned))
+            result[mode][code] = list(dict.fromkeys(cleaned))
     return result
 
 

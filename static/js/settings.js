@@ -523,29 +523,34 @@ function renderScheduleModels() {
         : '<span class="tag tag-orange">钥匙未填，定时不会跑这家</span>');
     row.appendChild(head);
 
-    // 常规/联网两个填写框合成一行两列（窄屏自动换行）
+    // 常规/联网两条线合成一行两列（窄屏自动换行）；每条线独立勾选=定时是否参加
     const lineRow = document.createElement("div");
     lineRow.style.cssText = "display:flex;align-items:center;gap:6px 16px;flex-wrap:wrap;margin-left:4px";
     ["normal", "web"].forEach(function (mode) {
       const def = schedDefaultModel(k, mode);
       if (def === null) return;
+      const picked = schedModelsSelected[mode][k.engine];
+      // 该模式做过选择（保存清单里有条目，含空数组）→ 按清单勾选；从未选择 → 默认全勾（跟随全部）
+      const hasChoice = Object.keys(schedModelsSelected[mode] || {}).length > 0;
       const line = document.createElement("div");
       line.className = "model-line";
       line.setAttribute("data-mode", mode);
       line.setAttribute("data-ecode", esc(k.engine));
       line.style.cssText = "display:flex;align-items:center;gap:6px;flex:1 1 280px;min-width:0";
-      const label = document.createElement("span");
-      label.className = "small-note";
-      label.style.cssText = "font-size:12px;flex:none";
-      label.textContent = mode === "normal" ? "常规：" : "联网：";
-      line.appendChild(label);
-      const picked = schedModelsSelected[mode][k.engine] || [];
+      const check = document.createElement("label");
+      check.className = "checkbox-row";
+      check.style.padding = "2px 4px";
+      check.innerHTML =
+        '<input type="checkbox" class="sched-model-check" data-mode="' + mode +
+        '" data-ecode="' + esc(k.engine) + '"' + (hasChoice ? (Array.isArray(picked) ? " checked" : "") : " checked") + ">" +
+        '<span class="label-text" style="font-size:12px">' + (mode === "normal" ? "常规" : "联网") + "</span>";
+      line.appendChild(check);
       const input = document.createElement("input");
       input.className = "input sched-model-input";
       input.type = "text";
       input.setAttribute("data-mode", mode);
       input.setAttribute("data-ecode", esc(k.engine));
-      input.value = picked.join(", ");
+      input.value = (picked || []).join(", ");
       input.placeholder = "留空=当前档（" + def + "），多个型号用逗号分隔";
       input.style.cssText = "flex:1;min-width:120px;padding:3px 8px;font-size:12px";
       line.appendChild(input);
@@ -556,15 +561,18 @@ function renderScheduleModels() {
   });
 }
 
-/* 收集填写结果：{normal: {engine: [...]}, web: {...}}；全留空 = 空对象（跟随当前档） */
+/* 收集填写结果：{normal: {engine: [...]}, web: {...}}；
+   勾选即参加（型号留空存 [] = 定时执行时回落该引擎当前档）；全部不勾 = 空对象（跟随全部） */
 function collectScheduleModels() {
   const out = { normal: {}, web: {} };
-  document.querySelectorAll("#schedule-models .sched-model-input").forEach(function (input) {
-    const mode = input.getAttribute("data-mode");
-    const code = input.getAttribute("data-ecode");
-    const tokens = String(input.value || "")
+  document.querySelectorAll("#schedule-models .model-line").forEach(function (line) {
+    const mode = line.getAttribute("data-mode");
+    const code = line.getAttribute("data-ecode");
+    const check = line.querySelector("input.sched-model-check");
+    if (!check || !check.checked) return;
+    const tokens = String(line.querySelector("input.sched-model-input").value || "")
       .split(/[，,、;；\s]+/).map(function (s) { return s.trim(); }).filter(Boolean);
-    if (tokens.length) out[mode][code] = tokens;
+    if (!out[mode][code]) out[mode][code] = tokens;
   });
   return out;
 }

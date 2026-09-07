@@ -27,7 +27,10 @@ function monInit() {
     geoApi("/api/settings/keys"),
   ]).then(function (res) {
     monQuestions = res[0] || [];
-    monEngines = (res[1] || []).filter(function (k) { return k.engine !== "analysis"; });
+    monEngines = (res[1] || []).filter(function (k) {
+      // 监测只关心 5 家自动引擎：分析/创作模型在设置页配置，与此无关
+      return k.engine !== "analysis" && k.engine !== "create";
+    });
     renderQList();
     renderEList();
     updateEstimate();

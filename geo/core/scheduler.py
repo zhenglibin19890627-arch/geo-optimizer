@@ -175,10 +175,11 @@ def run_scheduled_monitor(background: bool = True):
                 made_choice = bool(isinstance(raw_models, dict)
                                    and (raw_models.get(mode) or {}))
                 if sched_models or made_choice:
-                    engines = [c for c in engines if sched_models.get(c)]
+                    # 勾选即参加：清单里有条目（含空列表=回落当前档）的引擎才跑
+                    engines = [c for c in engines if c in sched_models]
                     if not engines:
                         print(f"【定时监测】「{brand_name}」{mode_labels[mode]}"
-                              "在设置页填写的模型型号清洗后为空，跳过该模式。")
+                              "没有勾选任何可参加的引擎，跳过该模式。")
                         continue
                 try:
                     task_id = monitor_task.start_monitor_task(

@@ -146,12 +146,12 @@ def test_定时模型选择_空与坏数据回落(tmpdb):
 
 
 def test_filter_models_宽松清洗():
-    # 2026-09-04 起自由填写：只清洗（去空白/去重），不按档位白名单剔除
+    # 2026-09-04 起自由填写+勾选参加：勾选的引擎都保留（含型号留空存 []）
     from geo.core.monitor_task import filter_models
     assert filter_models(
         ["deepseek", "qwen"],
         {"deepseek": ["deepseek-v4-flash", "ghost"], "qwen": []},
-    ) == {"deepseek": ["deepseek-v4-flash", "ghost"]}
+    ) == {"deepseek": ["deepseek-v4-flash", "ghost"], "qwen": []}
     # 字符串形态容错 + 去重
     assert filter_models(
         ["deepseek"],
@@ -160,6 +160,23 @@ def test_filter_models_宽松清洗():
     assert filter_models(["deepseek"], {"deepseek": ["a", "a"]}) == {"deepseek": ["a"]}
     # 坏形状（非列表非字符串）→ 整引擎剔除
     assert filter_models(["deepseek"], {"deepseek": {"bad": 1}}) == {}
+    assert filter_models(["deepseek"], {}) == {}
+
+
+def test_定时模型勾选留空回落当前档(tmpdb, monkeypatch):
+    """勾选参加但型号留空（存 []）→ 只跑勾的引擎，型号回落该引擎当前档。"""
+    from geo.core import scheduler
+    _seed_sched_brand()
+    _clear_models_setting()
+    database.set_setting("schedule_models", database.jdumps({
+        "normal": {"deepseek": []}, "web": {}}))
+    captured = _patch_sched_run(monkeypatch, ["deepseek", "doubao"])
+
+    scheduler.run_scheduled_monitor(background=False)
+
+    engines, models = captured["normal"]
+    assert engines == ["deepseek"]
+    assert models == {"deepseek": []}
 
 
 # ---------------- 定时模型选择 → 引擎收敛（2026-08-22 修复） ----------------

@@ -375,6 +375,13 @@ def test_定时模型档位读写与校验(client):
     d = client.get("/api/schedule").get_json()["data"]
     assert d["models"]["normal"]["deepseek"] == ["not-a-model"]
 
+    # 勾选参加但型号留空 → 存 []（定时执行时回落该引擎当前档）
+    r = client.put("/api/schedule", json={
+        "models": {"normal": {"deepseek": []}}})
+    assert r.get_json()["code"] == 0
+    d = client.get("/api/schedule").get_json()["data"]
+    assert d["models"]["normal"]["deepseek"] == []
+
     # 不支持联网的引擎（opencode 订阅 API 无联网工具）选联网模型拦截
     r = client.put("/api/schedule", json={
         "models": {"web": {"opencode": ["grok-4.5"]}}})
