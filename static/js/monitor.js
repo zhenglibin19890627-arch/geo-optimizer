@@ -59,6 +59,10 @@ function monInit() {
       if (b.disabled) return;
       b.checked = on;
     });
+    document.querySelectorAll("#e-list input.model-line-check").forEach(function (b) {
+      if (b.disabled) return;
+      b.checked = on;
+    });
     applyModeLineStates();
     updateEstimate();
   });
@@ -115,7 +119,7 @@ function updateQCount() {
   document.getElementById("q-count-text").textContent = "已选 " + sel + "/" + total + " 个问题";
 }
 
-/* ---------------- 引擎与模型选择（2026-09-04 起模型改为手填：每家引擎勾选参与，常规/联网两条填写线，留空=当前档） ---------------- */
+/* ---------------- 引擎与模型选择（2026-09-04：模型手填 + 每条「常规/联网」线独立勾选是否参加；留空=当前档） ---------------- */
 
 function monModesSelected() {
   const out = [];
@@ -171,7 +175,7 @@ function renderEList() {
     head.insertAdjacentHTML("beforeend", tags.join(" "));
     row.appendChild(head);
 
-    // 常规/联网两个填写框合成一行两列（窄屏自动换行）
+    // 常规/联网两条线合成一行两列（窄屏自动换行）；每条线独立勾选=本轮是否参加
     const lineRow = document.createElement("div");
     lineRow.style.cssText = "display:flex;align-items:center;gap:6px 16px;flex-wrap:wrap;margin-left:6px";
     ["normal", "web"].forEach(function (mode) {
@@ -181,11 +185,15 @@ function renderEList() {
       line.setAttribute("data-mode", mode);
       line.setAttribute("data-ecode", esc(k.engine));
       line.style.cssText = "display:flex;align-items:center;gap:6px;flex:1 1 280px;min-width:0";
-      const label = document.createElement("span");
-      label.className = "small-note";
-      label.style.cssText = "font-size:12px;flex:none";
-      label.textContent = mode === "normal" ? "常规：" : "联网：";
-      line.appendChild(label);
+      const check = document.createElement("label");
+      check.className = "checkbox-row";
+      check.style.padding = "2px 4px";
+      check.innerHTML =
+        '<input type="checkbox" class="model-line-check" data-mode="' + mode +
+        '" data-ecode="' + esc(k.engine) + '"' + (k.configured ? " checked" : " disabled") + ">" +
+        '<span class="label-text" style="font-size:12px">' + (mode === "normal" ? "常规" : "联网") + "</span>";
+      check.querySelector("input").addEventListener("change", updateEstimate);
+      line.appendChild(check);
       const input = document.createElement("input");
       input.className = "input model-input";
       input.type = "text";
@@ -204,21 +212,22 @@ function renderEList() {
   updateECount();
 }
 
-/* 模型线可用性：模式勾选 + 引擎主勾选 都满足才可用（不可用的置灰） */
+/* 模型线可用性：该模式的模式勾选 + 引擎主勾选都满足，线上的勾选框/输入框才可用
+   （不可用的整条线置灰）；线上勾选框再决定这条线本轮是否参加 */
 function applyModeLineStates() {
   const modes = monModesSelected();
   document.querySelectorAll("#e-list .model-line").forEach(function (line) {
     const mode = line.getAttribute("data-mode");
     const code = line.getAttribute("data-ecode");
     const master = document.querySelector('#e-list input.eng-check[data-ecode="' + code + '"]');
-    const usable = modes.indexOf(mode) >= 0 && master && master.checked;
-    line.querySelectorAll("input.model-input").forEach(function (b) { b.disabled = !usable; });
+    const usable = modes.indexOf(mode) >= 0 && master && master.checked && !master.disabled;
+    line.querySelectorAll("input.model-line-check, input.model-input").forEach(function (b) { b.disabled = !usable; });
     line.style.opacity = usable ? "" : "0.45";
   });
 }
 
 /* 已选模型（自由填写口径）：{normal: {engine: [...]}, web: {...}}
-   引擎勾选即参与；输入框留空 = []（后端回落当前档） */
+   线上勾选框勾了才参加；输入框留空 = []（后端回落当前档） */
 function selectedModelsPerMode() {
   const out = { normal: {}, web: {} };
   const modes = monModesSelected();
@@ -227,7 +236,9 @@ function selectedModelsPerMode() {
     if (modes.indexOf(mode) < 0) return;
     const code = line.getAttribute("data-ecode");
     const master = document.querySelector('#e-list input.eng-check[data-ecode="' + code + '"]');
+    const check = line.querySelector("input.model-line-check");
     if (!master || !master.checked || master.disabled) return;
+    if (!check || check.disabled || !check.checked) return;
     const tokens = String(line.querySelector("input.model-input").value || "")
       .split(/[，,、;；\s]+/).map(function (s) { return s.trim(); }).filter(Boolean);
     if (!out[mode][code]) out[mode][code] = tokens;
@@ -299,7 +310,7 @@ function monStart() {
     const m = modes[i];
     const names = Object.keys(models[m] || {});
     if (!names.length) {
-      errEl.textContent = MODE_LABELS[m] + "没有可参与的引擎：请在下方至少勾选 1 家引擎（模型留空 = 用该引擎当前档）";
+      errEl.textContent = MODE_LABELS[m] + "没有可参与的引擎：请在下方至少勾选一条对应的模型线（型号留空 = 用该引擎当前档）";
       return;
     }
   }
