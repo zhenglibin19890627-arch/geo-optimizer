@@ -523,11 +523,17 @@ function renderScheduleModels() {
         : '<span class="tag tag-orange">钥匙未填，定时不会跑这家</span>');
     row.appendChild(head);
 
+    // 常规/联网两个填写框合成一行两列（窄屏自动换行）
+    const lineRow = document.createElement("div");
+    lineRow.style.cssText = "display:flex;align-items:center;gap:6px 16px;flex-wrap:wrap;margin-left:4px";
     ["normal", "web"].forEach(function (mode) {
       const def = schedDefaultModel(k, mode);
       if (def === null) return;
       const line = document.createElement("div");
-      line.style.cssText = "display:flex;align-items:center;gap:6px;margin-left:4px";
+      line.className = "model-line";
+      line.setAttribute("data-mode", mode);
+      line.setAttribute("data-ecode", esc(k.engine));
+      line.style.cssText = "display:flex;align-items:center;gap:6px;flex:1 1 280px;min-width:0";
       const label = document.createElement("span");
       label.className = "small-note";
       label.style.cssText = "font-size:12px;flex:none";
@@ -541,10 +547,11 @@ function renderScheduleModels() {
       input.setAttribute("data-ecode", esc(k.engine));
       input.value = picked.join(", ");
       input.placeholder = "留空=当前档（" + def + "），多个型号用逗号分隔";
-      input.style.cssText = "flex:1;min-width:220px;padding:3px 8px;font-size:12px";
+      input.style.cssText = "flex:1;min-width:120px;padding:3px 8px;font-size:12px";
       line.appendChild(input);
-      row.appendChild(line);
+      lineRow.appendChild(line);
     });
+    row.appendChild(lineRow);
     area.appendChild(row);
   });
 }
