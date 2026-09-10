@@ -4,6 +4,7 @@
 
 let monQuestions = [];
 let monEngines = [];
+let monSchedModels = { normal: {}, web: {} }; /* 设置页「定时用哪些模型」，监测中心默认状态跟随它（2026-09-04） */
 let monPolling = null;
 let monTaskIds = null; /* 一轮可含多任务（常规+联网串行，2026-08-19） */
 let monTaskMeta = null; /* {questionTexts, modes:[{mode,label,engineCodes}], engineNames, startTotal} */
@@ -25,12 +26,21 @@ function monInit() {
   Promise.all([
     geoApi("/api/questions?enabled=true"),
     geoApi("/api/settings/keys"),
+    geoApi("/api/schedule"),
   ]).then(function (res) {
     monQuestions = res[0] || [];
     monEngines = (res[1] || []).filter(function (k) {
       // 监测只关心 5 家自动引擎：分析/创作模型在设置页配置，与此无关
       return k.engine !== "analysis" && k.engine !== "create";
     });
+    /* 模型线默认状态跟随设置页定时配置：勾选与型号以「定时用哪些模型」为底，
+       本轮可临时改，不影响定时配置（改定时请去设置页保存） */
+    const sched = res[2] || {};
+    const models = sched.models && typeof sched.models === "object" ? sched.models : {};
+    monSchedModels = {
+      normal: models.normal && typeof models.normal === "object" ? models.normal : {},
+      web: models.web && typeof models.web === "object" ? models.web : {},
+    };
     renderQList();
     renderEList();
     updateEstimate();
@@ -179,10 +189,15 @@ function renderEList() {
     row.appendChild(head);
 
     // 常规/联网两条线合成一行两列（窄屏自动换行）；每条线独立勾选=本轮是否参加
+    // 默认状态跟随设置页「定时用哪些模型」：有保存选择→按清单勾选/填型号；
+    // 该模式从未选择→默认全勾、型号留空（回落当前档）
     const lineRow = document.createElement("div");
     lineRow.style.cssText = "display:flex;align-items:center;gap:6px 16px;flex-wrap:wrap;margin-left:6px";
     ["normal", "web"].forEach(function (mode) {
       if (mode === "web" && !k.supports_web_search) return;
+      const picked = monSchedModels[mode][k.engine];
+      const hasChoice = Object.keys(monSchedModels[mode] || {}).length > 0;
+      const lineChecked = hasChoice ? Array.isArray(picked) : true;
       const line = document.createElement("div");
       line.className = "model-line";
       line.setAttribute("data-mode", mode);
@@ -193,7 +208,8 @@ function renderEList() {
       check.style.padding = "2px 4px";
       check.innerHTML =
         '<input type="checkbox" class="model-line-check" data-mode="' + mode +
-        '" data-ecode="' + esc(k.engine) + '"' + (k.configured ? " checked" : " disabled") + ">" +
+        '" data-ecode="' + esc(k.engine) + '"' +
+        (k.configured && lineChecked ? " checked" : " disabled") + ">" +
         '<span class="label-text" style="font-size:12px">' + (mode === "normal" ? "常规" : "联网") + "</span>";
       check.querySelector("input").addEventListener("change", updateEstimate);
       line.appendChild(check);
@@ -202,6 +218,7 @@ function renderEList() {
       input.type = "text";
       input.setAttribute("data-mode", mode);
       input.setAttribute("data-ecode", esc(k.engine));
+      input.value = (picked || []).join(", ");
       input.placeholder = "留空=当前档（" + engineDefaultModel(k, mode) + "），多个型号用逗号分隔";
       input.style.cssText = "flex:1;min-width:120px;padding:3px 8px;font-size:12px";
       input.addEventListener("input", updateEstimate);
