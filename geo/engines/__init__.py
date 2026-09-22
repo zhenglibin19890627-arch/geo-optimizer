@@ -1,6 +1,6 @@
 """AI 引擎适配器注册表：新增引擎只需加一个文件并在这里登记。"""
 
-from geo.engines.base import EngineAdapter
+from geo.engines.base import EngineAdapter, EngineError
 from geo.engines.deepseek import DeepSeekAdapter
 from geo.engines.doubao import DoubaoAdapter
 from geo.engines.manual import ManualAdapter
@@ -43,13 +43,21 @@ def get_web_adapter(code: str) -> EngineAdapter:
     return adapter
 
 
-class EngineError_NotFound(Exception):
+class EngineError_NotFound(EngineError):
+    """引擎不存在 / 不支持该能力（get_adapter / get_web_adapter 抛出）。
+
+    2026-09 评审 R6a：此前独立继承 Exception、不继承 EngineError，调用方
+    （monitor_task.enabled_auto_engines、api_monitor._supports_web 等）被迫
+    写宽 except Exception 兜底才能接住它。现在它也是引擎错误，调用方可以
+    统一 except EngineError 处理（引擎错误 message 一律大白话中文的约定
+    也随之适用）。
+    """
+
     pass
 
 
 def adapter_meta(code: str) -> dict:
     """引擎元信息：显示名、口径说明、档位选项、开关、钥匙状态。"""
-    from geo.engines.base import EngineAdapter
     adapter = get_adapter(code)
     cfg = adapter.cfg if hasattr(adapter, "cfg") else {}
     model_options = []

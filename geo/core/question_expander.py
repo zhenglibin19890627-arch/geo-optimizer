@@ -8,7 +8,6 @@
 
 import json
 import re
-from datetime import datetime
 
 from geo.analyzers import llm_client
 
@@ -80,8 +79,6 @@ def expand_questions(keywords: list, count: int = 10, direction: str = None,
     brand_name = str(brand.get("brand_name") or "").strip()
 
     if brand_name:
-        aliases = [str(a or "").strip() for a in (brand.get("brand_aliases") or [])
-                   if str(a or "").strip()]
         product = str(brand.get("product_name") or "").strip()
         desc = str(brand.get("brand_description") or "").strip()
         if len(desc) > 300:

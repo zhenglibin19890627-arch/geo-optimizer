@@ -121,7 +121,10 @@ async function publishPost(payload) {
     }
     return { platform: t.platform, accountId: account.id, ...(t.config ? { config: t.config } : {}) };
   });
-  const job = await store.createJob(postId, targets);
+  // 幂等键透传（旧宿主无此字段 → undefined，去重自动退化为现状行为）：
+  // store.createJob 按它复用未终态/已发布 job，宿主崩溃重试不再重复发文
+  const job = await store.createJob(
+    postId, targets, typeof payload.externalId === "string" ? payload.externalId : "");
   runJob(job.id); // 后台异步执行，状态走 get_job_status 轮询
   return { jobId: job.id };
 }

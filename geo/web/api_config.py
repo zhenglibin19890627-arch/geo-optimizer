@@ -10,7 +10,7 @@ from geo.analyzers import llm_client
 from geo.core import question_expander
 from geo.engines import AUTO_CODES, adapter_meta, get_adapter
 from geo.models import db as database
-from geo.web import ApiError, current_brand_id, fail, get_json, ok
+from geo.web import ApiError, current_brand_id, get_json, ok
 
 bp = Blueprint("api_config", __name__)
 
@@ -477,6 +477,16 @@ def _mask_key(key: str) -> str:
     return key[:4] + "****" + key[-4:]
 
 
+def _clean_model_input(value) -> str:
+    """自由填写型号清洗（分析/创作模型，2026-09）：按逗号/顿号/换行拆分，
+    逐项 trim、去空项后用英文逗号拼回；全空返回空串（=清空，执行时回落当前档）。
+    不做档位白名单校验——型号是否存在由执行时引擎 API 大白话报错。"""
+    if value is None:
+        return ""
+    parts = [p.strip() for p in re.split(r"[,，、\n]", str(value))]
+    return ",".join(p for p in parts if p)
+
+
 def _ensure_current_model(options: list, current: str) -> list:
     """模型下拉里保证包含当前模型：用户在 config.yaml 手填、不在模板选项里的也能显示。"""
     if not current:
@@ -508,6 +518,9 @@ def settings_keys():
         vendors.append({"engine": code, "display_name": meta["display_name"]})
         vendor_model_options[code] = _ensure_current_model(
             meta.get("model_options") or [], meta.get("model") or "")
+    # 2026-09 型号自由填写：model=手填原样回显（空串=未手填，执行时回落当前档）；
+    # current_model=当前档解析值（留空时实际使用的型号，供页面提示）
+    analysis_saved = str(database.get_setting("analysis_model", "") or "").strip()
     items.append({
         "engine": "analysis",
         "display_name": "分析用模型",
@@ -517,7 +530,8 @@ def settings_keys():
         "vendor": vendor,
         "vendors": vendors,
         "vendor_model_options": vendor_model_options,
-        "model": llm_client.get_analysis_model(),
+        "model": analysis_saved,
+        "current_model": llm_client.get_analysis_model(),
         "api_key_masked": _mask_key(
             (config.get_analysis_config().get("api_key") or "").strip()),
         "model_options": _ensure_current_model(
@@ -526,7 +540,7 @@ def settings_keys():
     })
     # 内容创作模型：简报/生成/知识库/改写/优化建议用；未单独设置时回落分析模型
     create_vendor = llm_client.get_create_vendor()
-    create_model = llm_client.get_create_model()
+    create_saved = str(database.get_setting("create_model", "") or "").strip()
     items.append({
         "engine": "create",
         "display_name": "内容创作模型",
@@ -537,11 +551,13 @@ def settings_keys():
         "vendor": create_vendor,
         "vendors": vendors,
         "vendor_model_options": vendor_model_options,
-        "model": create_model,
+        "model": create_saved,
+        "current_model": llm_client.get_create_model(),
         "api_key_masked": _mask_key(
             (config.get_engine_config(create_vendor).get("api_key") or "").strip()),
         "model_options": _ensure_current_model(
-            vendor_model_options.get(create_vendor) or [], create_model),
+            vendor_model_options.get(create_vendor) or [],
+            llm_client.get_create_model()),
     })
     return ok(items, "获取成功")
 
@@ -570,7 +586,7 @@ def save_key():
 def save_settings():
     data = get_json()
     saved = {"engine_model": {}, "engine_enabled": {}, "analysis_model": None,
-             "analysis_vendor": None}
+             "analysis_vendor": None, "create_vendor": None, "create_model": None}
 
     for code, model in (data.get("engine_model") or {}).items():
         if code not in AUTO_CODES:
@@ -599,19 +615,15 @@ def save_settings():
         database.set_setting("analysis_vendor", vendor)
         saved["analysis_vendor"] = vendor
 
-    if data.get("analysis_model"):
-        model = str(data["analysis_model"]).strip()
-        vendor = str(data.get("analysis_vendor")
-                     or llm_client.get_analysis_vendor()).strip()
-        meta = adapter_meta(vendor)
-        options = [o.get("name", "") for o in (meta.get("model_options") or [])
-                   if isinstance(o, dict) and o.get("name")]
-        if options and model not in options:
-            raise ApiError(f"{meta['display_name']}没有这个分析档位，请从下拉列表里选")
+    # 分析用模型（2026-09 自由填写，对齐监测模型口径）：不做档位白名单拦截，
+    # 只做清洗（trim/去空项）；显式带键即保存，空串=清空（执行时回落厂商当前档）；
+    # 型号是否存在由执行时引擎 API 返回大白话错误
+    if "analysis_model" in data:
+        model = _clean_model_input(data.get("analysis_model"))
         database.set_setting("analysis_model", model)
-        saved["analysis_model"] = model
+        saved["analysis_model"] = model or None
 
-    # 内容创作模型（厂商/型号独立保存；未设置时回落分析模型）
+    # 内容创作模型（厂商/型号独立保存；口径同上：只清洗不拦截，空串=回落分析模型）
     if data.get("create_vendor"):
         vendor = str(data["create_vendor"]).strip()
         if vendor not in AUTO_CODES:
@@ -619,16 +631,10 @@ def save_settings():
         database.set_setting("create_vendor", vendor)
         saved["create_vendor"] = vendor
 
-    if data.get("create_model"):
-        model = str(data["create_model"]).strip()
-        vendor = str(data.get("create_vendor") or llm_client.get_create_vendor()).strip()
-        meta = adapter_meta(vendor)
-        options = [o.get("name", "") for o in (meta.get("model_options") or [])
-                   if isinstance(o, dict) and o.get("name")]
-        if options and model not in options:
-            raise ApiError(f"{meta['display_name']}没有这个创作档位，请从下拉列表里选")
+    if "create_model" in data:
+        model = _clean_model_input(data.get("create_model"))
         database.set_setting("create_model", model)
-        saved["create_model"] = model
+        saved["create_model"] = model or None
 
     return ok(saved, "设置已保存")
 

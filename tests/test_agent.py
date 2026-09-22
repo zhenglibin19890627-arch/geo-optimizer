@@ -216,3 +216,87 @@ def test_宿主中断僵尸任务回收(tmpdb):
         assert rows["zhihu"].status == "failed"
         assert "中断" in rows["zhihu"].error_msg
         assert rows["sohu"].status == "dispatching"
+
+
+# ---------------- 发布幂等键（防重复文章） ----------------
+
+def test_claim幂等键_崩溃重试保持稳定_主动重发轮换(tmpdb, client):
+    """幂等键 = 渠道任务 id：宿主崩溃重试按键复用扩展 job（防重复发文）；
+    曾发布过的重发属用户主动行为，键轮换放行真正的重发。"""
+    _drain_queue(client)
+    draft_id = _seed_draft()
+    client.post(f"/api/distribution/drafts/{draft_id}/channels", json={
+        "brand_id": 31, "platforms": ["zhihu"]})
+    items = client.post("/api/agent/claim", json={"limit": 1}).get_json()["data"]
+    assert len(items) == 1
+    tid = items[0]["task_id"]
+    assert items[0]["idempotency_key"] == str(tid)
+
+    # 崩溃重试路径：失败 → 重试 → 再领取，键保持不变（扩展按它复用 job）
+    client.post(f"/api/agent/tasks/{tid}/status",
+                json={"state": "failed", "error_msg": "宿主崩溃"})
+    client.post(f"/api/distribution/channels/{tid}/retry", json={"brand_id": 31})
+    items2 = client.post("/api/agent/claim",
+                         json={"limit": 1, "platforms": ["zhihu"]}).get_json()["data"]
+    assert len(items2) == 1 and items2[0]["task_id"] == tid
+    assert items2[0]["idempotency_key"] == str(tid)
+
+    # 已发布后重发（用户主动）：键带轮换后缀，扩展会建新 job 真正重发
+    client.post(f"/api/agent/tasks/{tid}/status", json={
+        "state": "published", "platform_url": "https://zhuanlan.zhihu.com/p/1"})
+    client.post(f"/api/distribution/channels/{tid}/retry", json={"brand_id": 31})
+    items3 = client.post("/api/agent/claim",
+                         json={"limit": 1, "platforms": ["zhihu"]}).get_json()["data"]
+    assert len(items3) == 1 and items3[0]["task_id"] == tid
+    assert items3[0]["idempotency_key"] != str(tid)
+    assert items3[0]["idempotency_key"].startswith(f"{tid}r")
+
+
+# ---------------- dispatching 僵尸惰性回收（分发 API 访问触发） ----------------
+
+def test_分发接口惰性回收僵尸任务(tmpdb, client):
+    """长驻进程只有启动时一次回收：访问分发相关 API 时应顺带回收过期
+    dispatching 任务，落为 failed 后拿到重试出口。"""
+    from datetime import datetime, timedelta
+    draft_id = _seed_draft()
+
+    def _stale_task(platform):
+        with database.session_scope() as s:
+            s.add(database.DistributionChannelTask(
+                brand_id=31, draft_id=draft_id, platform=platform,
+                status="dispatching",
+                updated_at=datetime.now() - timedelta(minutes=60)))
+
+    def _row(platform):
+        with database.session_scope() as s:
+            r = (s.query(database.DistributionChannelTask)
+                 .filter(database.DistributionChannelTask.draft_id == draft_id,
+                         database.DistributionChannelTask.platform == platform)
+                 .one())
+            return r.status, r.error_msg
+
+    # 分发页首屏 overview 触发回收
+    _stale_task("zhihu")
+    r = client.get("/api/distribution/overview", query_string={"brand_id": 31})
+    assert r.get_json()["code"] == 0
+    status, msg = _row("zhihu")
+    assert status == "failed" and "中断" in msg
+
+    # 渠道列表接口（重试按钮的数据源）同样触发
+    _stale_task("sohu")
+    r = client.get(f"/api/distribution/drafts/{draft_id}/channels",
+                   query_string={"brand_id": 31})
+    assert r.get_json()["code"] == 0
+    status, msg = _row("sohu")
+    assert status == "failed" and "中断" in msg
+
+    # 新鲜的 dispatching 不受影响（宿主可能仍在处理）
+    with database.session_scope() as s:
+        s.add(database.DistributionChannelTask(
+            brand_id=31, draft_id=draft_id, platform="toutiao",
+            status="dispatching", updated_at=datetime.now()))
+    r = client.get(f"/api/distribution/drafts/{draft_id}",
+                   query_string={"brand_id": 31})
+    assert r.get_json()["code"] == 0
+    status, _ = _row("toutiao")
+    assert status == "dispatching"

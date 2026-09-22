@@ -15,6 +15,7 @@ const RUNNING = new Set(); // jobId 防并发重复执行
 export async function runJob(jobId) {
   if (RUNNING.has(jobId)) return;
   const job = await store.getJob(jobId);
+  // 终态（含幂等复用命中的已发布 job）直接返回：绝不重发，防平台重复文章
   if (!job || (job.state !== "pending" && job.state !== "running")) return;
   RUNNING.add(jobId);
   // MV3 SW 空闲 30 秒会被回收（原生端口不保活），任务运行期间每 20 秒 ping 一次

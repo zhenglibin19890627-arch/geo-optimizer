@@ -73,13 +73,9 @@ def _fetch_robots(origin: str, ua: str) -> RobotsTxt:
     return RobotsTxt("")
 
 
-def fetch_page(url: str) -> dict:
-    """抓取公开网页正文。返回 {text, title}；失败抛 FetchError（大白话）。"""
-    fetch_cfg = config.get_section("fetch", {})
-    timeout = int(fetch_cfg.get("timeout_seconds", 10) or 10)
-    max_chars = int(fetch_cfg.get("max_chars", 50000) or 50000)
-    ua = str(fetch_cfg.get("user_agent", "")).strip() or "Mozilla/5.0"
-
+def robots_check(url: str, ua: str) -> None:
+    """robots.txt 合规检查（供 fetch_page 及其他兜底抓取路径复用，全站统一口径）。
+    链接不合法或 robots.txt 禁止抓取时抛 FetchError（大白话）。"""
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise FetchError("这个链接格式不太对，请检查是不是完整的网址（以 http:// 或 https:// 开头）")
@@ -88,6 +84,16 @@ def fetch_page(url: str) -> dict:
     if not robots.can_fetch(ua, parsed.path or "/"):
         raise FetchError("这个网站设置了禁止程序自动读取内容（robots.txt 禁止抓取），"
                          "请改用「粘贴文字」的方式提交内容")
+
+
+def fetch_page(url: str) -> dict:
+    """抓取公开网页正文。返回 {text, title}；失败抛 FetchError（大白话）。"""
+    fetch_cfg = config.get_section("fetch", {})
+    timeout = int(fetch_cfg.get("timeout_seconds", 10) or 10)
+    max_chars = int(fetch_cfg.get("max_chars", 50000) or 50000)
+    ua = str(fetch_cfg.get("user_agent", "")).strip() or "Mozilla/5.0"
+
+    robots_check(url, ua)
 
     try:
         resp = requests.get(url, headers={"User-Agent": ua},

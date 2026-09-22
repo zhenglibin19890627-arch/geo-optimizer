@@ -48,9 +48,12 @@ def _vendor_cfg(vendor: str) -> tuple:
 
 
 def get_analysis_model() -> str:
-    """当前分析模型档位（默认当前厂商的默认档）。"""
+    """当前分析模型档位（2026-09 起型号自由填写）：手填型号优先；
+    留空/未设置=厂商当前默认档（engines 节 model，deepseek 兼容旧 analysis 节）。
+    型号是否存在由执行时引擎 API 大白话报错。"""
     _key, _base, default_model = _vendor_cfg(get_analysis_vendor())
-    return str(database.get_setting("analysis_model", default_model) or "")
+    saved = str(database.get_setting("analysis_model", "") or "").strip()
+    return saved or str(default_model or "").strip()
 
 
 def get_create_vendor() -> str:
@@ -61,7 +64,7 @@ def get_create_vendor() -> str:
 
 
 def get_create_model() -> str:
-    """内容创作模型名；未设置则回落分析模型。"""
+    """内容创作模型名（自由填写；留空/未设置回落分析模型）。"""
     model = str(database.get_setting("create_model", "") or "").strip()
     return model or get_analysis_model()
 
@@ -134,13 +137,24 @@ def chat(prompt: str, temperature: float = 0.3, timeout: int = 60, system: str =
         elif resp.status_code in (401, 403):
             raise AnalysisError("分析用的钥匙（API Key）不对或已失效，请到设置页重新填写")
         elif resp.status_code == 429:
-            last_err = Exception("太频繁")
+            last_err = AnalysisError("分析用模型 的请求太频繁了，稍等一下我会自动重试")
             continue
         else:
+            # 与 base（geo/engines/base.py http_post_with_retry）同口径（R3 对齐）：
+            # 404+not found → 模型不存在提示；其余 4xx 直接抛、5xx 重试。
+            # 原实现 4xx/5xx 分支顺序与 base 相反、且缺 404 翻译，已漂移。
+            body_text = resp.text or ""
+            if resp.status_code == 404 and ("not found" in body_text.lower()
+                                            or "does not exist" in body_text.lower()):
+                raise AnalysisError(
+                    "分析用的模型提示模型不存在：请到对应的 AI 平台控制台确认模型 ID，"
+                    "再到设置页换模型档位")
+            last_err = AnalysisError("分析用的模型暂时出了点问题，请稍后再试")
             if resp.status_code < 500:
-                raise AnalysisError("分析用的模型暂时出了点问题，请稍后再试")
-            last_err = Exception(str(resp.status_code))
+                raise last_err
 
-    if isinstance(last_err, requests.exceptions.RequestException):
-        raise AnalysisError(engine_base.friendly_error(last_err, "分析用模型"))
-    raise AnalysisError("分析用的模型那边出了点状况，请稍后再试")
+    # 结尾口径与 base 一致：可读的自定义错误原样抛，其余经 friendly_error 翻译
+    # （RequestException → 网络大白话；429 重试耗尽 → 上面记录的限流话术）
+    if isinstance(last_err, AnalysisError):
+        raise last_err
+    raise AnalysisError(engine_base.friendly_error(last_err, "分析用模型"))

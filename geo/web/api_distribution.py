@@ -25,9 +25,24 @@ def _draft_or_404(s, draft_id: int, brand_id: int):
     return row
 
 
+def _lazy_reap():
+    """分发相关 API 被访问时惰性回收 dispatching 僵尸任务。
+
+    以前只在 GEO 启动时回收一次：长驻进程里宿主中断卡死的 dispatching 任务
+    永远没有 UI 出口（重试按钮只对 failed 渲染）。这里在轻量读路径上顺带
+    执行（代价是一次按状态过滤的 DB 查询），超时阈值维持 30 分钟；
+    回收成 failed 后自然获得重试按钮。失败不影响主流程。
+    """
+    try:
+        distribution.reap_stale_channel_tasks()
+    except Exception:
+        pass
+
+
 @bp.route("/distribution/overview", methods=["GET"])
 def overview():
     """分发页首屏：官网配置状态 + 稿件统计 + 多平台任务统计 + 扩展在线状态。"""
+    _lazy_reap()
     brand_id = current_brand_id()
     cfg = distribution.get_official_config()
     with database.session_scope() as s:
@@ -110,6 +125,7 @@ def drafts():
 
 @bp.route("/distribution/drafts/<int:draft_id>", methods=["GET"])
 def draft_detail(draft_id: int):
+    _lazy_reap()  # 稿件详情带渠道列表：先给卡死任务出口再渲染
     brand_id = current_brand_id()
     with database.session_scope() as s:
         d = _draft_or_404(s, draft_id, brand_id).to_dict()
@@ -154,6 +170,7 @@ def create_channels(draft_id: int):
     """审阅后勾选平台 → 建多平台待发任务（人工审阅制：不会自动发布，
     任务由本机宿主领取后经扩展执行）。官网渠道特殊：同步直发，立即出结果。
     payload: {"platforms": ["zhihu", ...]}"""
+    _lazy_reap()  # 先回收僵尸 dispatching：同平台卡死任务不再阻塞重建渠道
     brand_id = current_brand_id()
     data = get_json()
     platforms = [str(p).strip() for p in (data.get("platforms") or [])]
@@ -202,6 +219,7 @@ def create_channels(draft_id: int):
 
 @bp.route("/distribution/drafts/<int:draft_id>/channels", methods=["GET"])
 def list_channels(draft_id: int):
+    _lazy_reap()  # 渠道列表是分发页/稿件库重试按钮的数据源：先回收再渲染
     brand_id = current_brand_id()
     with database.session_scope() as s:
         _draft_or_404(s, draft_id, brand_id)

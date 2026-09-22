@@ -287,32 +287,31 @@ function renderKeyTierRow(k) {
     : '<a class="btn-text" href="' + (ENGINE_SITES[k.engine] || "#") + '" target="_blank" rel="noopener">去平台拿钥匙 →</a>';
   const isAnalysis = k.engine === "analysis" || k.engine === "create";
   const settingPrefix = k.engine === "create" ? "create" : "analysis";
-  const opts = k.model_options || [];
-  const optionsHtml = opts.map(function (o) {
-    return '<option value="' + esc(o.name) + '"' + (o.name === k.model ? " selected" : "") + ">" +
-      esc(o.name) + "</option>";
-  }).join("");
-  const curDesc = (opts.find(function (o) { return o.name === k.model; }) || {}).desc || "";
   /* 折叠效果：已配置的默认收起，未配置的默认展开引导填钥匙 */
   const collapsed = !!k.configured;
 
   let tierHtml;
   if (isAnalysis) {
-    /* 分析用模型：厂商可切换（复用各家引擎钥匙/地址/档位） */
+    /* 分析用模型/内容创作模型（2026-09 用户需求）：型号改文本框自由填写，
+       口径对齐监测模型（1ed55b9）：留空=使用该厂商当前档，逗号分隔多个；
+       后端只清洗不拦截，型号是否存在由执行时引擎 API 大白话报错 */
     const vendors = k.vendors || [];
     const vendorOptions = vendors.map(function (v) {
       return '<option value="' + esc(v.engine) + '"' + (v.engine === k.vendor ? " selected" : "") + ">" +
         esc(v.display_name) + "</option>";
     }).join("");
+    const cur = k.current_model || "";
     tierHtml =
       '<div class="kt-tier">' +
       '<span class="small-note" style="flex:none">模型厂商：</span>' +
       '<select class="select" data-avendor style="flex:1;min-width:180px">' + vendorOptions + "</select>" +
       "</div>" +
-      '<div class="kt-tier">' +
+      '<div class="kt-tier" style="flex-wrap:wrap">' +
       '<span class="small-note" style="flex:none">模型型号：</span>' +
-      '<select class="select" data-tier="analysis" style="flex:1;min-width:260px">' + optionsHtml + "</select>" +
-      '<span class="small-note" data-tier-desc style="flex:1">' + esc(curDesc || "") + "</span>" +
+      '<input type="text" class="input" data-tier="' + esc(settingPrefix) + '" style="flex:1;min-width:220px;padding:4px 8px"' +
+      ' value="' + esc(k.model || "") + '" placeholder="留空=使用当前档（' + esc(cur || "厂商默认") + '），多个用英文逗号分隔">' +
+      '<button class="btn btn-secondary" data-tier-save style="flex:none">保存型号</button>' +
+      '<span class="small-note" data-tier-desc style="flex:1 1 100%">当前档：' + esc(cur || "未设置") + "（型号留空时使用）</span>" +
       "</div>";
   } else {
     /* 监测引擎：型号选择已移到监测中心（同 key 可填多个型号，逗号分隔） */
@@ -360,35 +359,46 @@ function renderKeyTierRow(k) {
   }
 
   if (isAnalysis) {
-    const tierSel = row.querySelector("[data-tier]");
-    const saveAnalysisTier = function () {
+    const tierInput = row.querySelector("[data-tier]");
+    const saveModel = function () {
       const payload = {};
-      payload[settingPrefix + "_model"] = tierSel.value;
-      apiPost("/api/settings", payload).then(function () {
-        const vm = k.vendor_model_options || {};
-        const pool = vm[k.vendor] || k.model_options || [];
-        const desc = (pool.find(function (o) { return o.name === tierSel.value; }) || {}).desc || "";
-        row.querySelector("[data-tier-desc]").textContent = desc;
-        showToast("已切换" + k.display_name + "为「" + tierSel.value + "」", "success");
+      payload[settingPrefix + "_model"] = tierInput.value;
+      apiPost("/api/settings", payload).then(function (savedRes) {
+        /* 后端只清洗不拦截：用返回的清洗值回填输入框（空串=已清空跟随当前档） */
+        const v = String((savedRes && savedRes[settingPrefix + "_model"]) || "");
+        tierInput.value = v;
+        if (v) {
+          showToast("已保存" + k.display_name + "型号「" + v + "」", "success");
+        } else {
+          showToast("已清空型号，" + k.display_name + "跟随当前档", "success");
+        }
       }).catch(function () { loadKeys(); });
     };
-    tierSel.addEventListener("change", saveAnalysisTier);
+    row.querySelector("[data-tier-save]").addEventListener("click", saveModel);
+    tierInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") saveModel();
+    });
     const vendorSel = row.querySelector("[data-avendor]");
     vendorSel.addEventListener("change", function () {
       const vPayload = {};
       vPayload[settingPrefix + "_vendor"] = vendorSel.value;
+      /* 切厂商同时清空手填型号：旧厂商的型号在新厂商下多半无效，留空=新厂商当前档 */
+      vPayload[settingPrefix + "_model"] = "";
       apiPost("/api/settings", vPayload).then(function () {
-        k.vendor = vendorSel.value;
-        const vm = k.vendor_model_options || {};
-        const newOpts = vm[vendorSel.value] || [];
-        tierSel.innerHTML = newOpts.map(function (o) {
-          return '<option value="' + esc(o.name) + '">' + esc(o.name) + "</option>";
-        }).join("");
-        if (newOpts.length) {
-          tierSel.value = newOpts[0].name;
-          saveAnalysisTier();
-        }
-        showToast("已切换厂商，型号已同步为该厂商第一档", "success");
+        showToast("已切换厂商，型号已清空（留空=使用该厂商当前档）", "success");
+        /* 只重拉数据刷新本行的当前档提示，不整页重渲染（保持该行展开） */
+        geoApi("/api/settings/keys").then(function (items) {
+          const fresh = (items || []).filter(function (x) { return x.engine === k.engine; })[0];
+          if (!fresh) return;
+          k.vendor = fresh.vendor;
+          k.model = fresh.model;
+          k.current_model = fresh.current_model;
+          tierInput.value = fresh.model || "";
+          const cur = fresh.current_model || "";
+          tierInput.placeholder = "留空=使用当前档（" + (cur || "厂商默认") + "），多个用英文逗号分隔";
+          row.querySelector("[data-tier-desc]").textContent =
+            "当前档：" + (cur || "未设置") + "（型号留空时使用）";
+        }).catch(function () {});
       }).catch(function () { loadKeys(); });
     });
   }

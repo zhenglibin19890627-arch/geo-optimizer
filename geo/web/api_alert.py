@@ -4,7 +4,7 @@ import re
 
 from flask import Blueprint, request
 
-from geo.core import monitor_task, scheduler
+from geo.core import scheduler
 from geo.engines import AUTO_CODES, get_adapter
 from geo.models import db as database
 from geo.web import ApiError, current_brand_id, get_json, ok

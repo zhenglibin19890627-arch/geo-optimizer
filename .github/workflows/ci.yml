@@ -1,0 +1,27 @@
+# CI：Windows + Python 3.12，跑 ruff 检查与全量 pytest。
+# 项目暂无远程仓库，本文件先行落地；推送到 GitHub 后即自动生效。
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装开发依赖
+        run: pip install -r requirements-dev.txt
+
+      - name: ruff 检查
+        run: ruff check geo/ app.py tray_app.py bridge/ tools/ tests/
+
+      - name: pytest 全量测试
+        run: python -m pytest tests/ -q

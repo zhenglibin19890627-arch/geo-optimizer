@@ -31,47 +31,63 @@ def _run_optimize(record_id: int):
 def _run_optimize_inner(record_id: int):
     fetch_cfg = config.get_section("fetch", {})
     max_chars = int(fetch_cfg.get("max_chars", 50000) or 50000)
+
+    # 短事务一：落 running 并取齐输入（2026-09 评审 R5：与监测主链路同法，
+    # 外部调用一律不持事务——此前靠「调 AI 前人肉 s.commit()」释放 SQLite
+    # 单写者锁（缺陷 #14），现在由结构保证，不再依赖提交纪律）
     with database.session_scope() as s:
         row = s.get(database.OptimizationRecord, record_id)
         if not row:
             return
         row.status = "running"
         brand_id = row.brand_id or 1
-        brand = database.get_brand(brand_id)
+        input_type = row.input_type
+        url = row.url
+        text_content = row.content or ""
         keywords = [k.text for k in s.query(database.Keyword)
                     .filter(database.Keyword.brand_id == brand_id)
                     .filter(database.Keyword.enabled == True).all()]
 
-        try:
-            if row.input_type == "url":
-                fetched = fetcher.fetch_page(row.url)
-                content = fetched["text"]
-            else:
-                content = row.content or ""
+    brand = database.get_brand(brand_id)  # 自带独立短事务，返回普通 dict
 
+    # ---- 外部调用窗口（无事务在手）：抓网页 + 调 AI ----
+    content = text_content
+    fetched = False
+    suggestions = None
+    geo_score = None
+    try:
+        if input_type == "url":
+            content = fetcher.fetch_page(url)["text"]
+            fetched = True
+
+        if not llm_client.is_configured():
+            raise llm_client.AnalysisError(
+                "分析模型尚未填写 API 钥匙，请先到设置页填写后重试")
+
+        suggestions = content_advice.generate_suggestions(
+            content, brand, keywords)
+        geo_score = content_advice.geo_score(
+            content, brand.get("brand_name") or "", keywords)["score"]
+        status, error_msg = "done", ""
+    except (fetcher.FetchError, llm_client.AnalysisError) as e:
+        status, error_msg = "failed", e.message
+    except Exception:
+        status, error_msg = "failed", "分析中途出了点意外，请稍后再试一次"
+
+    # 短事务二：结果落库
+    with database.session_scope() as s:
+        row = s.get(database.OptimizationRecord, record_id)
+        if not row:
+            return
+        if status == "done" or fetched:
             row.content = content[:max_chars]
-
-            if not llm_client.is_configured():
-                raise llm_client.AnalysisError(
-                    "分析模型尚未填写 API 钥匙，请先到设置页填写后重试")
-
-            # 调用 AI 前先提交，释放本连接写事务（row.status="running" 经 autoflush
-            # 已落锁），避免与 log_api_call 的独立连接写 api_call_log 发生
-            # SQLite 单写者锁冲突（缺陷 #14，与 04-11.1 监测主链路同法）
-            s.commit()
-            suggestions = content_advice.generate_suggestions(
-                content, brand, keywords)
-            geo_result = content_advice.geo_score(content, brand.get("brand_name") or "", keywords)
+        if status == "done":
             row.suggestions = database.jdumps(suggestions)
-            row.geo_score = geo_result["score"]
-            row.status = "done"
+            row.geo_score = geo_score
             row.error_msg = ""
-        except (fetcher.FetchError, llm_client.AnalysisError) as e:
-            row.status = "failed"
-            row.error_msg = e.message
-        except Exception:
-            row.status = "failed"
-            row.error_msg = "分析中途出了点意外，请稍后再试一次"
+        else:
+            row.error_msg = error_msg
+        row.status = status
         row.finished_at = datetime.now()
 
 

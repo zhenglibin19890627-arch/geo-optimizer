@@ -83,6 +83,7 @@ def geo_stub():
                 recorded["claims"] += 1
                 tasks = [{
                     "task_id": 101,
+                    "idempotency_key": "101",  # 幂等键：渠道任务 id
                     "platform": "zhihu",
                     "platform_name": "知乎",
                     "account_id": "",
@@ -127,12 +128,14 @@ def test_宿主全链路_心跳领取建稿发布回写(geo_stub):
         req = read_expect(proc, "create_post")
         assert req["payload"]["title"] == "桩标题"
         assert req["payload"]["tags"] == ["云澜", "中台"]
+        assert req["payload"]["externalId"] == "101"  # 幂等键透传到扩展
         write_frame(proc.stdin, {"id": req["id"], "ok": True, "data": {"postId": "p-1"}})
 
         # 请求 2：publish_post
         req = read_expect(proc, "publish_post")
         assert req["payload"]["postId"] == "p-1"
         assert req["payload"]["targets"] == [{"platform": "zhihu"}]
+        assert req["payload"]["externalId"] == "101"
         write_frame(proc.stdin, {"id": req["id"], "ok": True, "data": {"jobId": "j-1"}})
 
         # 请求 3+：轮询 job → 第一次运行中，第二次成功

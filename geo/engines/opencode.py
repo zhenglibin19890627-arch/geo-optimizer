@@ -15,15 +15,9 @@ permission.websearch 是客户端（TUI）的本地搜索能力，订阅 API 网
 订阅制计费：token 费用估算表不含它（套餐内已付费），api_call_log 仍记录 token。
 """
 
-import random
-import time
-
-import requests
-
-from geo import config
-from geo.analyzers import sources as sources_mod
 from geo.engines.base import (ChatResult, EngineAdapter, EngineError,
-                              friendly_error, log_api_call)
+                              extract_responses_text,
+                              extract_url_citation_sources, log_api_call)
 
 # 官方端点表：各模型对应的 API 形态
 _RESPONSES_MODELS = {"grok-4.5", "gpt-5.6-luna"}
@@ -68,60 +62,15 @@ class OpenCodeAdapter(EngineAdapter):
     # ---------------- 公共：jitter / 校验 ----------------
 
     def _jitter_sleep(self, jitter):
-        if not jitter:
-            return
-        mon = config.get_section("monitor", {})
-        low = float(mon.get("min_interval", 1.5) or 1.5)
-        high = float(mon.get("max_interval", 3) or 3)
-        time.sleep(random.uniform(low, high))
+        # R3 收敛：与各适配器共用 base 的限速等待
+        super()._jitter_sleep(jitter)
 
     def _require(self):
-        if not (self.cfg.get("api_key") or "").strip():
-            raise EngineError(f"{self.display_name}的钥匙（API Key）还没填，请先到设置页填写")
-        base_url = self.get_base_url()
-        if not base_url:
-            raise EngineError(f"{self.display_name}的接口地址还没配置好，请联系开发者检查配置文件")
-        return base_url
+        """钥匙/地址大白话校验（模型按 API 形态另行校验，保持原顺序）。"""
+        return self._require_call_config(model=None)
 
-    def _retry_loop(self, url, payload, headers, timeout, parse):
-        """通用限流重试 + 状态码翻译；parse(data, model) 返回 ChatResult。"""
-        mon = config.get_section("monitor", {})
-        max_retries = int(mon.get("max_retries", 2) or 2)
-        backoff = float(mon.get("retry_backoff_seconds", 2) or 2)
-        last_err = None
-        for attempt in range(max_retries + 1):
-            if attempt > 0:
-                wait = backoff * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
-                time.sleep(wait)
-            try:
-                resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
-            except requests.exceptions.RequestException as e:
-                last_err = e
-                continue
-            if resp.status_code == 200:
-                try:
-                    data = resp.json()
-                except Exception:
-                    raise EngineError(f"{self.display_name} 返回的内容格式不对，请稍后再试")
-                return parse(data)
-            elif resp.status_code in (401, 403):
-                raise EngineError(f"{self.display_name}的钥匙（API Key）不对或已失效，请到设置页重新填写")
-            elif resp.status_code == 429:
-                last_err = EngineError(f"{self.display_name} 的请求太频繁了，稍等一下我会自动重试")
-                continue
-            else:
-                body_text = resp.text or ""
-                if resp.status_code == 404 and ("not found" in body_text.lower()
-                                                or "does not exist" in body_text.lower()):
-                    raise EngineError(
-                        f"{self.display_name} 提示模型不存在：请到订阅页确认模型 ID，"
-                        f"再到设置页/监测中心换模型档位")
-                last_err = EngineError(f"{self.display_name} 暂时出了点问题，请稍后再试")
-                if resp.status_code < 500:
-                    raise last_err
-        if isinstance(last_err, EngineError):
-            raise last_err
-        raise EngineError(friendly_error(last_err, self.display_name))
+    # R3 收敛：原 _retry_loop（限流重试 + 状态码翻译）与 base 各处逐行相同，
+    # 统一改用 base.http_post_with_retry（经 _post_with_retry），口径不变
 
     # ---------------- Responses 形态（Grok 4.5 / GPT 5.6 Luna） ----------------
 
@@ -134,57 +83,23 @@ class OpenCodeAdapter(EngineAdapter):
             "Authorization": f"Bearer {self.cfg['api_key'].strip()}",
             "Content-Type": "application/json",
         }
-
-        def parse(data):
-            text = self._extract_responses_text(data)
-            if not text:
-                raise EngineError(f"{self.display_name} 没有返回内容，请稍后再试")
-            usage = data.get("usage") or {}
-            tokens_in = usage.get("input_tokens") or 0
-            tokens_out = usage.get("output_tokens") or 0
-            log_api_call(self.code, model, tokens_in, tokens_out)
-            src = self._extract_responses_sources(data)
-            return ChatResult(text=text, model=model,
-                              tokens_in=tokens_in, tokens_out=tokens_out,
-                              sources=src or None)
-
-        return self._retry_loop(
+        data = self._post_with_retry(
             f"{base_url}/responses",
             {"model": model, "input": messages},
-            headers, timeout, parse)
-
-    @staticmethod
-    def _extract_responses_text(data: dict) -> str:
-        parts = []
-        for item in data.get("output") or []:
-            if item.get("type") != "message":
-                continue
-            for c in item.get("content") or []:
-                if c.get("type") == "output_text":
-                    parts.append(c.get("text") or "")
-        return "".join(parts)
-
-    @staticmethod
-    def _extract_responses_sources(data: dict) -> list:
-        raw = []
-        for item in data.get("output") or []:
-            if item.get("type") != "message":
-                continue
-            for c in item.get("content") or []:
-                for anno in c.get("annotations") or []:
-                    if not isinstance(anno, dict):
-                        continue
-                    if anno.get("type") != "url_citation":
-                        continue
-                    url = str(anno.get("url") or "").strip()
-                    if not url:
-                        continue
-                    entry = {"url": url}
-                    title = str(anno.get("title") or "").strip()
-                    if title:
-                        entry["title"] = title
-                    raw.append(entry)
-        return sources_mod.normalize_sources(raw)
+            headers, timeout,
+            model_not_found_msg=(f"{self.display_name} 提示模型不存在：请到订阅页确认模型 ID，"
+                                 f"再到设置页/监测中心换模型档位"))
+        text = extract_responses_text(data)
+        if not text:
+            raise EngineError(f"{self.display_name} 没有返回内容，请稍后再试")
+        usage = data.get("usage") or {}
+        tokens_in = usage.get("input_tokens") or 0
+        tokens_out = usage.get("output_tokens") or 0
+        log_api_call(self.code, model, tokens_in, tokens_out)
+        src = extract_url_citation_sources(data)
+        return ChatResult(text=text, model=model,
+                          tokens_in=tokens_in, tokens_out=tokens_out,
+                          sources=src or None)
 
     # ---------------- Anthropic Messages 形态（MiniMax / Qwen3.6-3.8） ----------------
 
@@ -209,18 +124,18 @@ class OpenCodeAdapter(EngineAdapter):
             "Content-Type": "application/json",
         }
 
-        def parse(data):
-            text = "".join(
-                str(b.get("text") or "") for b in (data.get("content") or [])
-                if isinstance(b, dict) and b.get("type") == "text")
-            if not text:
-                raise EngineError(f"{self.display_name} 没有返回内容，请稍后再试")
-            usage = data.get("usage") or {}
-            tokens_in = usage.get("input_tokens") or 0
-            tokens_out = usage.get("output_tokens") or 0
-            log_api_call(self.code, model, tokens_in, tokens_out)
-            return ChatResult(text=text, model=model,
-                              tokens_in=tokens_in, tokens_out=tokens_out)
-
-        return self._retry_loop(
-            f"{base_url}/messages", payload, headers, timeout, parse)
+        data = self._post_with_retry(
+            f"{base_url}/messages", payload, headers, timeout,
+            model_not_found_msg=(f"{self.display_name} 提示模型不存在：请到订阅页确认模型 ID，"
+                                 f"再到设置页/监测中心换模型档位"))
+        text = "".join(
+            str(b.get("text") or "") for b in (data.get("content") or [])
+            if isinstance(b, dict) and b.get("type") == "text")
+        if not text:
+            raise EngineError(f"{self.display_name} 没有返回内容，请稍后再试")
+        usage = data.get("usage") or {}
+        tokens_in = usage.get("input_tokens") or 0
+        tokens_out = usage.get("output_tokens") or 0
+        log_api_call(self.code, model, tokens_in, tokens_out)
+        return ChatResult(text=text, model=model,
+                          tokens_in=tokens_in, tokens_out=tokens_out)

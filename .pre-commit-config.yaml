@@ -1,0 +1,16 @@
+# pre-commit 钩子：本地提交前跑与 CI 相同的 ruff 检查 + 基础文件卫生。
+# 启用：pip install -r requirements-dev.txt && pip install pre-commit && pre-commit install
+# 手动全量跑一遍：pre-commit run --all-files
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.1
+    hooks:
+      - id: ruff
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files

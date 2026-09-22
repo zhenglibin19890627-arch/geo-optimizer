@@ -328,7 +328,15 @@ def _parse_time(time_str: str, fallback=(8, 30)):
 
 
 def _recover_and_catchup():
-    """① 断点续跑：中断 2 小时内的任务重新拉起；② 错过昨日定时则补跑一轮。"""
+    """① 断点续跑：中断 2 小时内的任务重新拉起；② 错过昨日定时则补跑一轮。
+
+    2026-09 评审 R2 修复后本函数的续跑分支真正可达了：启动回收
+    （monitor_task.reap_stale_tasks）对 2 小时内中断的任务留活口不置 failed，
+    由这里负责拉起（已问到的回答落库保留，run_monitor_task 按
+    问题×引擎×模型去重续跑）；超过 2 小时的中断任务已在回收时置 failed，
+    不会进到这里。续跑窗口统一用 monitor_task._RESUME_WINDOW_SECONDS，
+    两处口径恒一致。
+    """
     from geo.core import monitor_task
     with database.session_scope() as s:
         tasks = (s.query(database.MonitorTask)
@@ -337,11 +345,12 @@ def _recover_and_catchup():
             age = None
             if t.started_at:
                 age = (datetime.now() - t.started_at).total_seconds()
-            if age is None or age < 7200:
+            if age is None or age < monitor_task._RESUME_WINDOW_SECONDS:
                 # 刚中断（或从未启动）：交给断点续跑
                 import threading as th
                 th.Thread(target=monitor_task.run_monitor_task, args=(t.id,), daemon=True).start()
             else:
+                # 理论上启动回收已把超窗任务收尾；这里兜底再拦一道（双保险）
                 t.status = "failed"
                 t.error_msg = "上一次监测被中断超过 2 小时，已自动停止；可以重新发起一轮"
                 t.finished_at = datetime.now()

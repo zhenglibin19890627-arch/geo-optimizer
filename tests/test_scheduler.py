@@ -258,3 +258,67 @@ def test_定时模型手填型号只跑填写的引擎(tmpdb, monkeypatch):
     engines, models = captured["normal"]
     assert engines == ["deepseek"]
     assert models == {"deepseek": ["ghost-tier"]}
+
+
+# ---------------- 启动回收与断点续跑分工（2026-09 评审 R2） ----------------
+
+def test_启动回收_两小时内中断留活口超窗才收尾(tmpdb):
+    """R2 回归：启动回收不再一刀切全置 failed——2 小时内中断的任务留活口
+    交给 _recover_and_catchup 断点续跑；超过 2 小时的才在这里收尾。"""
+    from datetime import timedelta
+
+    from geo.core import monitor_task
+    _seed_sched_brand()
+    now = datetime.now()
+    with database.session_scope() as s:
+        s.add(database.MonitorTask(id=601, type="scheduled", status="running",
+                                   brand_id=9, total_calls=1, done_calls=0,
+                                   started_at=now - timedelta(minutes=30)))
+        s.add(database.MonitorTask(id=602, type="scheduled", status="running",
+                                   brand_id=9, total_calls=1, done_calls=0,
+                                   started_at=now - timedelta(hours=3)))
+        s.add(database.MonitorTask(id=603, type="manual", status="pending",
+                                   brand_id=9, total_calls=1, done_calls=0))
+
+    reaped = monitor_task.reap_stale_tasks()
+
+    assert reaped == 1  # 只有超窗的 602 被收尾
+    with database.session_scope() as s:
+        assert s.get(database.MonitorTask, 601).status == "running"  # 留活口
+        t602 = s.get(database.MonitorTask, 602)
+        assert t602.status == "failed"
+        assert "中断" in (t602.error_msg or "")
+        assert s.get(database.MonitorTask, 603).status == "pending"  # 从未启动的也留活口
+
+
+def test_启动恢复_两小时内的中断任务被断点续跑(tmpdb, monkeypatch):
+    """R2 回归：回收留活口后，_recover_and_catchup 的续跑分支真正可达
+    （此前启动回收先把任务全置 failed，这个分支是永远查不到任务的死代码）。"""
+    import time
+    from datetime import timedelta
+
+    from geo.core import monitor_task, scheduler
+    _seed_sched_brand()
+    resumed = []
+    monkeypatch.setattr(monitor_task, "run_monitor_task",
+                        lambda tid: resumed.append(tid))
+    monkeypatch.setattr(scheduler, "run_scheduled_monitor",
+                        lambda background=True: None)
+    # 先把其他用例留下的任务收尾，避免它们也进续跑分支
+    with database.session_scope() as s:
+        s.query(database.MonitorTask).update(
+            {"status": "failed"}, synchronize_session=False)
+        s.add(database.MonitorTask(id=611, type="scheduled", status="running",
+                                   brand_id=9, total_calls=1, done_calls=0,
+                                   started_at=datetime.now() - timedelta(minutes=5)))
+
+    scheduler._recover_and_catchup()
+
+    for _ in range(100):  # 续跑线程是异步启动的，等打桩记录落定
+        if resumed:
+            break
+        time.sleep(0.02)
+    assert resumed == [611]
+    with database.session_scope() as s:
+        # 任务保持 running 交给续跑，没有被回收误置 failed
+        assert s.get(database.MonitorTask, 611).status == "running"

@@ -13,6 +13,8 @@ bp = Blueprint("api_knowledge", __name__)
 @bp.route("/knowledge/docs/upload", methods=["POST"])
 def upload_doc():
     """上传文档/表格到知识库：支持 .md/.txt/.pdf/.docx/.xlsx，单个 ≤ 20MB。"""
+    # 与其他写方法同一 R8 口径：缺 brand_id 直接大白话报错（前端
+    # distribution.js 上传时已给 FormData 补 brand_id，与 geoApi 同源）
     brand_id = current_brand_id()
     file = request.files.get("file")
     if file is None or not file.filename:

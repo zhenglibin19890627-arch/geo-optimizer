@@ -1,0 +1,18 @@
+# ruff 配置：最小规则集起步 —— pycodestyle 错误(E)/警告(W) + pyflakes(F)。
+# 运行：ruff check geo/ app.py tray_app.py bridge/ tools/ tests/
+# 说明：不启用格式化类规则（行长度等噪音忽略），不做大规模风格改动。
+target-version = "py312"
+
+# reports/ 是一次性验收脚本与日志的历史归档（旧写法+中文路径），不参与 lint，
+# 只在显式指定路径时才检查（CI 与文档口径均为 scoped check）。
+extend-exclude = ["reports"]
+
+[lint]
+select = ["E", "F", "W"]
+ignore = [
+    # 行长度：中文注释与"大白话"报错文案普遍较长，暂不做硬限制。
+    "E501",
+    # `== True`：SQLAlchemy 列过滤的惯用写法（filter(Model.col == True)），
+    # 改成 is 语义会改变生成的 SQL，存量代码保持原样。
+    "E712",
+]

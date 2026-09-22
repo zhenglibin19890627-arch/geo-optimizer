@@ -36,7 +36,6 @@ def check(name: str, passed, detail: str = "") -> bool:
 
 
 def main():
-    results = []
     print("=" * 60)
     print("GEO 分发桥自检")
     print("=" * 60)

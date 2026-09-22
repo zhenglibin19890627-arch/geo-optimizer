@@ -5,6 +5,9 @@
 - 逐引擎 × 逐模型 × 逐问题调用 AI，单条失败不整轮失败，断点续跑；
 - 每条回答即时分析落库（提及/顺位/情感/竞品明细/信源）；
 - 收尾算指标、写快照、评预警，异步触发竞品提取与深度分析。
+- 事务口径（2026-09 评审 R5）：数据库事务只出现在「准备 / 每条结果 / 收尾」
+  三个短窗口，外部 AI 调用一律不在事务内——不再依赖调 AI 前人肉 commit
+  释放 SQLite 单写者锁。
 """
 
 import random
@@ -107,13 +110,28 @@ def run_monitor_task(task_id: int):
                 task.finished_at = datetime.now()
 
 
-def _run_monitor_task_inner(task_id: int):
-    # 任务停止标志/统计口径助手在 monitor_task：函数内延迟导入，避免模块级循环依赖
-    from geo.core import monitor_task as mt
+class _QuestionRef:
+    """轻量问题引用：只带 id/text 出事务（_analysis_for 只用这两个属性）。"""
+
+    def __init__(self, qid: int, text: str):
+        self.id = qid
+        self.text = text
+
+
+def _prepare_task(task_id: int):
+    """阶段一（短事务）：任务置 running、建/取轮次、算断点续跑去重集合。
+
+    2026-09 评审 R5 重构：整轮监测（可达 2 小时）此前从头到尾持有同一个
+    session，靠「每次调 AI 前手动 s.commit()」释放 SQLite 单写者锁——任何
+    维护者在调用点之前多写一行未提交的 ORM 变更，就会重新引入 database is
+    locked（该坑已在 api_optimize 被迫复制同款注释）。现在改为结构保证：
+    事务只出现在三个短窗口（准备 / 每条结果 / 收尾），AI 调用一律在事务外。
+    返回执行上下文 dict；任务不存在返回 None。
+    """
     with database.session_scope() as s:
         task = s.get(database.MonitorTask, task_id)
         if not task:
-            return
+            return None
         brand_id = task.brand_id or 1
         mode = task.mode or "normal"
         question_ids = database.jloads(task.question_ids, []) or []
@@ -127,94 +145,55 @@ def _run_monitor_task_inner(task_id: int):
             round_row = database.MonitorRound(task_id=task_id, brand_id=brand_id, mode=mode)
             s.add(round_row)
             s.flush()
-        round_id = round_row.id
         existing = {(r.question_id, r.engine_code, r.model or "") for r in
                     s.query(database.MonitorResult)
-                    .filter(database.MonitorResult.round_id == round_id).all()}
-
-        brand = database.get_brand(brand_id)
-        brand_names = mention.build_brand_names(brand)
-        # 竞品设置已取消（2026-08-15）：分析时不传档案竞品；
-        # 本轮竞品由收尾自动提取后回算顺位/竞品明细（见 competitor_analysis.finalize_competitors）
-        competitors = []
-        questions = {q.id: q for q in s.query(database.QuestionBank)
+                    .filter(database.MonitorResult.round_id == round_row.id).all()}
+        # 只带 id→text 出事务，问题行不跨事务持有
+        questions = {q.id: q.text for q in s.query(database.QuestionBank)
                      .filter(database.QuestionBank.id.in_(question_ids)).all()}
-        q_objects = [questions[qid] for qid in question_ids if qid in questions]
+        return {
+            "round_id": round_row.id,
+            "brand_id": brand_id,
+            "mode": mode,
+            "question_ids": question_ids,
+            "engine_codes": engine_codes,
+            "questions": questions,
+            "existing": existing,
+            "models_map": database.jloads(task.models, {}) or {},
+            "total": task.total_calls,
+            "done": task.done_calls or 0,
+        }
 
-        # 任务模型清单（同 key 多模型）：{code: [models]}；旧任务缺省当前档
-        # （联网档旧任务缺省联网档模型）
-        models_map = database.jloads(task.models, {}) or {}
-        for code in engine_codes:
-            if not models_map.get(code):
-                try:
-                    if mode == "web":
-                        models_map[code] = [get_web_adapter(code).get_web_model()]
-                    else:
-                        models_map[code] = [get_adapter(code).get_model()]
-                except Exception:
-                    models_map[code] = []
 
-        total = task.total_calls
-        done = task.done_calls or 0
-        errors = []
-        answered_codes = {}
+def _save_result(task_id: int, round_id: int, brand_id: int,
+                 fields: dict, done: int, total: int):
+    """阶段二助手（短事务）：单条结果 + 进度独立落库提交。
 
-        cancelled = mt._is_cancelled(task_id)
-        for code in engine_codes:
-            if cancelled:
-                break
-            try:
-                adapter = (get_web_adapter(code) if mode == "web" else get_adapter(code))
-            except Exception:
-                continue
-            for model in (models_map.get(code) or [""]):
-                if cancelled:
-                    break
-                for q in q_objects:
-                    if (q.id, code, model or "") in existing:
-                        continue
-                    mon = mt._monitor_section()
-                    lo = float(mon.get("min_interval", 1.5) or 1.5)
-                    hi = float(mon.get("max_interval", 3) or 3)
-                    time.sleep(random.uniform(lo, hi))
-                    if mt._is_cancelled(task_id):
-                        cancelled = True
-                        break
-                    # 调用 AI 前先提交，释放本连接写事务，避免与 log_api_call
-                    # 的独立连接写 api_call_log 发生 SQLite 单写者锁冲突
-                    s.commit()
-                    try:
-                        result = adapter.chat(build_messages(q.text),
-                                              web_search=(mode == "web"),
-                                              timeout=engine_base.get_call_timeout(),
-                                              model=(model or None))
-                    except engine_base.EngineError as e:
-                        errors.append((adapter.display_name, e.message))
-                        s.add(database.MonitorResult(
-                            round_id=round_id, brand_id=brand_id, engine_code=code,
-                            model=(model or None),
-                            question_id=q.id, question_text=q.text, answer_text=None,
-                            is_mentioned=False, mention_count=0, sentiment="neutral",
-                            input_mode="auto", error_msg=e.message))
-                    else:
-                        analysis = _analysis_for(adapter, q, result, brand,
-                                                 competitors, brand_names)
-                        analysis["brand_id"] = brand_id
-                        analysis["model"] = model or None
-                        s.add(database.MonitorResult(round_id=round_id, **analysis))
-                        answered_codes.setdefault(code, [0, 0])
-                        answered_codes[code][0] += 1
-                        if analysis["is_mentioned"]:
-                            answered_codes[code][1] += 1
-                    done += 1
-                    task.done_calls = done
-                    task.progress = round(done / total * 100) if total else 0
-                    s.commit()
-                    # 每次调用返回后复查取消标志（含最后一次调用）：取消若落在
-                    # 调用在途窗口，命中即收尾为 cancelled；已答回答照常保留
-                    if mt._is_cancelled(task_id):
-                        cancelled = True
-                        break
+    每条回答一个独立短事务：写完即提交，写锁持有以毫秒计；外部 AI 调用绝不
+    在这个事务里。done_calls/progress 同事务更新，断点续跑与进度查询即时可见。
+    """
+    with database.session_scope() as s:
+        s.add(database.MonitorResult(round_id=round_id, brand_id=brand_id, **fields))
+        task = s.get(database.MonitorTask, task_id)
+        if task:
+            task.done_calls = done
+            task.progress = round(done / total * 100) if total else 0
+
+
+def _finalize_task(mt, task_id: int, round_id: int, brand_id: int, mode: str,
+                   brand: dict, answered_codes: dict, errors: list,
+                   cancelled: bool) -> bool:
+    """阶段三（短事务）：算指标、写评分快照、评预警、落任务终态。
+
+    预警（alerting.evaluate_round）复用调用方 session、与轮次落库同事务的
+    口径不变——只是这个事务的生命周期从「整轮监测」缩短为「收尾这几条写」。
+    返回（可能被兜底复查改写的）cancelled。
+    """
+    with database.session_scope() as s:
+        task = s.get(database.MonitorTask, task_id)
+        round_row = s.get(database.MonitorRound, round_id)
+        if task is None or round_row is None:
+            return cancelled
 
         metrics = _round_metrics(s, round_id)
         round_row.mention_rate = metrics["mention_rate"]
@@ -279,9 +258,114 @@ def _run_monitor_task_inner(task_id: int):
                 parts = [f"{name}：{'；'.join(list(msgs)[:2])}" for name, msgs in brief.items()]
                 task.error_msg = "有部分问题没问到（已跳过，不影响其他结果）：" + "；".join(parts[:5])
         task.finished_at = datetime.now()
-        with mt._cancel_lock:
-            mt._cancelled_task_ids.discard(task_id)
-        s.commit()
+
+    # 取消标志在收尾事务提交后清理（标志只影响本线程的检查点，时序无差）
+    with mt._cancel_lock:
+        mt._cancelled_task_ids.discard(task_id)
+    return cancelled
+
+
+def _run_monitor_task_inner(task_id: int):
+    # 任务停止标志/统计口径助手在 monitor_task：函数内延迟导入，避免模块级循环依赖
+    from geo.core import monitor_task as mt
+
+    # ---- 阶段一：短事务准备（置 running / 建轮次 / 断点续跑去重集合） ----
+    ctx = _prepare_task(task_id)
+    if ctx is None:
+        return
+    round_id = ctx["round_id"]
+    brand_id = ctx["brand_id"]
+    mode = ctx["mode"]
+    engine_codes = ctx["engine_codes"]
+    question_ids = ctx["question_ids"]
+    questions = ctx["questions"]
+    existing = ctx["existing"]
+    models_map = ctx["models_map"]
+    total = ctx["total"]
+    done = ctx["done"]
+
+    # 任务模型清单（同 key 多模型）：{code: [models]}；旧任务缺省当前档
+    # （联网档旧任务缺省联网档模型）——纯配置读取，不占事务
+    for code in engine_codes:
+        if not models_map.get(code):
+            try:
+                if mode == "web":
+                    models_map[code] = [get_web_adapter(code).get_web_model()]
+                else:
+                    models_map[code] = [get_adapter(code).get_model()]
+            except Exception:
+                models_map[code] = []
+
+    brand = database.get_brand(brand_id)  # 自带独立短事务，返回普通 dict
+    brand_names = mention.build_brand_names(brand)
+    # 竞品设置已取消（2026-08-15）：分析时不传档案竞品；
+    # 本轮竞品由收尾自动提取后回算顺位/竞品明细（见 competitor_analysis.finalize_competitors）
+    competitors = []
+    errors = []
+    answered_codes = {}
+
+    # ---- 阶段二：逐引擎 × 逐模型 × 逐问题调用（事务外），每条结果独立短事务 ----
+    cancelled = mt._is_cancelled(task_id)
+    for code in engine_codes:
+        if cancelled:
+            break
+        try:
+            adapter = (get_web_adapter(code) if mode == "web" else get_adapter(code))
+        except Exception:
+            continue
+        for model in (models_map.get(code) or [""]):
+            if cancelled:
+                break
+            for qid in question_ids:
+                if qid not in questions:
+                    continue  # 问题已被删除，跳过（与原 q_objects 过滤口径一致）
+                if (qid, code, model or "") in existing:
+                    continue
+                mon = mt._monitor_section()
+                lo = float(mon.get("min_interval", 1.5) or 1.5)
+                hi = float(mon.get("max_interval", 3) or 3)
+                time.sleep(random.uniform(lo, hi))
+                if mt._is_cancelled(task_id):
+                    cancelled = True
+                    break
+                # 此刻手上没有任何事务（R5：原「调 AI 前先 s.commit() 释放写事务，
+                # 避免与 log_api_call 的独立连接撞 SQLite 单写者锁」已由结构保证，
+                # 不再依赖人肉 commit 纪律）
+                try:
+                    result = adapter.chat(build_messages(questions[qid]),
+                                          web_search=(mode == "web"),
+                                          timeout=engine_base.get_call_timeout(),
+                                          model=(model or None))
+                except engine_base.EngineError as e:
+                    errors.append((adapter.display_name, e.message))
+                    fields = {
+                        "engine_code": code, "model": (model or None),
+                        "question_id": qid, "question_text": questions[qid],
+                        "answer_text": None, "is_mentioned": False,
+                        "mention_count": 0, "sentiment": "neutral",
+                        "input_mode": "auto", "error_msg": e.message,
+                    }
+                else:
+                    fields = _analysis_for(
+                        adapter, _QuestionRef(qid, questions[qid]), result, brand,
+                        competitors, brand_names)
+                    fields["model"] = model or None
+                    answered_codes.setdefault(code, [0, 0])
+                    answered_codes[code][0] += 1
+                    if fields["is_mentioned"]:
+                        answered_codes[code][1] += 1
+                done += 1
+                _save_result(task_id, round_id, brand_id, fields, done, total)
+                existing.add((qid, code, model or ""))
+                # 每次调用返回后复查取消标志（含最后一次调用）：取消若落在
+                # 调用在途窗口，命中即收尾为 cancelled；已答回答照常保留
+                if mt._is_cancelled(task_id):
+                    cancelled = True
+                    break
+
+    # ---- 阶段三：短事务收尾（指标/快照/预警/任务终态） ----
+    cancelled = _finalize_task(mt, task_id, round_id, brand_id, mode, brand,
+                               answered_codes, errors, cancelled)
 
     # 收尾异步：自动提取本轮竞品 → 回算顺位/竞品明细 → 触发竞品深度分析
     # （2026-08-15 起竞品不再来自品牌设置，全部由回答自动提取）

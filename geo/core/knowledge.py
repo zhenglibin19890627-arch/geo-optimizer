@@ -257,13 +257,21 @@ def rewrite_from_url(brand_id: int, url: str, user_instruction: str = "",
         fetched = fetcher.fetch_page(url)
         content = str(fetched.get("text") or "")
     except Exception:
-        # 用户主动改写的单篇文章（如公众号 robots 限制）：直连抓取 + 剥标签提取正文
+        # 兜底：直连抓取 + 剥标签提取正文。
+        # R7b（架构评审）：兜底不再绕过 robots.txt——与 fetcher.fetch_page
+        # 同一合规口径，网站禁止程序读取时直接报大白话错误，引导改用粘贴文字。
         import re as _re
         import requests as _requests
+        fallback_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        try:
+            fetcher.robots_check(url, fallback_ua)
+        except fetcher.FetchError:
+            raise KnowledgeError("该网站不允许程序读取（robots.txt 禁止抓取），"
+                                 "请改用「粘贴文字」的方式提交内容")
         try:
             html = _requests.get(
                 url, timeout=25,
-                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                headers={"User-Agent": fallback_ua},
             ).text
             html = _re.sub(r"<(script|style)[\s\S]*?</\1>", " ", html, flags=_re.I)
             content = _re.sub(r"<[^>]+>", " ", html)

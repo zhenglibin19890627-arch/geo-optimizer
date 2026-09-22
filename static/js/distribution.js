@@ -628,6 +628,9 @@ loadOverview();
       if (f.size > 20 * 1024 * 1024) { results.push(f.name + " 失败（超过 20MB）"); if (++done === files.length) finish(); return; }
       var fd = new FormData();
       fd.append("file", f);
+      // 与 geoApi 同一品牌上下文（getBrandId 读 localStorage.geo_brand_id）：
+      // 写路径必须显式带 brand_id，否则后端按 R8 口径拒绝，防止静默写进品牌 1
+      fd.append("brand_id", getBrandId());
       fetch("/api/knowledge/docs/upload", { method: "POST", body: fd })
         .then(function (r) { return r.json(); })
         .then(function (j) {

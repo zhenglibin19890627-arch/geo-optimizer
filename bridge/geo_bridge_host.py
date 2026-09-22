@@ -6,8 +6,10 @@
 
 浏览器经 connectNative 拉起本进程（Chrome/Edge 注册表指向它），扩展是服务端：
 宿主发 {"id","action","payload"}，扩展回 {"id","ok","data"|"error"}。
-宿主主循环：心跳 → 领取待发任务 → create_post → publish_post → 轮询
+宿主主循环：领取待发任务 → create_post → publish_post → 轮询
 get_job_status → 把结果回写 GEO。发布动作全部由扩展在浏览器登录态里执行。
+心跳独立守护线程：单任务发布可达 150s，串行里插不进 30s 心跳会让分发页
+误显示「离线」，故线程化发送；任务仍由主循环串行执行。
 
 设计约束：
 - 纯标准库（浏览器拉起时不依赖 venv / 第三方包）；
@@ -234,24 +236,34 @@ def dispatch_task(ext: ExtClient, geo: GeoClient, task: dict, cfg: dict) -> None
     task_id = task["task_id"]
     platform = task["platform"]
     draft = task["draft"]
+    # 幂等键 = GEO 渠道任务 id（claim 下发）：宿主在受理与回写之间崩溃后重试，
+    # 扩展按它复用已有 job（已发布直接回结果），防止平台产生重复文章。
+    # 旧版 GEO 不下发该字段 → 不透传，扩展退化为现状行为（向后兼容）。
+    external_id = str(task.get("idempotency_key") or "")
     platform_home = {"zhihu": "https://zhuanlan.zhihu.com",
                      "sohu": "https://mp.sohu.com",
                      "toutiao": "https://mp.toutiao.com"}.get(platform, "")
+    create_payload = {
+        "title": draft["title"], "body_md": draft["body_md"],
+        "summary": draft.get("summary") or "",
+        "tags": draft.get("tags") or [],
+    }
+    target = {"platform": platform}
+    if task.get("account_id"):
+        target["accountId"] = task["account_id"]
+    publish_payload = {"targets": [target]}
+    if external_id:
+        create_payload["externalId"] = external_id
+        publish_payload["externalId"] = external_id
     try:
-        created = ext.request("create_post", {
-            "title": draft["title"], "body_md": draft["body_md"],
-            "summary": draft.get("summary") or "",
-            "tags": draft.get("tags") or [],
-        }, timeout=cfg["rpc_timeout"])
+        created = ext.request("create_post", create_payload,
+                              timeout=cfg["rpc_timeout"])
         post_id = (created or {}).get("postId")
         if not post_id:
             raise RuntimeError("扩展未返回 postId")
-        target = {"platform": platform}
-        if task.get("account_id"):
-            target["accountId"] = task["account_id"]
-        published = ext.request("publish_post", {
-            "postId": post_id, "targets": [target]},
-            timeout=cfg["rpc_timeout"] * 2)
+        publish_payload["postId"] = post_id
+        published = ext.request("publish_post", publish_payload,
+                                timeout=cfg["rpc_timeout"] * 2)
         job_id = (published or {}).get("jobId")
         if not job_id:
             raise RuntimeError("扩展未返回 jobId")
@@ -364,22 +376,40 @@ def collect_accounts(ext: ExtClient, cfg: dict):
         return None
 
 
+def heartbeat_loop(ext: ExtClient, geo: GeoClient, cfg: dict, stop: threading.Event):
+    """心跳循环（跑在独立守护线程）：主循环领任务/发布动辄上百秒，串行里发不出
+    30s 心跳（TTL 70s）会让分发页误显示「离线」，故线程化发送。
+
+    - 按 cfg["heartbeat"] 间隔先 list_accounts 再 POST heartbeat（与旧串行一致）；
+    - list_accounts 失败返回 None → 心跳不带 accounts 字段（旧行为）；
+    - 任何异常只记日志，绝不带崩宿主；失败后隔半间隔重试（延续旧退避口径）。
+    """
+    while not stop.is_set() and ext.alive:
+        wait = cfg["heartbeat"]
+        try:
+            accounts = collect_accounts(ext, cfg)
+            geo.heartbeat(accounts)
+        except Exception as e:
+            log(f"GEO 心跳失败（{e}）；{max(1.0, cfg['heartbeat'] / 2):.0f}s 后重试")
+            wait = max(1.0, cfg["heartbeat"] / 2)
+        stop.wait(wait)
+
+
+def start_heartbeat(ext: ExtClient, geo: GeoClient, cfg: dict) -> threading.Event:
+    """启动心跳守护线程，返回停止开关（main_loop 退出时 set）。"""
+    stop = threading.Event()
+    threading.Thread(target=heartbeat_loop, args=(ext, geo, cfg, stop),
+                     name="heartbeat", daemon=True).start()
+    return stop
+
+
 def main_loop(ext: ExtClient, geo: GeoClient, cfg: dict, max_tasks: int = 0):
     """max_tasks>0 时跑够就返回（测试用）；0 = 常驻直到扩展断开。"""
     server = start_http_bridge()
-    last_beat = 0.0
+    heartbeat_stop = start_heartbeat(ext, geo, cfg)  # 心跳线程化：任务再慢也不饿跳
     done = 0
     try:
         while ext.alive:
-            now = time.time()
-            if now - last_beat >= cfg["heartbeat"]:
-                accounts = collect_accounts(ext, cfg)
-                try:
-                    geo.heartbeat(accounts)
-                    last_beat = now
-                except Exception as e:
-                    log(f"GEO 心跳失败（{e}）；{cfg['idle']}s 后重试")
-                    last_beat = now - cfg["heartbeat"] / 2
             try:
                 tasks = geo.claim(limit=3)
             except Exception as e:
@@ -393,6 +423,7 @@ def main_loop(ext: ExtClient, geo: GeoClient, cfg: dict, max_tasks: int = 0):
             if not tasks:
                 time.sleep(cfg["idle"])
     finally:
+        heartbeat_stop.set()
         ext.close()
         if server:
             server.shutdown()

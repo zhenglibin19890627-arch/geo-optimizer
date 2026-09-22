@@ -16,7 +16,8 @@ import threading
 import traceback
 
 from geo.analyzers import llm_client
-from geo.analyzers.brand_extract import (AUTO_BRAND_CHARS, AUTO_BRAND_MAX_ANSWERS,
+# _strip_name_wraps 供 tests 以 competitor_analysis._strip_name_wraps 使用，保留再导出。
+from geo.analyzers.brand_extract import (AUTO_BRAND_CHARS, AUTO_BRAND_MAX_ANSWERS,  # noqa: F401
                                          _clean_brands, _current_auto,
                                          _rule_extract_companies, _save_and_recompute,
                                          _strip_name_wraps)
@@ -129,9 +130,11 @@ def extract_auto_brands(round_id: int, brand_id: int, with_llm: bool = True):
                         if was_empty:
                             trigger_if_due(round_id, brand_id)
             except Exception:
-                pass  # 规则法结果已落库
+                # R6b（架构评审）：LLM 补充提取失败留痕但不中断（规则法结果已落库）
+                traceback.print_exc()
     except Exception:
-        # 静默：自动提取失败不影响监测收尾与既有竞品分析
+        # 静默：自动提取失败不影响监测收尾与既有竞品分析（R6b：但留痕）
+        traceback.print_exc()
         return
 
 

@@ -85,7 +85,10 @@ def test_qwen联网请求带enable_source并解析来源(monkeypatch):
         captured["payload"] = json
         return FakeResp()
 
-    monkeypatch.setattr(qwen_mod.requests, "post", fake_post)
+    # R3 收敛后 HTTP 走 base 的共享重试循环，patch base 的 requests
+    # （与 qwen 模块同为一个 requests 模块对象，全局生效）
+    from geo.engines import base as base_mod
+    monkeypatch.setattr(base_mod.requests, "post", fake_post)
     adapter = qwen_mod.QwenAdapter()
     res = adapter._dashscope_chat_once(
         qwen_mod.QwenAdapter._TEXT_EP,
@@ -236,6 +239,158 @@ def test_联网档引擎口径():
 def test_未知引擎报错():
     with pytest.raises(EngineError_NotFound):
         get_adapter("no-such-engine")
+
+
+def test_引擎未找到错误继承EngineError():
+    """R6a 回归：EngineError_NotFound 继承 EngineError，调用方可以统一
+    except EngineError 接住「没找到这家引擎」，不再被迫宽 except Exception。"""
+    from geo.engines.base import EngineError
+    assert issubclass(EngineError_NotFound, EngineError)
+    with pytest.raises(EngineError):
+        get_adapter("no-such-engine")
+    with pytest.raises(EngineError):
+        get_web_adapter("opencode")  # 不支持联网也属于引擎错误
+
+
+# ---------------- Responses 适配器合并回归（2026-09 评审 R3） ----------------
+
+class _FakeResp:
+    def __init__(self, status_code=200, payload=None, text=""):
+        self.status_code = status_code
+        self._payload = payload or {}
+        self.text = text
+
+    def json(self):
+        return self._payload
+
+
+def _responses_payload():
+    return {
+        "output": [{"type": "message", "content": [
+            {"type": "output_text", "text": "联网回答内容",
+             "annotations": [{"type": "url_citation",
+                              "url": "https://example.com/a", "title": "示例页"}]}]}],
+        "usage": {"input_tokens": 10, "output_tokens": 5},
+    }
+
+
+def _patch_no_ledger(monkeypatch):
+    """费用记账不打桩会写真实 data/geo.db 的 api_call_log：替换为记录器。"""
+    from geo.engines import base as base_mod
+    logged = []
+    monkeypatch.setattr(base_mod, "log_api_call",
+                        lambda *a, **k: logged.append(a))
+    return logged
+
+
+def test_deepseek联网Responses请求与信源提取(monkeypatch):
+    """R3 合并回归：DeepSeek Responses 走共享重试循环，工具名/话术/信源提取
+    行为与合并前一致（url_citation → 结构化信源，费用照常记账）。"""
+    from geo.engines import base as base_mod
+    from geo.engines.deepseek_responses import DeepSeekResponsesAdapter
+
+    captured = {}
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        captured["url"] = url
+        captured["payload"] = json
+        return _FakeResp(payload=_responses_payload())
+
+    monkeypatch.setattr(base_mod.requests, "post", fake_post)
+    logged = _patch_no_ledger(monkeypatch)
+
+    a = DeepSeekResponsesAdapter()
+    a.cfg = {"api_key": "sk-x", "base_url": "https://api.deepseek.com/v1",
+             "web_tool_type": "web_search", "model": "deepseek-v4-flash"}
+    res = a.chat([{"role": "user", "content": "问题"}], model="deepseek-v4-flash")
+
+    assert captured["url"] == "https://api.deepseek.com/v1/responses"
+    assert captured["payload"]["tools"] == [{"type": "web_search"}]
+    assert captured["payload"]["model"] == "deepseek-v4-flash"
+    assert res.text == "联网回答内容"
+    assert res.sources and res.sources[0]["url"] == "https://example.com/a"
+    assert logged == [("deepseek", "deepseek-v4-flash", 10, 5)]
+
+
+def test_deepseek联网空回答明确报错(monkeypatch):
+    from geo.engines import base as base_mod
+    from geo.engines.deepseek_responses import DeepSeekResponsesAdapter
+
+    monkeypatch.setattr(base_mod.requests, "post",
+                        lambda *a, **k: _FakeResp(payload={"output": []}))
+    _patch_no_ledger(monkeypatch)
+    a = DeepSeekResponsesAdapter()
+    a.cfg = {"api_key": "sk-x", "base_url": "https://api.deepseek.com/v1"}
+    with pytest.raises(Exception) as ei:
+        a.chat([{"role": "user", "content": "问题"}], model="deepseek-v4-flash")
+    assert "联网搜索没有返回内容" in str(ei.value)
+
+
+def test_doubao联网插件未开通给开通指引(monkeypatch):
+    """豆包 404+ToolNotOpen 优先给「联网内容插件」开通指引（合并前行为）。"""
+    from geo.engines import base as base_mod
+    from geo.engines.doubao_responses import DoubaoResponsesAdapter
+
+    monkeypatch.setattr(base_mod.requests, "post",
+                        lambda *a, **k: _FakeResp(
+                            status_code=404,
+                            text='{"error":{"code":"ToolNotOpen"}}'))
+    _patch_no_ledger(monkeypatch)
+    a = DoubaoResponsesAdapter()
+    a.cfg = {"api_key": "sk-x", "base_url": "https://ark.cn/v3"}
+    with pytest.raises(Exception) as ei:
+        a.chat([{"role": "user", "content": "问题"}], model="doubao-x")
+    assert "联网内容插件" in str(ei.value)
+
+
+def test_doubao联网模型不存在话术(monkeypatch):
+    from geo.engines import base as base_mod
+    from geo.engines.doubao_responses import DoubaoResponsesAdapter
+
+    monkeypatch.setattr(base_mod.requests, "post",
+                        lambda *a, **k: _FakeResp(
+                            status_code=404, text="model not found"))
+    _patch_no_ledger(monkeypatch)
+    a = DoubaoResponsesAdapter()
+    a.cfg = {"api_key": "sk-x", "base_url": "https://ark.cn/v3"}
+    with pytest.raises(Exception) as ei:
+        a.chat([{"role": "user", "content": "问题"}], model="doubao-x")
+    assert "模型不存在" in str(ei.value)
+    assert "火山方舟" in str(ei.value)
+
+
+# ---------------- 费用估算（2026-09 评审 R10） ----------------
+
+def test_pick_price_前缀最长匹配与hy系列(monkeypatch):
+    """R10：_pick_price 按前缀最长匹配；hy3 精确条目优先于 hy 系列前缀。"""
+    from geo.engines import base as base_mod
+    fake_pricing = {
+        "hy3": {"input": 8, "output": 16},
+        "hy": {"input": 4, "output": 8},
+        "deepseek-v4": {"input": 1, "output": 2},
+    }
+    monkeypatch.setattr(base_mod.config, "get_section",
+                        lambda name, default=None:
+                        fake_pricing if name == "pricing" else default)
+    assert base_mod._pick_price("hy3") == (8.0, 16.0)     # 精确前缀优先
+    assert base_mod._pick_price("hy3-2026") == (8.0, 16.0)  # 前缀匹配带后缀型号
+    assert base_mod._pick_price("hy4") == (4.0, 8.0)      # 系列前缀兜底
+    assert base_mod._pick_price("hunyuan-x") == (0.0, 0.0)  # 未收录 → 0（不猜）
+    # 估算路径：hy3 不再恒记 0
+    assert base_mod.estimate_cost("hy3", 1_000_000, 500_000) == 8 + 8
+
+
+def test_示例价格表收录hy3系列():
+    """R10：config.example.yaml 的 pricing 表必须有 hy3 与 hy 系列条目
+    （否则元宝当前档费用恒记 0 低估；真实 config.yaml 由用户自行维护）。"""
+    import yaml
+    from geo import config as geo_config
+
+    example = geo_config.PROJECT_ROOT / "config" / "config.example.yaml"
+    data = yaml.safe_load(example.read_text(encoding="utf-8"))
+    pricing = data.get("pricing") or {}
+    assert isinstance(pricing.get("hy3"), dict) and "input" in pricing["hy3"]
+    assert isinstance(pricing.get("hy"), dict) and "output" in pricing["hy"]
 
 
 def test_五家自动引擎注册齐全():

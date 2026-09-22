@@ -6,6 +6,7 @@ agent_bridge_token 时必须带 X-Agent-Token 头；未配置则仅靠本机部�
 （Flask 只听 127.0.0.1 + 无 Origin 放行脚本直连）。
 """
 
+import hmac
 import re
 from datetime import datetime
 
@@ -29,7 +30,8 @@ def _check_agent_token():
     if not expected:
         return
     got = request.headers.get("X-Agent-Token") or ""
-    if got != expected:
+    # 常量时间比较（str→bytes，兼容非 ASCII 设置值），避免逐字节短路泄露令牌
+    if not hmac.compare_digest(got.encode("utf-8"), expected.encode("utf-8")):
         raise ApiError("分发桥的令牌不对，请检查宿主配置里的 agent_bridge_token", 401)
 
 
@@ -100,8 +102,13 @@ def claim_tasks():
                 continue
             r.status = "dispatching"
             r.updated_at = now
+            # 幂等键 = 渠道任务 id：宿主在受理与回写之间崩溃后重试时，扩展按它
+            # 复用已有发布 job，防止平台重复发文（历史事故）。曾被回写 published
+            # 的重发属用户主动行为，键带时间戳轮换以放行真正的重发。
+            idem = str(r.id) if not r.published_at else f"{r.id}r{int(now.timestamp())}"
             items.append({
                 "task_id": r.id,
+                "idempotency_key": idem,
                 "platform": r.platform,
                 "platform_name": distribution.SUPPORTED_PLATFORMS.get(r.platform, r.platform),
                 "account_id": r.account_id or "",

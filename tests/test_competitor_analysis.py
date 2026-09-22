@@ -424,6 +424,21 @@ def test_finalize_rule_first_even_when_llm_fails(tmpdb, monkeypatch):
 
     monkeypatch.setattr(competitor_analysis, "_chat", boom)
     monkeypatch.setattr(competitor_analysis, "generate", lambda *a, **k: None)
+
+    # finalize 会开后台线程做 LLM 补充提取；若放任真线程，它会活到本测试
+    # 结束、monkeypatch 还原之后——_chat 变回真 llm_client.chat，拿用户真实
+    # 钥匙发真实请求（烧钱），且污染后续用例（2026-09 t10：曾把
+    # test_distribution 的发布断言 URL 冲掉）。改为同步执行，把线程关在
+    # _chat 仍为 boom 的窗口内，失败即被 R6b 的留痕逻辑接住。
+    class _SyncThread:
+        def __init__(self, target=None, args=(), daemon=None):
+            self._target, self._args = target, args
+
+        def start(self):
+            self._target(*self._args)
+
+    monkeypatch.setattr(competitor_analysis.threading, "Thread", _SyncThread)
+
     rid = _seed(tmpdb, [], ["龙泉市海盾智能工程有限公司很好"])
     competitor_analysis.finalize_competitors(rid, 1)
     with database.session_scope() as s:

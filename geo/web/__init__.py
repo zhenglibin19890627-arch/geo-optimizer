@@ -48,8 +48,21 @@ def get_json():
     return data
 
 
-def current_brand_id() -> int:
-    """当前品牌 id：GET 取查询参数，其他取请求体；缺省 1（存量品牌，旧调用兼容）。"""
+def current_brand_id(allow_missing: bool = False) -> int:
+    """当前品牌 id：GET 取查询参数，写方法取表单/请求体。
+
+    2026-09 评审 R8 修复：写方法（POST/PUT/DELETE）缺 brand_id 时不再静默
+    回退品牌 1——多品牌模式下前端漏传会把数据悄悄写进品牌 1，无任何告警。
+    现改为大白话报错，强制调用方显式带 brand_id。前端 static/js/api.js 的
+    geoApi() 已给所有 JSON 写请求统一注入 brand_id（GET 加查询参数、
+    POST/PUT/DELETE 写进请求体），正常页面操作不受影响；读方法（GET）保留
+    缺省 1 的旧口径（读路径多有归属校验兜底，不会写坏数据）。
+
+    2026-09 起无例外：知识库文件上传（POST /knowledge/docs/upload）前端
+    distribution.js 已给 FormData 补 brand_id（与 geoApi 同源的
+    localStorage.geo_brand_id），allow_missing 参数仅为兼容保留，当前无
+    调用方使用——写路径缺 brand_id 一律大白话报错。
+    """
     raw = None
     try:
         raw = request.args.get("brand_id")
@@ -61,9 +74,17 @@ def current_brand_id() -> int:
                 raw = data["brand_id"]
     except Exception:
         raw = None
+    strict = request.method in ("POST", "PUT", "DELETE") and not allow_missing
+    if raw is None:
+        if strict:
+            raise ApiError("这个操作没有说明要写到哪个品牌，请刷新页面后再试一次；"
+                           "如果一直报错，请切换一下品牌再操作")
+        return 1
     try:
-        return int(raw) if raw is not None else 1
+        return int(raw)
     except (TypeError, ValueError):
+        if strict:
+            raise ApiError("品牌编号格式不对，请刷新页面后再试一次")
         return 1
 
 
@@ -72,7 +93,7 @@ def register_blueprints(app):
     # import 即完成装饰器挂载，须在 register_blueprint 之前 import。
     from geo.web import (api_agent, api_alert, api_config, api_distribution,
                          api_knowledge, api_monitor, api_optimize, api_report,
-                         api_report_competitor)
+                         api_report_competitor)  # noqa: F401  ← 刻意的副作用 import
     for bp in (api_config.bp, api_monitor.bp, api_optimize.bp, api_report.bp,
                api_alert.bp, api_distribution.bp, api_agent.bp,
                api_knowledge.bp):
@@ -88,9 +109,19 @@ def create_app() -> Flask:
     app.json.ensure_ascii = False
     CORS(app, resources={r"/api/*": {"origins": _LOCAL_ORIGIN_RE}})
 
+    # 禁缓存钩子（2026-09 评审 R10 杂项合并：原 no_cache_for_static 与
+    # revalidate_static 两个 after_request 功能重叠、后者只覆盖 /static，
+    # 合并为一个，语义取并集：页面/JS/CSS/接口响应全部 no-cache）
     @app.after_request
-    def no_cache_for_static(resp):
-        """本地单机系统：页面/JS/CSS/接口响应全部禁缓存，改动刷新即生效。"""
+    def no_cache(resp):
+        """页面/JS/CSS/接口响应全部禁缓存，改动刷新即生效。
+
+        no-cache 语义 = 可以缓存，但用前必须向服务端回源校验：文件没变时
+        命中 304（几乎零开销），变了就自动拿新版。
+        2026-08-19 事故：升级监测中心后，浏览器对同名 monitor.js 走了
+        启发式缓存、未回源校验，导致新版页面配旧版脚本——用户勾了
+        常规+联网，旧脚本只发起常规。全部显式 no-cache 后不再复发。
+        """
         path = request.path or ""
         if (path.startswith("/static") or path.startswith("/api")
                 or path == "/" or path.endswith(".html")):
@@ -111,19 +142,6 @@ def create_app() -> Flask:
             return None
         return fail("这个操作只能从本机页面发起，请刷新页面后再试"), 403
 
-    @app.after_request
-    def revalidate_static(resp):
-        """静态资源一律 no-cache（=缓存但用前必须向服务端校验）。
-
-        2026-08-19 事故：升级监测中心后，浏览器对同名 monitor.js 走了
-        启发式缓存、未回源校验，导致新版页面配旧版脚本——用户勾了
-        常规+联网，旧脚本只发起常规。加 no-cache 后，文件没变时命中
-        304（几乎零开销），变了就自动拿新版，刷新页面即生效。
-        """
-        if request.path.startswith("/static/"):
-            resp.headers["Cache-Control"] = "no-cache"
-        return resp
-
     # 配置与数据库
     config.ensure_config_file()
     config.load_config()
@@ -131,7 +149,9 @@ def create_app() -> Flask:
     from geo.models import migration
     migration.run_migrations()
     seeder.seed_questions()
-    # 回收僵尸任务：上次程序退出时中断的监测任务，避免永久拦截新监测
+    # 回收僵尸任务（R2 分工）：中断超过 2 小时的监测任务在这里置 failed；
+    # 2 小时内中断的留活口，交由下方 ensure_scheduler_started →
+    # _recover_and_catchup 断点续跑（已问到的回答保留，自动去重续跑）
     from geo.core import monitor_task as monitor_task_mod
     try:
         monitor_task_mod.reap_stale_tasks()

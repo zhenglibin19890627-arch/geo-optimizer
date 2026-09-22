@@ -1,9 +1,11 @@
 # 开发/测试依赖（普通用户不需要——运行 python app.py 只需 requirements.txt）
 # 用法：pip install -r requirements-dev.txt && python -m pytest tests/
+# 升级须知：调整以下任一 == 锁定版本，须重跑 tests/ 全量回归再交付。
 -r requirements.txt
 pytest==9.1.1
+ruff==0.16.1
+pytest-cov==7.1.0
 # 环境备注：全局 Python 里若装有 textract，它依赖的 chardet>=6 会触发
 # requests 的 RequestsDependencyWarning（requests 仅支持 chardet<6）。
 # 本项目自身不依赖 chardet；遇到该警告时 pip install "chardet==5.2.0"
 # 即可同时满足 textract(>=5.2.0) 与 requests(<6.0.0)。
-

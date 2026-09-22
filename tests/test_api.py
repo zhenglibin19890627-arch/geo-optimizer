@@ -411,7 +411,9 @@ def test_钥匙列表永不含明文(client):
         assert "api_key_masked" in item
 
 
-def test_分析模型厂商切换与档位校验(client):
+def test_分析模型自由填写与厂商切换(client):
+    """2026-09 用户需求：分析用模型自由填写（不再档位白名单拦截），
+    只清洗；显式留空=清空（执行时回落厂商当前档）。"""
     # 切到 opencode 厂商
     r = client.post("/api/settings", json={"analysis_vendor": "opencode"})
     assert r.get_json()["code"] == 0
@@ -419,21 +421,58 @@ def test_分析模型厂商切换与档位校验(client):
     item = [x for x in r.get_json()["data"] if x["engine"] == "analysis"][0]
     assert item["vendor"] == "opencode"
     assert len(item["vendors"]) == 5
-    assert item["model_options"]  # opencode 的 19 档
+    assert item["model_options"]
 
     # 非法厂商拦截
     r = client.post("/api/settings", json={"analysis_vendor": "no-such"})
     assert r.get_json()["code"] == 1
 
-    # opencode 厂商下选不存在的档位拦截
+    # 自由填写：配置里没有的型号也接受（型号存在性由执行时引擎 API 报错）
     r = client.post("/api/settings", json={"analysis_model": "not-a-real-model"})
-    assert r.get_json()["code"] == 1
+    assert r.get_json()["code"] == 0
+    item = [x for x in client.get("/api/settings/keys").get_json()["data"]
+            if x["engine"] == "analysis"][0]
+    assert item["model"] == "not-a-real-model"
 
-    # 切回 deepseek 并选合法档
+    # 空白清洗：首尾空格与空项去掉后保存
+    r = client.post("/api/settings", json={"analysis_model": "  a-model ， ，b-model ，"})
+    assert r.get_json()["code"] == 0
+    item = [x for x in client.get("/api/settings/keys").get_json()["data"]
+            if x["engine"] == "analysis"][0]
+    assert item["model"] == "a-model,b-model"
+
+    # 显式留空 = 清空（回显空串；current_model 仍给出回落当前档）
+    r = client.post("/api/settings", json={"analysis_model": "   "})
+    assert r.get_json()["code"] == 0
+    item = [x for x in client.get("/api/settings/keys").get_json()["data"]
+            if x["engine"] == "analysis"][0]
+    assert item["model"] == ""
+    assert item["current_model"]
+
+    # 不带 analysis_model 键的保存（只切厂商）不动型号
     r = client.post("/api/settings", json={"analysis_vendor": "deepseek"})
     assert r.get_json()["code"] == 0
-    r = client.post("/api/settings", json={"analysis_model": "deepseek-v4-flash"})
+    item = [x for x in client.get("/api/settings/keys").get_json()["data"]
+            if x["engine"] == "analysis"][0]
+    assert item["model"] == ""
+
+
+def test_创作模型自由填写与清空(client):
+    """内容创作模型自由填写：填了生效（清洗后保存）、留空清空回落分析模型。"""
+    r = client.post("/api/settings", json={"create_model": "  create-x "})
     assert r.get_json()["code"] == 0
+    item = [x for x in client.get("/api/settings/keys").get_json()["data"]
+            if x["engine"] == "create"][0]
+    assert item["model"] == "create-x"
+    assert item["current_model"] == "create-x"
+
+    # 留空清空：current_model 回落到分析模型链（deepseek 默认档）
+    r = client.post("/api/settings", json={"create_model": ""})
+    assert r.get_json()["code"] == 0
+    item = [x for x in client.get("/api/settings/keys").get_json()["data"]
+            if x["engine"] == "create"][0]
+    assert item["model"] == ""
+    assert item["current_model"] == "deepseek-v4-flash"
 
 
 def test_费用接口空库为0(client):
@@ -615,3 +654,65 @@ def test_预警列表为空(client):
     assert body["code"] == 0
     assert body["data"]["unread_count"] == 0
     assert body["data"]["items"] == []
+
+
+# ---------------- 写操作品牌归属强制（2026-09 评审 R8） ----------------
+
+def test_写操作缺brand_id被拦截不再静默写进品牌1(client):
+    """R8 回归：写方法（POST/PUT/DELETE）缺 brand_id 时大白话报错，
+    不能像从前那样悄悄把数据写进品牌 1。"""
+    r = client.post("/api/questions", json={"text": "没带品牌的问题"})
+    body = r.get_json()
+    assert body["code"] == 1
+    assert "品牌" in body["message"]
+    # 确认没有静默写进品牌 1
+    items = client.get("/api/questions?brand_id=1").get_json()["data"]
+    assert "没带品牌的问题" not in [x["text"] for x in items]
+
+    # brand_id 格式非法同样拦截（不再回落品牌 1）
+    r = client.post("/api/questions", json={"brand_id": "abc", "text": "坏编号的问题"})
+    assert r.get_json()["code"] == 1
+    assert "品牌" in r.get_json()["message"]
+
+
+def test_读操作缺brand_id仍按缺省品牌1(client):
+    """读路径保留缺省 1 的旧口径（有归属校验兜底，不会写坏数据）。"""
+    r = client.get("/api/questions")
+    assert r.get_json()["code"] == 0
+
+
+def test_知识库上传缺brand_id被拦截(client):
+    """R8 口径统一：前端 distribution.js 上传已给 FormData 补 brand_id
+    （与 geoApi 同一品牌上下文），后端收回缺 brand_id 落品牌 1 的存量例外——
+    缺 brand_id 大白话报错，不写任何数据。"""
+    import io
+    data = {"file": (io.BytesIO("没带品牌的上传内容".encode("utf-8")),
+                     "无品牌上传.md")}
+    r = client.post("/api/knowledge/docs/upload", data=data,
+                    content_type="multipart/form-data")
+    body = r.get_json()
+    assert body["code"] == 1
+    assert "品牌" in body["message"]
+    # 确认没有静默写进品牌 1
+    docs = client.get("/api/knowledge/docs?brand_id=1").get_json()["data"]["docs"]
+    assert all(d["title"] != "无品牌上传" for d in docs)
+
+
+def test_知识库上传带brand_id落对应品牌(client):
+    """FormData 带 brand_id 时落到对应品牌，不串到别的品牌。"""
+    import io
+    r = client.post("/api/brands", json={"brand_name": "知识库上传第二品牌"})
+    assert r.get_json()["code"] == 0, r.get_json()
+    bid = r.get_json()["data"]["id"]
+    data = {"file": (io.BytesIO("第二品牌的知识库上传内容".encode("utf-8")),
+                     "归属测试.md"),
+            "brand_id": str(bid)}
+    r = client.post("/api/knowledge/docs/upload", data=data,
+                    content_type="multipart/form-data")
+    body = r.get_json()
+    assert body["code"] == 0, body
+    doc_id = body["data"]["doc_id"]
+    docs_b = client.get(f"/api/knowledge/docs?brand_id={bid}").get_json()["data"]["docs"]
+    assert any(d["id"] == doc_id for d in docs_b)
+    docs_1 = client.get("/api/knowledge/docs?brand_id=1").get_json()["data"]["docs"]
+    assert all(d["id"] != doc_id for d in docs_1)

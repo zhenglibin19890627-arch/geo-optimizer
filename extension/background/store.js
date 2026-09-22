@@ -77,8 +77,28 @@ export async function getConfig() {
 
 // ---------- 稿件 ----------
 
+// 幂等键（externalId = GEO 渠道任务 id）查找：宿主崩溃重试时按它复用稿件
+export async function findPostByExternalId(externalId) {
+  const posts = await get("posts", {});
+  return Object.values(posts).find((p) => p.externalId === externalId) || null;
+}
+
 export async function createPost(post) {
   const now = Date.now();
+  const externalId = typeof post.externalId === "string" ? post.externalId.trim() : "";
+  if (externalId) {
+    const existing = await findPostByExternalId(externalId);
+    if (existing) {
+      // 幂等复用：同一渠道任务重试不再新建稿件，仅把内容刷新为最新审阅稿
+      return updatePost(existing.id, {
+        title: String(post.title || "").trim(),
+        body_md: String(post.body_md || ""),
+        ...(typeof post.summary === "string" ? { summary: post.summary } : {}),
+        ...(Array.isArray(post.tags)
+          ? { tags: post.tags.filter((t) => typeof t === "string") } : {}),
+      });
+    }
+  }
   const record = {
     id: crypto.randomUUID(),
     title: String(post.title || "").trim(),
@@ -87,6 +107,7 @@ export async function createPost(post) {
     tags: Array.isArray(post.tags) ? post.tags.filter((t) => typeof t === "string") : [],
     canonicalUrl: typeof post.canonicalUrl === "string" ? post.canonicalUrl : undefined,
     sourceUrl: typeof post.source_url === "string" ? post.source_url : undefined,
+    externalId: externalId || undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -117,10 +138,26 @@ export async function updatePost(postId, patch) {
 
 // ---------- 发布任务 ----------
 
-export async function createJob(postId, targets) {
+// 幂等去重（防重复文章）：同键已有未终态 job 则复用不新建；已 published 直接
+// 复用（宿主轮询到终态回写成功，不重发）；仅 failed 才新建（失败重试语义）。
+export async function findReusableJobByExternalId(externalId) {
+  const jobs = await get("jobs", {});
+  const same = Object.values(jobs).filter((j) => j.externalId === externalId);
+  return same.find((j) => j.state === "published")
+      || same.find((j) => j.state === "pending" || j.state === "running")
+      || null;
+}
+
+export async function createJob(postId, targets, externalId) {
+  const key = typeof externalId === "string" ? externalId.trim() : "";
+  if (key) {
+    const reusable = await findReusableJobByExternalId(key);
+    if (reusable) return reusable;
+  }
   const job = {
     id: crypto.randomUUID(),
     postId,
+    externalId: key || undefined,
     state: "pending",
     progress: 0,
     results: targets.map((t) => ({

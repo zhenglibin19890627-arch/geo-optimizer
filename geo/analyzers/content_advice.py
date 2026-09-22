@@ -4,7 +4,6 @@ import json
 import re
 
 from geo.analyzers import llm_client
-from geo.models import db as database
 
 
 def _extract_json_list(text: str) -> list:

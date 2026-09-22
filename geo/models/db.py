@@ -1,4 +1,13 @@
-"""GEO 优化系统：SQLAlchemy 数据模型（技术方案第三章，11 张表）。"""
+"""GEO 优化系统：SQLAlchemy 数据模型（技术方案第三章，共 15 张表）：
+
+品牌域  brand_profile(品牌档案) / keyword(关键词) / question_bank(问题库)
+监测域  monitor_task(监测任务) / monitor_round(监测轮次) / monitor_result(监测结果)
+        score_snapshot(评分快照) / alert(预警)
+分析域  optimization_record(内容优化记录) / competitor_analysis(竞品深度分析)
+分发域  knowledge_doc(知识库文档) / distribution_draft(内容分发稿件)
+        distribution_channel_task(多平台分发任务)
+支撑域  settings(设置) / api_call_log(AI 调用日志，全局保留)
+"""
 
 import json
 from contextlib import contextmanager

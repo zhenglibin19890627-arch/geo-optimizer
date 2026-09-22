@@ -203,3 +203,9 @@ pricing:
   hunyuan-turbos: { input: 8, output: 16 }
   hunyuan-turbo: { input: 4, output: 8 }
   hunyuan-lite: { input: 1, output: 2 }
+  # hy3（腾讯云 TokenHub 混元家族，元宝位当前档）：价格表此前只有旧混元名
+  # （hunyuan-*），按前缀匹配不到导致 hy3 的费用恒记 0、「本月花费」低估
+  # （评审 R10）。下列为占位估算价，按 TokenHub 账单口径手工维护，实际以
+  # 腾讯云账单为准；hy 前缀条目兜住该系列后续型号（hy3 精确条目优先命中）。
+  hy3: { input: 8, output: 16 }
+  hy: { input: 4, output: 8 }

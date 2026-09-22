@@ -9,8 +9,6 @@
   （旧版 __file__.rsplit("\\", 1) 的 Windows 路径拼接已移除）。
 """
 
-from geo.models import db as database
-
 
 def seed_questions():
     """空实现（预置写入已按 C1 裁决停用），create_app 调用点保持不变。"""

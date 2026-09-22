@@ -7,7 +7,7 @@
 共用同一套口径，避免多处各自实现产生漂移。
 """
 
-from geo.engines import base as engine_base, get_adapter, get_web_adapter
+from geo.engines import get_adapter, get_web_adapter
 
 SYSTEM_PROMPT = "你是一个乐于助人的中文AI助手。请用中文客观、详细地回答用户的问题。"
 

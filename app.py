@@ -15,7 +15,7 @@ import sys
 import threading
 import webbrowser
 
-from geo import config
+from geo import config, service_log
 from geo.server import find_free_port
 from geo.web import create_app
 
@@ -23,16 +23,22 @@ app = create_app()
 
 
 def main():
-    # pythonw 后台运行时 stdout 重定向到文件是块缓冲，定时监测等诊断
-    # print 会积压在缓冲区里迟迟不落日志；改成行缓冲，写一条见一条。
-    try:
-        sys.stdout.reconfigure(line_buffering=True)
-        sys.stderr.reconfigure(line_buffering=True)
-    except Exception:
-        pass
-
     args = sys.argv[1:]
     no_browser = "--no-browser" in args
+    if no_browser:
+        # 托盘后台模式：运行日志改走 data/service.log 轮转（5MB×3 封顶）。
+        # print 调用点不动——stdout/stderr 换成行缓冲桥，写一条见一条；
+        # 细节见 geo/service_log.py（继承句柄释放 / 轮转被占用时延后重试）。
+        service_log.install_background_logging()
+    else:
+        # 前台控制台模式保持原样：stdout 重定向到文件时是块缓冲，定时
+        # 监测等诊断 print 会积压在缓冲区里迟迟不落日志；改成行缓冲。
+        try:
+            sys.stdout.reconfigure(line_buffering=True)
+            sys.stderr.reconfigure(line_buffering=True)
+        except Exception:
+            pass
+
     port = None
     if "--port" in args:
         try:

@@ -15,15 +15,9 @@ OpenAI 兼容模式的 enable_search 拿不到引用，故联网档不走兼容�
 费用记录：usage.input_tokens / output_tokens，与价格表 qwen 前缀匹配。
 """
 
-import random
-import time
-
-import requests
-
 from geo import config
 from geo.analyzers import sources as sources_mod
-from geo.engines.base import (ChatResult, EngineAdapter, EngineError,
-                              friendly_error, log_api_call)
+from geo.engines.base import ChatResult, EngineAdapter, EngineError, log_api_call
 
 
 class _EndpointMismatch(Exception):
@@ -58,13 +52,9 @@ class QwenAdapter(EngineAdapter):
         return self._dashscope_web_chat(messages, temperature, jitter, timeout, model)
 
     def _dashscope_web_chat(self, messages, temperature, jitter, timeout, model=None):
-        mon = config.get_section("monitor", {})
-        if jitter and float(mon.get("max_interval", 3) or 3) > 0:
-            low = float(mon.get("min_interval", 1.5) or 1.5)
-            high = float(mon.get("max_interval", 3) or 3)
-            time.sleep(random.uniform(low, high))
-
+        self._jitter_sleep(jitter)
         model = model or self.get_web_model()
+        # 钥匙/模型校验与各适配器同一套大白话口径（R3 收敛；地址用原生端点，不校验）
         if not (self.cfg.get("api_key") or "").strip():
             raise EngineError(f"{self.display_name}的钥匙（API Key）还没填，请先到设置页填写")
         if not model:
@@ -76,20 +66,16 @@ class QwenAdapter(EngineAdapter):
         else:
             endpoints = [self._TEXT_EP, self._MULTIMODAL_EP]
 
-        last_err = None
         for ep in endpoints:
             try:
                 return self._dashscope_chat_once(ep, messages, model, temperature, timeout)
-            except _EndpointMismatch as e:
-                last_err = e
+            except _EndpointMismatch:
                 continue
         raise EngineError(f"{self.display_name} 联网提问的模型档位与接口不匹配，"
                           f"请到设置页换一个模型档位试试")
 
     def _dashscope_chat_once(self, endpoint, messages, model, temperature, timeout):
         mon = config.get_section("monitor", {})
-        max_retries = int(mon.get("max_retries", 2) or 2)
-        backoff = float(mon.get("retry_backoff_seconds", 2) or 2)
         temp = float(temperature if temperature is not None else mon.get("temperature", 0.3))
         multimodal = endpoint.endswith("multimodal-generation")
 
@@ -121,39 +107,17 @@ class QwenAdapter(EngineAdapter):
             "Content-Type": "application/json",
         }
 
-        last_err = None
-        for attempt in range(max_retries + 1):
-            if attempt > 0:
-                wait = backoff * (2 ** (attempt - 1)) + random.uniform(0, 0.5)
-                time.sleep(wait)
-            try:
-                resp = requests.post(endpoint, json=payload, headers=headers,
-                                     timeout=timeout)
-            except requests.exceptions.RequestException as e:
-                last_err = e
-                continue
-            if resp.status_code == 200:
-                try:
-                    data = resp.json()
-                except Exception:
-                    raise EngineError(f"{self.display_name} 返回的内容格式不对，请稍后再试")
-                return self._parse_dashscope(data, model)
-            elif resp.status_code in (401, 403):
-                raise EngineError(f"{self.display_name}的钥匙（API Key）不对或已失效，请到设置页重新填写")
-            elif resp.status_code == 429:
-                last_err = EngineError(f"{self.display_name} 的请求太频繁了，稍等一下我会自动重试")
-                continue
-            else:
-                # 模型类型与端点不匹配：换另一端点重试（由调用方处理）
-                if resp.status_code == 400 and "url error" in (resp.text or "").lower():
-                    raise _EndpointMismatch("url error")
-                last_err = EngineError(f"{self.display_name} 暂时出了点问题，请稍后再试")
-                if resp.status_code < 500:
-                    raise last_err
+        data = self._post_with_retry(
+            endpoint, payload, headers, timeout,
+            classify_error=self._classify_dashscope_error)
+        return self._parse_dashscope(data, model)
 
-        if isinstance(last_err, EngineError):
-            raise last_err
-        raise EngineError(friendly_error(last_err, self.display_name))
+    @staticmethod
+    def _classify_dashscope_error(resp):
+        """模型类型与端点不匹配（400 url error）→ 换另一端点重试（由调用方处理）。"""
+        if resp.status_code == 400 and "url error" in (resp.text or "").lower():
+            return _EndpointMismatch("url error")
+        return None
 
     def _parse_dashscope(self, data: dict, model: str) -> ChatResult:
         """原生协议响应解析：output.choices[0].message.content（字符串或数组）+ search_info。"""
